@@ -364,13 +364,30 @@ button.primary:hover { filter: brightness(1.1); }
 .pa-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 .pa-meter {
-  height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; margin: 6px 0;
+  height: 8px; border-radius: 4px; overflow: hidden; margin: 6px 0;
+  /* too-cold (dim) / good (green) / too-hot (yellow) zones, GP-10 */
+  background: linear-gradient(to right,
+    var(--panel-2) 0%, var(--panel-2) 50%,
+    #2f6b3f 50%, #2f6b3f 85%,
+    #7a6a1f 85%, #7a6a1f 98%,
+    var(--danger) 98%, var(--danger) 100%);
 }
 .pa-meter > div {
-  height: 100%; width: 0%; background: var(--accent);
+  height: 100%; width: 0%; background: rgba(255,255,255,0.55);
   transition: width 60ms linear;
+  mix-blend-mode: difference;
 }
-.pa-meter > div.clip { background: var(--danger); }
+.pa-meter > div.clip { background: #fff; }
+
+#pa-clip-indicator {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  background: var(--panel-2);
+  color: var(--text-dim);
+}
+#pa-clip-indicator.clipped { background: var(--danger); color: #fff; font-weight: 600; }
 
 /* ---------- Recording ---------- */
 

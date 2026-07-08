@@ -19,6 +19,7 @@ const PA = {
   stream: null,
   source: null,
   inAnal: null,
+  inputClipped: false, // GP-10 latching clip state
   gateNode: null,
   cleanGain: null,
   analogNodes: null,
@@ -225,6 +226,11 @@ async function paEnableInput() {
     PA.source.connect(PA.gateNode);
     PA.source.connect(PA.inAnal);
 
+    // GP-10: a new input session clears the latched clip light — it's
+    // meant to persist through one practice session, not forever.
+    PA.inputClipped = false;
+    updateClipIndicator();
+
     hintEl.textContent = "Input enabled.";
     await paRefreshDevices(); // device labels only populate after permission is granted
     paStartMeters();
@@ -304,6 +310,18 @@ function paUpdateTuner(inData) {
   needleEl.classList.toggle("in-tune", Math.abs(cents) <= 5);
 }
 
+// GP-10: fixed -1dBFS clip threshold, deliberately NOT self-clearing — the
+// point is to catch a transient clip you'd otherwise miss between glances
+// at the meter, so once lit it stays lit until "Clear" or a new input
+// session (see paEnableInput()).
+const CLIP_THRESHOLD_LINEAR = Math.pow(10, -1 / 20);
+
+function updateClipIndicator() {
+  const el = document.getElementById("pa-clip-indicator");
+  el.textContent = PA.inputClipped ? "CLIPPED" : "clip";
+  el.classList.toggle("clipped", !!PA.inputClipped);
+}
+
 function paStartMeters() {
   if (PA.meterRaf) cancelAnimationFrame(PA.meterRaf);
   const inData = new Float32Array(PA.inAnal.fftSize);
@@ -318,9 +336,12 @@ function paStartMeters() {
     const inFill = document.getElementById("pa-input-meter-fill");
     const outFill = document.getElementById("pa-output-meter-fill");
     inFill.style.width = Math.min(100, inMax * 100) + "%";
-    inFill.classList.toggle("clip", inMax >= 0.98);
     outFill.style.width = Math.min(100, outMax * 100) + "%";
-    outFill.classList.toggle("clip", outMax >= 0.98);
+
+    if (inMax >= CLIP_THRESHOLD_LINEAR && !PA.inputClipped) {
+      PA.inputClipped = true;
+      updateClipIndicator();
+    }
 
     // Throttled — autocorrelation is O(n^2) and doesn't need 60fps for a tuner.
     if (++tunerFrameCount % 6 === 0) paUpdateTuner(inData);
@@ -328,6 +349,41 @@ function paStartMeters() {
     PA.meterRaf = requestAnimationFrame(tick);
   }
   tick();
+}
+
+// GP-10: one-time "play your loudest chord" wizard. Listens for a few
+// seconds, tracks the peak input level actually seen, and suggests an
+// output-level starting point that lands the current signal in a healthy
+// operating range rather than right at the ceiling.
+async function paCalibrate() {
+  const resultEl = document.getElementById("pa-calibrate-result");
+  if (!PA.source) {
+    resultEl.textContent = "Enable input first.";
+    return;
+  }
+  resultEl.textContent = "Listening — play your loudest chord now (3s)…";
+  const data = new Float32Array(PA.inAnal.fftSize);
+  let peak = 0;
+  const deadline = performance.now() + 3000;
+  while (performance.now() < deadline) {
+    PA.inAnal.getFloatTimeDomainData(data);
+    for (const v of data) peak = Math.max(peak, Math.abs(v));
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  if (peak < 0.001) {
+    resultEl.textContent = "Didn't hear anything — check the input is enabled and try again.";
+    return;
+  }
+  const peakDb = 20 * Math.log10(peak);
+  // Target: loudest transient should land around -6dBFS of headroom below
+  // the ceiling; suggest an output trim that would have achieved that,
+  // clamped to the slider's own range.
+  const suggestedDb = Math.max(-24, Math.min(12, Math.round(-6 - peakDb)));
+  const slider = document.getElementById("pa-output-level");
+  slider.value = suggestedDb;
+  slider.dispatchEvent(new Event("input"));
+  resultEl.textContent = `Loudest input measured ${peakDb.toFixed(1)} dBFS — set output level to ` +
+    `${suggestedDb >= 0 ? "+" : ""}${suggestedDb} dB as a starting point. Adjust further by ear.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -534,6 +590,11 @@ function wirePAControls() {
   document.getElementById("playalong-open-btn").addEventListener("click", openPlayAlong);
   document.getElementById("playalong-close-btn").addEventListener("click", closePlayAlong);
   document.getElementById("pa-enable-btn").addEventListener("click", paEnableInput);
+  document.getElementById("pa-clip-clear-btn").addEventListener("click", () => {
+    PA.inputClipped = false;
+    updateClipIndicator();
+  });
+  document.getElementById("pa-calibrate-btn").addEventListener("click", paCalibrate);
 
   document.querySelectorAll("#pa-amp-modes button").forEach((btn) => {
     btn.addEventListener("click", () => setAmpMode(btn.dataset.mode));
