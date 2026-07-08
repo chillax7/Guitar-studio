@@ -278,6 +278,82 @@ function loadAvOffset() {
   document.getElementById("rec-av-offset").value = Recorder.avOffsetMs;
 }
 
+// VD-04: automates the manual clap-sync calibration (USER-MANUAL.md §10.1)
+// — record ~5s live, detect the clap's audio onset (energy-derivative
+// spike, no ML) and the hands-meeting video frame (frame-to-frame pixel-
+// difference spike via canvas, also no ML), then auto-fill the A/V offset
+// field. A shortcut to that field, not a replacement — the user can still
+// override it by hand afterward.
+async function vdAutoCalibrate() {
+  const resultEl = document.getElementById("rec-calibrate-result");
+  if (!Recorder.camStream) {
+    resultEl.textContent = "Enable the camera first.";
+    return;
+  }
+  ensureRecordBus();
+
+  const audioAnalyser = Audio.ctx.createAnalyser();
+  audioAnalyser.fftSize = 2048;
+  Recorder.recordBus.connect(audioAnalyser);
+  const audioData = new Float32Array(audioAnalyser.fftSize);
+  const audioSamples = [];
+
+  const videoEl = document.getElementById("rec-preview");
+  const canvas = document.createElement("canvas");
+  canvas.width = 80; canvas.height = 60; // small — only need a big enough spike, not detail
+  const ctx2d = canvas.getContext("2d", { willReadFrequently: true });
+  let prevFrame = null;
+  const videoSamples = [];
+
+  resultEl.textContent = "Listening — clap once in front of the camera (5s)…";
+  const startTime = performance.now();
+  const durationMs = 5000;
+
+  while (performance.now() - startTime < durationMs) {
+    audioAnalyser.getFloatTimeDomainData(audioData);
+    let energy = 0;
+    for (const v of audioData) energy += v * v;
+    energy = Math.sqrt(energy / audioData.length);
+    audioSamples.push({ t: performance.now() - startTime, level: energy });
+
+    ctx2d.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+    const frame = ctx2d.getImageData(0, 0, canvas.width, canvas.height).data;
+    if (prevFrame) {
+      let diff = 0;
+      for (let i = 0; i < frame.length; i += 4) diff += Math.abs(frame[i] - prevFrame[i]);
+      videoSamples.push({ t: performance.now() - startTime, diff });
+    }
+    prevFrame = frame;
+
+    await new Promise((r) => setTimeout(r, 33)); // ~30fps sampling
+  }
+  audioAnalyser.disconnect();
+
+  if (audioSamples.length < 2 || videoSamples.length < 2) {
+    resultEl.textContent = "Calibration failed — not enough samples captured, try again.";
+    return;
+  }
+
+  let bestAudioIdx = 0, bestAudioJump = -Infinity;
+  for (let i = 1; i < audioSamples.length; i++) {
+    const jump = audioSamples[i].level - audioSamples[i - 1].level;
+    if (jump > bestAudioJump) { bestAudioJump = jump; bestAudioIdx = i; }
+  }
+  const audioSpikeT = audioSamples[bestAudioIdx].t;
+
+  let bestVideoIdx = 0, bestVideoDiff = -Infinity;
+  for (let i = 0; i < videoSamples.length; i++) {
+    if (videoSamples[i].diff > bestVideoDiff) { bestVideoDiff = videoSamples[i].diff; bestVideoIdx = i; }
+  }
+  const videoSpikeT = videoSamples[bestVideoIdx].t;
+
+  const offsetMs = Math.round(videoSpikeT - audioSpikeT);
+  document.getElementById("rec-av-offset").value = offsetMs;
+  document.getElementById("rec-av-offset").dispatchEvent(new Event("change"));
+  resultEl.textContent = `Detected offset: ${offsetMs}ms (video spike at ${videoSpikeT.toFixed(0)}ms, ` +
+    `audio spike at ${audioSpikeT.toFixed(0)}ms). Applied to the field above — still adjustable by hand.`;
+}
+
 function wireRecorderControls() {
   document.getElementById("rec-camera-enable-btn").addEventListener("click", () => {
     const deviceId = document.getElementById("rec-camera-select").value;
@@ -294,6 +370,7 @@ function wireRecorderControls() {
     Recorder.avOffsetMs = parseFloat(e.target.value) || 0;
     localStorage.setItem("gs_av_offset_ms", String(Recorder.avOffsetMs));
   });
+  document.getElementById("rec-auto-calibrate-btn").addEventListener("click", vdAutoCalibrate);
   loadAvOffset();
   recRefreshCameraDevices();
 }
