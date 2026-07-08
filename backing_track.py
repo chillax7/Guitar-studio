@@ -705,33 +705,49 @@ def cmd_mix(args: argparse.Namespace) -> None:
                 mix = np.pad(mix, ((0, len(audio) - len(mix)), (0, 0)))
             mix += audio
 
-    mix = normalize_loudness(mix, samplerate, args.target_lufs)
+    mix, norm_info = normalize_loudness(mix, samplerate, args.target_lufs)
+    if norm_info["measured_lufs"] is None:
+        print("Mix is effectively silent — skipping loudness normalization.")
+    else:
+        print(f"Measured loudness {norm_info['measured_lufs']:.1f} LUFS — applying "
+              f"{norm_info['applied_gain_db']:+.1f} dB to reach target {args.target_lufs:.1f} LUFS.")
+    if norm_info["peak_clamped"]:
+        print("Peak level exceeded 0 dBFS — normalizing to avoid clipping.")
 
     out_path = resolve_output_path(args.output, input_path.stem)
     write_audio(mix, samplerate, out_path)
     print(f"Backing track written to: {out_path}")
 
 
-def normalize_loudness(mix: np.ndarray, samplerate: int, target_lufs: float) -> np.ndarray:
+def normalize_loudness(mix: np.ndarray, samplerate: int, target_lufs: float) -> tuple:
     """Normalize to a target integrated loudness (LUFS) so backing tracks
     with different stems muted/gained still feel consistently loud, then
     apply a hard peak-safety clamp since loudness normalization can still
-    push transient peaks over 0 dBFS."""
+    push transient peaks over 0 dBFS.
+
+    Returns (normalized_mix, info) rather than printing directly, so both
+    the CLI and the HTTP API's JSON response derive their user-facing
+    numbers from one place instead of each re-deriving them from the audio
+    after the fact."""
     meter = pyln.Meter(samplerate)
     loudness = meter.integrated_loudness(mix)
+    info = {
+        "measured_lufs": float(loudness) if np.isfinite(loudness) else None,
+        "applied_gain_db": 0.0,
+        "peak_clamped": False,
+    }
+
     if np.isfinite(loudness):
         gain_db = target_lufs - loudness
-        print(f"Measured loudness {loudness:.1f} LUFS — applying {gain_db:+.1f} dB "
-              f"to reach target {target_lufs:.1f} LUFS.")
+        info["applied_gain_db"] = gain_db
         mix = mix * (10 ** (gain_db / 20))
-    else:
-        print("Mix is effectively silent — skipping loudness normalization.")
 
     peak = np.max(np.abs(mix)) if mix.size else 0.0
     if peak > 1.0:
-        print(f"Peak level {peak:.2f} exceeds 0 dBFS — normalizing to avoid clipping.")
         mix = mix / peak * 0.98
-    return mix
+        info["peak_clamped"] = True
+
+    return mix, info
 
 
 def write_audio(audio: np.ndarray, samplerate: int, out_path: Path) -> None:
