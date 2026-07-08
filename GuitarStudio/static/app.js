@@ -464,6 +464,7 @@ async function selectTrack(name) {
   setViewMode(State.ui.viewMode, /*save=*/false);
   document.getElementById("loop-toggle-btn").classList.toggle("active", State.ui.loopEnabled);
   updateModelBadge();
+  if (typeof refreshTakesList === "function") refreshTakesList(); // recorder.js — takes are per-track
 
   await refreshStemsForCurrentModelAndTrack();
 }

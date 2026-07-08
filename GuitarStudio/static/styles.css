@@ -461,3 +461,17 @@ button.primary:hover { filter: brightness(1.1); }
   transition: left 80ms ease-out;
 }
 #pa-tuner-needle.in-tune { background: #4ade80; }
+
+/* ---------- Takes browser (VD-02/VD-03) ---------- */
+
+.take-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 0; border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.take-row .take-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.take-row button { padding: 3px 7px; font-size: 11px; }
+.take-star-btn.starred { color: #facc15; border-color: #facc15; }
+#takes-player {
+  width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 4px; margin: 8px 0;
+}

@@ -384,14 +384,118 @@ def svc_recording_save(track: str, ext: str, data: bytes) -> dict:
     return {"path": str(path), "filename": filename, "take": take}
 
 
+STARRED_FILE = ".starred.json"
+
+
+def _read_starred(rec_dir: Path) -> set:
+    meta = rec_dir / STARRED_FILE
+    if not meta.exists():
+        return set()
+    try:
+        return set(json.loads(meta.read_text()).get("starred", []))
+    except (json.JSONDecodeError, OSError):
+        return set()
+
+
+def _write_starred(rec_dir: Path, starred: set) -> None:
+    (rec_dir / STARRED_FILE).write_text(json.dumps({"starred": sorted(starred)}))
+
+
 def svc_recordings_list(track: str) -> dict:
+    """VD-02: every take for a track, inline-playable and starrable — ends
+    the round-trip to Finder/QuickTime for every review."""
     rec_dir = recordings_dir_for(track)
     takes = []
     if rec_dir.exists():
+        starred = _read_starred(rec_dir)
         for f in sorted(rec_dir.iterdir()):
             if f.is_file() and not f.name.startswith("."):
-                takes.append({"filename": f.name, "path": str(f), "size": f.stat().st_size})
+                takes.append({
+                    "filename": f.name, "path": str(f), "size": f.stat().st_size,
+                    "starred": f.name in starred,
+                })
     return {"takes": takes}
+
+
+def svc_recording_star(path: str, starred: bool) -> dict:
+    target = Path(path).resolve()
+    try:
+        target.relative_to(engine.OUTPUT_DIR.resolve())
+    except ValueError:
+        raise ApiError(400, "path must be inside output/")
+    if not target.exists():
+        raise ApiError(404, "Recording not found")
+    rec_dir = target.parent
+    current = _read_starred(rec_dir)
+    if starred:
+        current.add(target.name)
+    else:
+        current.discard(target.name)
+    _write_starred(rec_dir, current)
+    return {"ok": True, "starred": starred}
+
+
+def svc_recording_rename(path: str, new_name: str) -> dict:
+    target = Path(path).resolve()
+    try:
+        target.relative_to(engine.OUTPUT_DIR.resolve())
+    except ValueError:
+        raise ApiError(400, "path must be inside output/")
+    if not target.exists():
+        raise ApiError(404, "Recording not found")
+    if not new_name:
+        raise ApiError(400, "new_name is required")
+
+    stem = safe_name(new_name)
+    new_path = target.parent / f"{stem}{target.suffix}"
+    if new_path.exists() and new_path != target:
+        raise ApiError(409, f"'{new_path.name}' already exists")
+
+    rec_dir = target.parent
+    starred = _read_starred(rec_dir)
+    was_starred = target.name in starred
+    target.rename(new_path)
+    if was_starred:
+        starred.discard(target.name)
+        starred.add(new_path.name)
+        _write_starred(rec_dir, starred)
+
+    return {"ok": True, "path": str(new_path), "filename": new_path.name}
+
+
+def svc_recording_trim(path: str, start_sec: float, end_sec: float) -> dict:
+    """VD-03: lossless top/tail trim (ffmpeg -ss/-to, stream copy, no
+    re-encode) into a NEW file — the original take is never modified in
+    place, matching the acceptance criterion exactly."""
+    target = Path(path).resolve()
+    try:
+        target.relative_to(engine.OUTPUT_DIR.resolve())
+    except ValueError:
+        raise ApiError(400, "path must be inside output/")
+    if not target.exists():
+        raise ApiError(404, "Recording not found")
+    if end_sec <= start_sec:
+        raise ApiError(400, "end_sec must be after start_sec")
+
+    ffmpeg = engine.find_ffmpeg()
+    if not ffmpeg:
+        raise ApiError(500, "ffmpeg not installed — can't trim")
+
+    base = target.stem
+    suffix = 1
+    out_path = target.parent / f"{base} (trimmed){target.suffix}"
+    while out_path.exists():
+        suffix += 1
+        out_path = target.parent / f"{base} (trimmed {suffix}){target.suffix}"
+
+    cmd = [ffmpeg, "-y", "-ss", f"{start_sec:.3f}", "-to", f"{end_sec:.3f}",
+           "-i", str(target), "-c", "copy", str(out_path)]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        out_path.unlink(missing_ok=True)
+        raise ApiError(500, f"ffmpeg trim failed: {result.stderr[-500:]}")
+
+    return {"ok": True, "path": str(out_path), "filename": out_path.name}
 
 
 def svc_recording_finalize(path: str, av_offset_ms: float) -> dict:
@@ -630,6 +734,23 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/recording/discard":
                 body = self._read_json_body()
                 result = svc_recording_discard(body.get("path", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/recording/star":
+                body = self._read_json_body()
+                result = svc_recording_star(body.get("path", ""), bool(body.get("starred", True)))
+                return self._send_json(200, result)
+
+            if path == "/api/recording/rename":
+                body = self._read_json_body()
+                result = svc_recording_rename(body.get("path", ""), body.get("new_name", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/recording/trim":
+                body = self._read_json_body()
+                result = svc_recording_trim(body.get("path", ""),
+                                             float(body.get("start_sec", 0)),
+                                             float(body.get("end_sec", 0)))
                 return self._send_json(200, result)
 
             if path == "/api/reveal":

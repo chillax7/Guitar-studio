@@ -227,6 +227,7 @@ async function finalizeAndUpload() {
     });
     const finalizeJson = await finalizeResp.json();
     showTakeResult(saveJson, finalizeJson);
+    refreshTakesList();
   } catch (e) {
     // Rescue: the blob is still in memory even though the upload failed —
     // offer a direct browser download instead of losing the take.
@@ -251,6 +252,7 @@ function showTakeResult(saveJson, finalizeJson) {
   document.getElementById("rec-discard-btn").addEventListener("click", async () => {
     await Api.post("/api/recording/discard", { path: saveJson.path }).catch(() => {});
     el.textContent = "Take discarded.";
+    refreshTakesList();
   });
 }
 
@@ -390,6 +392,113 @@ function updateFramingOverlayVisibility() {
   canvas.style.display = document.getElementById("rec-framing-toggle").checked ? "block" : "none";
 }
 
+// ---------------------------------------------------------------------------
+// Takes browser (VD-02) + in-app trim (VD-03)
+// ---------------------------------------------------------------------------
+
+let currentTake = null; // {filename, path, size, starred}
+
+async function refreshTakesList() {
+  const track = (typeof State !== "undefined" && State.track) || "";
+  let takes = [];
+  try {
+    const r = await Api.get(`/api/recordings?track=${encodeURIComponent(track)}`);
+    takes = r.takes;
+  } catch (e) { /* best-effort */ }
+
+  const listEl = document.getElementById("takes-list");
+  listEl.innerHTML = "";
+  if (!takes.length) {
+    listEl.innerHTML = '<p class="hint">No takes for this track yet.</p>';
+    return;
+  }
+  for (const take of takes) {
+    const row = document.createElement("div");
+    row.className = "take-row";
+    row.innerHTML = `
+      <button class="take-star-btn ${take.starred ? "starred" : ""}">${take.starred ? "★" : "☆"}</button>
+      <span class="take-name">${escapeHtml(take.filename)}</span>
+      <button class="take-play-btn">Play</button>
+      <button class="take-rename-btn">Rename</button>
+      <button class="take-reveal-btn">Reveal</button>
+      <button class="take-delete-btn">Delete</button>`;
+    listEl.appendChild(row);
+
+    row.querySelector(".take-star-btn").addEventListener("click", async () => {
+      await Api.post("/api/recording/star", { path: take.path, starred: !take.starred }).catch(() => {});
+      refreshTakesList();
+    });
+    row.querySelector(".take-play-btn").addEventListener("click", () => loadTakeIntoPlayer(take));
+    row.querySelector(".take-reveal-btn").addEventListener("click", () => {
+      Api.post("/api/reveal", { path: take.path }).catch(() => {});
+    });
+    row.querySelector(".take-rename-btn").addEventListener("click", async () => {
+      const base = take.filename.replace(/\.[^.]+$/, "");
+      const newName = prompt("Rename take to:", base);
+      if (!newName || newName === base) return;
+      try {
+        await Api.post("/api/recording/rename", { path: take.path, new_name: newName });
+        refreshTakesList();
+      } catch (e) { alert("Rename failed: " + e.message); }
+    });
+    row.querySelector(".take-delete-btn").addEventListener("click", async () => {
+      if (!confirm(`Delete "${take.filename}"? This can't be undone.`)) return;
+      await Api.post("/api/recording/discard", { path: take.path }).catch(() => {});
+      if (currentTake && currentTake.path === take.path) {
+        document.getElementById("takes-player-wrap").style.display = "none";
+        currentTake = null;
+      }
+      refreshTakesList();
+    });
+  }
+}
+
+function loadTakeIntoPlayer(take) {
+  currentTake = take;
+  const player = document.getElementById("takes-player");
+  player.src = `/api/output?path=${encodeURIComponent(take.path)}`;
+  document.getElementById("takes-player-wrap").style.display = "block";
+  document.getElementById("takes-trim-result").textContent = "";
+
+  player.onloadedmetadata = () => {
+    const dur = player.duration || 0;
+    const startEl = document.getElementById("takes-trim-start");
+    const endEl = document.getElementById("takes-trim-end");
+    startEl.max = dur; startEl.value = 0;
+    endEl.max = dur; endEl.value = dur;
+    updateTrimLabels();
+  };
+}
+
+function fmtTrimTime(s) {
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+function updateTrimLabels() {
+  document.getElementById("takes-trim-start-val").textContent = fmtTrimTime(parseFloat(document.getElementById("takes-trim-start").value));
+  document.getElementById("takes-trim-end-val").textContent = fmtTrimTime(parseFloat(document.getElementById("takes-trim-end").value));
+}
+
+async function trimCurrentTake() {
+  if (!currentTake) return;
+  const startSec = parseFloat(document.getElementById("takes-trim-start").value);
+  const endSec = parseFloat(document.getElementById("takes-trim-end").value);
+  const resultEl = document.getElementById("takes-trim-result");
+  if (endSec <= startSec) {
+    resultEl.textContent = "End must be after start.";
+    return;
+  }
+  resultEl.textContent = "Trimming (lossless copy)…";
+  try {
+    const r = await Api.post("/api/recording/trim", { path: currentTake.path, start_sec: startSec, end_sec: endSec });
+    resultEl.textContent = `Trimmed take saved as ${r.filename} — original left untouched.`;
+    refreshTakesList();
+  } catch (e) {
+    resultEl.textContent = "Trim failed: " + e.message;
+  }
+}
+
 function wireRecorderControls() {
   document.getElementById("rec-camera-enable-btn").addEventListener("click", () => {
     const deviceId = document.getElementById("rec-camera-select").value;
@@ -408,10 +517,14 @@ function wireRecorderControls() {
   });
   document.getElementById("rec-auto-calibrate-btn").addEventListener("click", vdAutoCalibrate);
   document.getElementById("rec-framing-toggle").addEventListener("change", updateFramingOverlayVisibility);
+  document.getElementById("takes-trim-start").addEventListener("input", updateTrimLabels);
+  document.getElementById("takes-trim-end").addEventListener("input", updateTrimLabels);
+  document.getElementById("takes-trim-btn").addEventListener("click", trimCurrentTake);
   drawFramingOverlay();
   updateFramingOverlayVisibility();
   loadAvOffset();
   recRefreshCameraDevices();
+  refreshTakesList();
 }
 
 wireRecorderControls();
