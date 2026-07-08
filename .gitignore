@@ -17,6 +17,11 @@ GuitarStudio/models/*
 !GuitarStudio/models/nam
 !GuitarStudio/models/nam/deluxe.nam
 !GuitarStudio/models/nam/ac10.nam
+# Same deal for one clearly-synthetic test/starter cab IR (not a real
+# cabinet capture — see its filename) so the Cab IR picker has something
+# to load out of the box too.
+!GuitarStudio/models/ir
+!GuitarStudio/models/ir/synthetic-test-cab.wav
 
 # Build artifacts
 *.app/
