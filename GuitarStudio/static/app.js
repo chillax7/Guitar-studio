@@ -114,6 +114,20 @@ const Audio = {
   playStartCtxTime: 0,
   playStartOffset: 0,
   duration: 0,
+  // Dual playback mode: 'direct' (AudioBufferSourceNode, exact multi-stem
+  // sample sync — the default, zero-risk path) vs 'processed' (routed
+  // through the stretch-processor.js phase-vocoder worklet) when Speed or
+  // Tune is active. Both node types stay connected to each stem's GainNode
+  // at all times; only one is ever actually producing sound (the inactive
+  // one is either not started, or reports playing=false to the worklet —
+  // see stretch-processor.js), so switching modes is just a start/stop
+  // toggle, never a graph rewire.
+  mode: "direct",
+  speed: 1.0,
+  pitchRatio: 1.0,
+  stretchNodes: {},
+  workletLoaded: false,
+  processedPosition: 0,
 };
 
 function ensureCtx() {
@@ -127,9 +141,47 @@ function ensureCtx() {
   return Audio.ctx;
 }
 
+async function ensureWorkletLoaded() {
+  ensureCtx();
+  if (!Audio.workletLoaded) {
+    await Audio.ctx.audioWorklet.addModule("stretch-processor.js");
+    Audio.workletLoaded = true;
+  }
+}
+
+async function ensureStretchNodes() {
+  await ensureWorkletLoaded();
+  for (const name in Audio.buffers) {
+    if (Audio.stretchNodes[name]) continue;
+    const node = new AudioWorkletNode(Audio.ctx, "stretch-processor", {
+      numberOfInputs: 0, numberOfOutputs: 1,
+      outputChannelCount: [2], channelCount: 2, channelCountMode: "explicit",
+    });
+    node.connect(Audio.gains[name]);
+    node.port.onmessage = (e) => {
+      if (e.data.type === "position") Audio.processedPosition = e.data.positionSec;
+    };
+    const buf = Audio.buffers[name];
+    const channels = buf.numberOfChannels >= 2
+      ? [buf.getChannelData(0).slice(), buf.getChannelData(1).slice()]
+      : [buf.getChannelData(0).slice(), buf.getChannelData(0).slice()];
+    node.port.postMessage({ type: "load", channels }, channels.map((c) => c.buffer));
+    node.port.postMessage({ type: "params", speed: Audio.speed, pitchRatio: Audio.pitchRatio });
+    Audio.stretchNodes[name] = node;
+  }
+}
+
+function teardownStretchNodes() {
+  for (const name in Audio.stretchNodes) {
+    try { Audio.stretchNodes[name].disconnect(); } catch (e) { /* already gone */ }
+  }
+  Audio.stretchNodes = {};
+}
+
 async function loadStemBuffers(stems) {
   ensureCtx();
   stopPlayback();
+  teardownStretchNodes();
   const entries = await Promise.all(stems.map(async (stem) => {
     const url = `/api/stem?source_path=${encodeURIComponent(State.track)}` +
       `&model=${encodeURIComponent(State.model)}&stem=${encodeURIComponent(stem.name)}`;
@@ -149,9 +201,11 @@ async function loadStemBuffers(stems) {
     Audio.gains[name] = g;
   }
   applyMixToGains();
+  if (Audio.mode === "processed") await ensureStretchNodes();
 }
 
 function currentPosition() {
+  if (Audio.mode === "processed") return Audio.processedPosition || 0;
   if (!Audio.playing) return Audio.playStartOffset;
   return Audio.playStartOffset + (Audio.ctx.currentTime - Audio.playStartCtxTime);
 }
@@ -164,40 +218,97 @@ function stopSources() {
 }
 
 function startPlaybackAt(offsetSec) {
-  stopSources();
-  const startAt = Audio.ctx.currentTime + 0.05;
-  for (const name in Audio.buffers) {
-    const src = Audio.ctx.createBufferSource();
-    src.buffer = Audio.buffers[name];
-    src.connect(Audio.gains[name]);
-    src.start(startAt, Math.max(0, Math.min(offsetSec, src.buffer.duration)));
-    Audio.sources[name] = src;
+  if (Audio.mode === "processed") {
+    Audio.processedPosition = offsetSec;
+    for (const name in Audio.stretchNodes) {
+      Audio.stretchNodes[name].port.postMessage({ type: "transport", action: "seek", positionSec: offsetSec });
+      Audio.stretchNodes[name].port.postMessage({ type: "transport", action: "play" });
+    }
+  } else {
+    stopSources();
+    const startAt = Audio.ctx.currentTime + 0.05;
+    for (const name in Audio.buffers) {
+      const src = Audio.ctx.createBufferSource();
+      src.buffer = Audio.buffers[name];
+      src.connect(Audio.gains[name]);
+      src.start(startAt, Math.max(0, Math.min(offsetSec, src.buffer.duration)));
+      Audio.sources[name] = src;
+    }
+    Audio.playStartCtxTime = startAt;
+    Audio.playStartOffset = offsetSec;
   }
-  Audio.playStartCtxTime = startAt;
-  Audio.playStartOffset = offsetSec;
   Audio.playing = true;
 }
 
 function pausePlayback() {
   if (!Audio.playing) return;
-  const pos = currentPosition();
-  stopSources();
+  if (Audio.mode === "processed") {
+    for (const name in Audio.stretchNodes) {
+      Audio.stretchNodes[name].port.postMessage({ type: "transport", action: "pause" });
+    }
+  } else {
+    const pos = currentPosition();
+    stopSources();
+    Audio.playStartOffset = pos;
+  }
   Audio.playing = false;
-  Audio.playStartOffset = pos;
 }
 
 function stopPlayback() {
-  stopSources();
+  if (Audio.mode === "processed") {
+    for (const name in Audio.stretchNodes) {
+      Audio.stretchNodes[name].port.postMessage({ type: "transport", action: "pause" });
+      Audio.stretchNodes[name].port.postMessage({ type: "transport", action: "seek", positionSec: 0 });
+    }
+    Audio.processedPosition = 0;
+  } else {
+    stopSources();
+    Audio.playStartOffset = 0;
+  }
   Audio.playing = false;
-  Audio.playStartOffset = 0;
 }
 
 function seekTo(sec) {
   const wasPlaying = Audio.playing;
-  stopSources();
+  const clamped = Math.max(0, Math.min(sec, Audio.duration || 0));
+  if (Audio.mode === "processed") {
+    Audio.processedPosition = clamped;
+    for (const name in Audio.stretchNodes) {
+      Audio.stretchNodes[name].port.postMessage({ type: "transport", action: "seek", positionSec: clamped });
+    }
+  } else {
+    stopSources();
+    Audio.playing = false;
+    Audio.playStartOffset = clamped;
+    if (wasPlaying) startPlaybackAt(clamped);
+  }
+}
+
+// Switches the active playback mode, preserving position/play-state across
+// the switch. Called whenever Speed/Tune move away from (or back to)
+// unity — see wireSpeedTune().
+async function setSpeedTune(speed, pitchRatio) {
+  Audio.speed = speed;
+  Audio.pitchRatio = pitchRatio;
+  for (const name in Audio.stretchNodes) {
+    Audio.stretchNodes[name].port.postMessage({ type: "params", speed, pitchRatio });
+  }
+  const wantProcessed = speed !== 1.0 || pitchRatio !== 1.0;
+  const newMode = wantProcessed ? "processed" : "direct";
+  if (newMode === Audio.mode) return;
+
+  const pos = currentPosition();
+  const wasPlaying = Audio.playing;
+  if (Audio.mode === "direct") stopSources();
+  else for (const name in Audio.stretchNodes) {
+    Audio.stretchNodes[name].port.postMessage({ type: "transport", action: "pause" });
+  }
+  Audio.mode = newMode;
   Audio.playing = false;
-  Audio.playStartOffset = Math.max(0, Math.min(sec, Audio.duration || 0));
-  if (wasPlaying) startPlaybackAt(Audio.playStartOffset);
+  Audio.playStartOffset = pos;
+  Audio.processedPosition = pos;
+  if (newMode === "processed") await ensureStretchNodes();
+  if (wasPlaying) startPlaybackAt(pos);
 }
 
 // Static per-stem gain from mute/solo/fader state (everything except live
@@ -332,6 +443,15 @@ async function selectTrack(name) {
   renderTrackList();
   stopPlayback();
   showState("empty-state");
+
+  // Speed/Tune aren't part of the saved project (deliberately — carrying
+  // yesterday's half-speed setting silently into a new song would be a
+  // trap, not a feature); reset to unity on every track switch.
+  document.getElementById("speed-slider").value = "1";
+  document.getElementById("tune-slider").value = "0";
+  document.getElementById("speed-display").textContent = "1.00×";
+  document.getElementById("tune-display").textContent = "0¢";
+  await setSpeedTune(1.0, 1.0);
 
   let project = null;
   try {
@@ -659,9 +779,31 @@ function setViewMode(mode, save = true) {
 // Inspector: track analysis, guitar split, export
 // ---------------------------------------------------------------------------
 
+function updateBpmDisplay() {
+  const a = State.analysis || {};
+  if (!a.bpm) { document.getElementById("bpm-display").textContent = "—"; return; }
+  const speed = parseFloat(document.getElementById("speed-slider").value || "1");
+  document.getElementById("bpm-display").textContent = (a.bpm * speed).toFixed(1);
+}
+
+function wireSpeedTune() {
+  const speedEl = document.getElementById("speed-slider");
+  const tuneEl = document.getElementById("tune-slider");
+  function apply() {
+    const speed = parseFloat(speedEl.value);
+    const cents = parseFloat(tuneEl.value);
+    document.getElementById("speed-display").textContent = speed.toFixed(2) + "×";
+    document.getElementById("tune-display").textContent = (cents >= 0 ? "+" : "") + cents + "¢";
+    updateBpmDisplay();
+    setSpeedTune(speed, Math.pow(2, cents / 1200));
+  }
+  speedEl.addEventListener("input", apply);
+  tuneEl.addEventListener("input", apply);
+}
+
 function renderInspector() {
   const a = State.analysis || {};
-  document.getElementById("bpm-display").textContent = a.bpm ? a.bpm.toFixed(1) : "—";
+  updateBpmDisplay();
 
   let pitchHint = "";
   if (a.pitch_offset_cents != null) {
@@ -904,6 +1046,7 @@ async function init() {
   wireSeparateCta();
   wireStaleBanner();
   wireImport();
+  wireSpeedTune();
 
   const modelsResp = await Api.get("/api/models");
   State.models = modelsResp.models;
