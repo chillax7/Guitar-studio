@@ -1,0 +1,9 @@
+demucs==4.0.1
+torch==2.12.1
+torchaudio==2.11.0
+torchcodec==0.14.0
+soundfile==0.14.0
+numpy==2.4.6
+pyloudnorm==0.2.0
+scipy==1.18.0
+audio-separator[cpu]==0.44.2

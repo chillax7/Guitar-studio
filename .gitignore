@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
+
+# User audio data — large binaries, not source. Back these up separately
+# (e.g. an external drive or cloud storage sized for media), not in git.
+input/
+separated/
+output/
+GuitarStudio/models/
+
+# Build artifacts
+*.app/
