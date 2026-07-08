@@ -9,7 +9,14 @@ __pycache__/
 input/
 separated/
 output/
-GuitarStudio/models/
+GuitarStudio/models/*
+# ...except a couple of small MIT-licensed starter NAM captures (from
+# TONE3000's neural-amp-modeler-wasm repo) bundled so Play Along is
+# testable out of the box. Anything else dropped into models/nam/ or
+# models/ir/ (your own captures/IRs) stays untracked.
+!GuitarStudio/models/nam
+!GuitarStudio/models/nam/deluxe.nam
+!GuitarStudio/models/nam/ac10.nam
 
 # Build artifacts
 *.app/
