@@ -241,6 +241,16 @@ def run_demucs_backend(input_path: Path, model: str, out_dir: Path) -> None:
     if result.returncode != 0:
         sys.exit("Demucs separation failed. See output above for details.")
 
+    # Demucs always writes to <out root>/<model>/<track filename stem>/*.wav —
+    # it has no notion of our content-hash cache key (XC-03), so move its
+    # output into the hashed dir the rest of the pipeline expects.
+    demucs_out_dir = SEPARATED_DIR / model / input_path.stem
+    if demucs_out_dir != out_dir:
+        out_dir.parent.mkdir(parents=True, exist_ok=True)
+        if out_dir.exists():
+            shutil.rmtree(out_dir)
+        demucs_out_dir.rename(out_dir)
+
 
 def run_audio_separator_backend(input_path: Path, model: str, out_dir: Path) -> None:
     """Run separation via the `audio-separator` package (UVR-family
