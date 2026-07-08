@@ -227,7 +227,8 @@ def svc_split_guitar(source_path: str, model: str, stem: str, method: str) -> di
 
 
 def svc_mix(source_path: str, model: str, gains: dict, mute_ranges: dict,
-            target_lufs: float, output_name: str, fmt: str) -> dict:
+            target_lufs: float, output_name: str, fmt: str,
+            normalize: bool = True, max_boost_db: float = engine.DEFAULT_MAX_BOOST_DB) -> dict:
     input_path = resolve_source_path(source_path)
     out_dir = engine.track_stem_dir(input_path, model)
     if not engine.has_cached_stems(out_dir):
@@ -273,13 +274,44 @@ def svc_mix(source_path: str, model: str, gains: dict, mute_ranges: dict,
                 mix = engine.np.pad(mix, ((0, len(audio) - len(mix)), (0, 0)))
             mix += audio
 
-    mix, norm_info = engine.normalize_loudness(mix, samplerate, target_lufs)
+    mix, norm_info = engine.normalize_loudness(mix, samplerate, target_lufs,
+                                                normalize=normalize, max_boost_db=max_boost_db)
 
     output_name = output_name or f"backing_track.{fmt}"
     out_path = engine.resolve_output_path(output_name, input_path.stem)
     engine.write_audio(mix, samplerate, out_path)
 
     return {"output_path": str(out_path), **norm_info}
+
+
+def resolve_stem_file(source_path: str, model: str, stem: str) -> Path:
+    """For streaming stem audio to the browser's Web Audio graph — the
+    playback path M2 needs that M1's route set didn't cover yet."""
+    input_path = resolve_source_path(source_path)
+    out_dir = engine.track_stem_dir(input_path, model)
+    if not engine.has_cached_stems(out_dir):
+        raise ApiError(404, f"No stems found for {input_path.name} with model '{model}'.")
+    stem_path = out_dir / f"{safe_name(stem)}.wav"
+    if not stem_path.exists():
+        raise ApiError(404, f"No '{stem}' stem found in this track/model.")
+    return stem_path
+
+
+def resolve_output_file(rel_path: str) -> Path:
+    """For streaming an already-exported mix back to the browser (playback
+    or download) — must resolve inside output/, same containment pattern as
+    every other user-supplied-path route."""
+    if not rel_path:
+        raise ApiError(400, "path is required")
+    candidate = (PROJECT_ROOT / rel_path).resolve()
+    output_root = (PROJECT_ROOT / "output").resolve()
+    try:
+        candidate.relative_to(output_root)
+    except ValueError:
+        raise ApiError(400, "path must be inside output/")
+    if not candidate.exists():
+        raise ApiError(404, "File not found")
+    return candidate
 
 
 def svc_reveal(path: str) -> dict:
@@ -347,6 +379,15 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         return parsed.path, {k: v[0] for k, v in parse_qs(parsed.query).items()}
 
+    def _send_file(self, file_path: Path) -> None:
+        content_type, _ = mimetypes.guess_type(str(file_path))
+        data = file_path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type or "application/octet-stream")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _serve_static(self, path: str) -> None:
         rel = path.lstrip("/") or "index.html"
         file_path = (STATIC_DIR / rel).resolve()
@@ -360,13 +401,7 @@ class Handler(BaseHTTPRequestHandler):
             if not file_path.exists():
                 self._send_json(404, {"error": "Not found"})
                 return
-        content_type, _ = mimetypes.guess_type(str(file_path))
-        data = file_path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", content_type or "application/octet-stream")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        self._send_file(file_path)
 
     # -- routing ----------------------------------------------------------
 
@@ -384,6 +419,14 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/project":
                 result = svc_load_project(query.get("track", ""))
                 return self._send_json(200, result)
+            if path == "/api/stem":
+                stem_path = resolve_stem_file(query.get("source_path", ""),
+                                               query.get("model", engine.DEFAULT_MODEL),
+                                               query.get("stem", ""))
+                return self._send_file(stem_path)
+            if path == "/api/output":
+                out_path = resolve_output_file(query.get("path", ""))
+                return self._send_file(out_path)
             if path.startswith("/api/"):
                 return self._send_json(404, {"error": f"Unknown route: {path}"})
             return self._serve_static(path)
@@ -429,7 +472,9 @@ class Handler(BaseHTTPRequestHandler):
                                   mute_ranges,
                                   float(body.get("target_lufs", engine.DEFAULT_TARGET_LUFS)),
                                   body.get("output_name", ""),
-                                  body.get("format", "wav"))
+                                  body.get("format", "wav"),
+                                  bool(body.get("normalize", True)),
+                                  float(body.get("max_boost_db", engine.DEFAULT_MAX_BOOST_DB)))
                 return self._send_json(200, result)
 
             if path == "/api/reveal":

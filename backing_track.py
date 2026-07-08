@@ -86,6 +86,7 @@ FINGERPRINT_FILE = ".source.json"
 ANALYSIS_FILE = "analysis.json"
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
+DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
 MUTE_RANGE_FADE_SECONDS = 0.03  # fade in/out at mute-range edges to avoid clicks
 SPECTRAL_SPLIT_NPERSEG = 4096  # STFT window for the frequency-adaptive guitar split
 DEFAULT_SPLIT_METHOD = "spectral"
@@ -705,12 +706,18 @@ def cmd_mix(args: argparse.Namespace) -> None:
                 mix = np.pad(mix, ((0, len(audio) - len(mix)), (0, 0)))
             mix += audio
 
-    mix, norm_info = normalize_loudness(mix, samplerate, args.target_lufs)
-    if norm_info["measured_lufs"] is None:
+    mix, norm_info = normalize_loudness(mix, samplerate, args.target_lufs,
+                                         normalize=args.normalize,
+                                         max_boost_db=args.max_boost_db)
+    if not args.normalize:
+        pass
+    elif norm_info["measured_lufs"] is None:
         print("Mix is effectively silent — skipping loudness normalization.")
     else:
         print(f"Measured loudness {norm_info['measured_lufs']:.1f} LUFS — applying "
               f"{norm_info['applied_gain_db']:+.1f} dB to reach target {args.target_lufs:.1f} LUFS.")
+        if norm_info["boost_capped"]:
+            print(f"  (boost capped at +{args.max_boost_db:.1f} dB — target loudness not fully reached)")
     if norm_info["peak_clamped"]:
         print("Peak level exceeded 0 dBFS — normalizing to avoid clipping.")
 
@@ -719,11 +726,19 @@ def cmd_mix(args: argparse.Namespace) -> None:
     print(f"Backing track written to: {out_path}")
 
 
-def normalize_loudness(mix: np.ndarray, samplerate: int, target_lufs: float) -> tuple:
+def normalize_loudness(mix: np.ndarray, samplerate: int, target_lufs: float,
+                       normalize: bool = True, max_boost_db: float = None) -> tuple:
     """Normalize to a target integrated loudness (LUFS) so backing tracks
     with different stems muted/gained still feel consistently loud, then
     apply a hard peak-safety clamp since loudness normalization can still
     push transient peaks over 0 dBFS.
+
+    'normalize=False' skips the LUFS step entirely (still peak-clamps) —
+    a first-class off switch, not buried, since large corrective gain on
+    quiet/solo mixes is a known way to make separation artifacts more
+    audible (see the "known open issue" this was designed around).
+    'max_boost_db' caps how much gain a quiet mix can get boosted by, for
+    the same reason; reported back via 'boost_capped' when it fires.
 
     Returns (normalized_mix, info) rather than printing directly, so both
     the CLI and the HTTP API's JSON response derive their user-facing
@@ -735,10 +750,14 @@ def normalize_loudness(mix: np.ndarray, samplerate: int, target_lufs: float) -> 
         "measured_lufs": float(loudness) if np.isfinite(loudness) else None,
         "applied_gain_db": 0.0,
         "peak_clamped": False,
+        "boost_capped": False,
     }
 
-    if np.isfinite(loudness):
+    if normalize and np.isfinite(loudness):
         gain_db = target_lufs - loudness
+        if max_boost_db is not None and gain_db > max_boost_db:
+            gain_db = max_boost_db
+            info["boost_capped"] = True
         info["applied_gain_db"] = gain_db
         mix = mix * (10 ** (gain_db / 20))
 
@@ -830,6 +849,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_mix.add_argument("--target-lufs", type=float, default=DEFAULT_TARGET_LUFS,
                         help=f"Target integrated loudness in LUFS for the export "
                              f"(default: {DEFAULT_TARGET_LUFS})")
+    p_mix.add_argument("--no-normalize", dest="normalize", action="store_false",
+                        help="Skip loudness normalization entirely (still peak-clamps). "
+                             "Large corrective gain on quiet/solo mixes can make separation "
+                             "artifacts more audible — this is a first-class off switch, not "
+                             "a hidden default.")
+    p_mix.add_argument("--max-boost-db", type=float, default=DEFAULT_MAX_BOOST_DB,
+                        help=f"Cap how much a quiet mix can be boosted to reach the target "
+                             f"loudness, for the same reason as --no-normalize (default: "
+                             f"{DEFAULT_MAX_BOOST_DB})")
     p_mix.add_argument("-o", "--output", default="backing_track.wav",
                         help="Output file path (.wav or .mp3)")
     p_mix.set_defaults(func=cmd_mix)
