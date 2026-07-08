@@ -316,3 +316,58 @@ button.primary:hover { filter: brightness(1.1); }
 #split-methods button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 #export-result { margin-top: 8px; font-size: 11px; color: var(--text-dim); }
 #export-result.error { color: var(--danger); }
+
+/* ---------- Play Along ---------- */
+
+#playalong-open-btn { margin: 0 10px 10px; width: calc(100% - 20px); }
+
+#playalong-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 240px; right: 0; bottom: 0;
+  background: var(--bg);
+  z-index: 50;
+  overflow-y: auto;
+}
+#playalong-overlay.show { display: block; }
+
+#playalong-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--bg); z-index: 1;
+}
+#playalong-header h2 { margin: 0; font-size: 16px; }
+
+#playalong-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  padding: 16px 20px;
+  max-width: 1100px;
+}
+
+.pa-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.pa-card h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); }
+.pa-card label { display: block; font-size: 11px; color: var(--text-dim); margin: 8px 0 2px; }
+.pa-card input[type=range] { width: 100%; }
+.pa-card select { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 5px 6px; }
+.pa-card .row { display: flex; align-items: center; justify-content: space-between; margin: 4px 0; }
+.pa-card .hint { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+
+.pa-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+.pa-tabs button { flex: 1; font-size: 11px; }
+.pa-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.pa-meter {
+  height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; margin: 6px 0;
+}
+.pa-meter > div {
+  height: 100%; width: 0%; background: var(--accent);
+  transition: width 60ms linear;
+}
+.pa-meter > div.clip { background: var(--danger); }

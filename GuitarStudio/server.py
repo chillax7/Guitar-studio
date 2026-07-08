@@ -37,9 +37,14 @@ import backing_track as engine  # noqa: E402 (sys.path must be set up first)
 GUITARSTUDIO_DIR = Path(__file__).resolve().parent
 STATIC_DIR = GUITARSTUDIO_DIR / "static"
 PROJECTS_DIR = GUITARSTUDIO_DIR / "projects"
+MODELS_DIR = GUITARSTUDIO_DIR / "models"
+NAM_DIR = MODELS_DIR / "nam"
+IR_DIR = MODELS_DIR / "ir"
 INPUT_DIR = PROJECT_ROOT / "input"
 
 PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+NAM_DIR.mkdir(parents=True, exist_ok=True)
+IR_DIR.mkdir(parents=True, exist_ok=True)
 INPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9 ._\-\[\]()]+")
@@ -136,6 +141,38 @@ def svc_tracks() -> dict:
         if path.is_file() and not path.name.startswith("."):
             tracks.append({"name": path.name, "size": path.stat().st_size})
     return {"tracks": tracks}
+
+
+def svc_nam_models() -> dict:
+    """Every .nam capture under models/nam/, for the Play Along amp picker.
+    A plain directory listing (GP-05's pattern) so dropping a new capture in
+    shows up after a refresh — no separate registration step."""
+    models = []
+    for path in sorted(NAM_DIR.glob("*.nam")):
+        models.append({"name": path.stem, "filename": path.name, "size": path.stat().st_size})
+    return {"models": models}
+
+
+def svc_ir_models() -> dict:
+    """Every cab IR under models/ir/, same pattern as svc_nam_models."""
+    irs = []
+    for path in sorted(IR_DIR.glob("*.wav")):
+        irs.append({"name": path.stem, "filename": path.name, "size": path.stat().st_size})
+    return {"irs": irs}
+
+
+def resolve_nam_file(filename: str) -> Path:
+    path = NAM_DIR / safe_name(filename)
+    if not path.exists():
+        raise ApiError(404, f"No NAM model named '{filename}'")
+    return path
+
+
+def resolve_ir_file(filename: str) -> Path:
+    path = IR_DIR / safe_name(filename)
+    if not path.exists():
+        raise ApiError(404, f"No IR named '{filename}'")
+    return path
 
 
 def svc_import(filename: str, data: bytes) -> dict:
@@ -427,6 +464,14 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/output":
                 out_path = resolve_output_file(query.get("path", ""))
                 return self._send_file(out_path)
+            if path == "/api/nam_models":
+                return self._send_json(200, svc_nam_models())
+            if path == "/api/nam_model_file":
+                return self._send_file(resolve_nam_file(query.get("filename", "")))
+            if path == "/api/ir_models":
+                return self._send_json(200, svc_ir_models())
+            if path == "/api/ir_model_file":
+                return self._send_file(resolve_ir_file(query.get("filename", "")))
             if path.startswith("/api/"):
                 return self._send_json(404, {"error": f"Unknown route: {path}"})
             return self._serve_static(path)
