@@ -1,10 +1,114 @@
 <!doctype html>
 <html>
-<head><meta charset="utf-8"><title>Guitar Studio</title></head>
+<head>
+<meta charset="utf-8">
+<title>Guitar Studio</title>
+<link rel="stylesheet" href="styles.css">
+</head>
 <body>
-  <!-- Placeholder — the real Mixer/Timeline/Play Along UI is M2/M3 work.
-       This just confirms the server's static file route works. -->
-  <h1>Guitar Studio server is running.</h1>
-  <p>The frontend hasn't been rebuilt yet — this page is a placeholder.</p>
+<div id="app">
+
+  <div id="sidebar">
+    <h2>Library</h2>
+    <div id="track-list"></div>
+    <div id="import-drop">Drop an audio file here<br>or click to import</div>
+    <input type="file" id="import-input" accept="audio/*" style="display:none">
+  </div>
+
+  <div id="canvas">
+    <div id="toolbar">
+      <div class="view-toggle">
+        <button id="view-mixer" class="active">Mixer</button>
+        <button id="view-timeline">Timeline</button>
+      </div>
+      <div class="spacer"></div>
+      <div id="model-badge">
+        <span id="model-badge-label">—</span>
+        <div id="model-menu"></div>
+      </div>
+      <button id="split-open-btn" style="display:none">⑂ Split guitar</button>
+      <button id="export-open-btn" class="primary" style="display:none">Export</button>
+    </div>
+
+    <div id="stale-banner">
+      <span>⚠️ The source file has changed since these stems were separated. Existing stems may not match the current file.</span>
+      <button id="reseparate-btn">Re-separate</button>
+      <button id="dismiss-stale-btn">Dismiss</button>
+    </div>
+
+    <div id="transport">
+      <button id="play-btn">▶</button>
+      <button id="stop-btn">■</button>
+      <span id="time-display">0:00 / 0:00</span>
+      <button id="loop-toggle-btn">Loop</button>
+      <span class="transport-label">BPM</span>
+      <span id="bpm-display">—</span>
+    </div>
+
+    <div id="empty-state" class="show">
+      <p>Select a track from the Library, or drop an audio file to import one.</p>
+    </div>
+
+    <div id="separate-cta">
+      <p>This track hasn't been separated into stems yet.</p>
+      <select id="separate-model-select"></select>
+      <p class="hint" id="separate-model-hint"></p>
+      <button id="separate-btn" class="primary">Separate</button>
+    </div>
+
+    <div id="separating-state">
+      <div class="spinner"></div>
+      <p>Separating — this can take a minute or two depending on song length.</p>
+    </div>
+
+    <div id="workspace">
+      <div id="ruler"><div id="loop-region"><div class="loop-handle" id="loop-handle-a" style="left:0"></div><div class="loop-handle" id="loop-handle-b" style="left:0"></div></div></div>
+      <div id="lanes"></div>
+    </div>
+  </div>
+
+  <div id="inspector">
+    <section id="analysis-panel">
+      <h3>Track</h3>
+      <p class="hint" id="pitch-hint"></p>
+    </section>
+
+    <section id="split-panel" style="display:none">
+      <h3>Guitar Split</h3>
+      <p class="hint">Neither candidate is guaranteed to be the lead or rhythm part — this is a panning-based guess and varies by song. Solo each and listen to decide.</p>
+      <div id="split-methods">
+        <button data-method="spectral" class="active">Spectral</button>
+        <button data-method="midside">Mid-side</button>
+      </div>
+      <p class="hint" id="split-correlation"></p>
+      <button id="run-split-btn" class="primary">Run split</button>
+    </section>
+
+    <section id="export-panel" style="display:none">
+      <h3>Export</h3>
+      <p class="hint">Export bounces exactly what you hear (solo excepted).</p>
+      <label>Format</label>
+      <select id="export-format"><option value="wav">WAV</option><option value="mp3">MP3</option></select>
+      <label>Output name</label>
+      <input type="text" id="export-name" placeholder="backing_track.wav">
+      <label>Target LUFS</label>
+      <input type="number" id="export-lufs" value="-14" step="0.5">
+      <div class="row">
+        <label style="margin:0">Normalize loudness</label>
+        <input type="checkbox" id="export-normalize" checked>
+      </div>
+      <div id="boost-cap-row">
+        <label>Max boost cap (dB)</label>
+        <input type="number" id="export-boost-cap" value="10" step="1">
+        <p class="hint">Limits how much quiet mixes get boosted, reducing amplified separation artifacts.</p>
+      </div>
+      <p class="hint">Recombined AI-separated stems have a mild "processed" character even with nothing muted — this is a limit of the separation engine, not your mix.</p>
+      <button id="run-export-btn" class="primary">Export</button>
+      <div id="export-result"></div>
+    </section>
+  </div>
+
+</div>
+<script src="app.js"></script>
 </body>
 </html>
