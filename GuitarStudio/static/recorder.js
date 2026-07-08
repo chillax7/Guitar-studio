@@ -139,38 +139,48 @@ async function startRecording() {
     return;
   }
 
-  const audioTrack = Recorder.recDest.stream.getAudioTracks()[0];
-  const videoTrack = Recorder.camStream.getVideoTracks()[0];
-  const combined = new MediaStream([videoTrack, audioTrack]);
+  // VD-01: reuses BT-06's exact click generator (app.js) — recording and
+  // playback both begin inside the same beginTake() callback, i.e.
+  // together on beat 1, no beat lost or duplicated at the seam. The clicks
+  // themselves are never captured: scheduleCountIn() routes them straight
+  // to ctx.destination, never into the record bus.
+  const doPlayback = document.getElementById("rec-start-with-playback").checked && State.track && Audio.duration;
+  const doCountIn = document.getElementById("rec-count-in").checked;
 
-  Recorder.chunks = [];
-  Recorder.mimeType = mimeType;
-  const recorder = new MediaRecorder(combined, {
-    mimeType, videoBitsPerSecond: 5_000_000, audioBitsPerSecond: 192_000,
-  });
-  recorder.ondataavailable = (e) => { if (e.data && e.data.size) Recorder.chunks.push(e.data); };
-  recorder.onerror = (e) => {
-    console.error("MediaRecorder error", e.error);
-    document.getElementById("rec-result").textContent = "Recorder error — take ended early, salvaging what was captured.";
-    stopRecording();
-  };
-  recorder.onstop = () => finalizeAndUpload();
+  function beginTake() {
+    const audioTrack = Recorder.recDest.stream.getAudioTracks()[0];
+    const videoTrack = Recorder.camStream.getVideoTracks()[0];
+    const combined = new MediaStream([videoTrack, audioTrack]);
 
-  Recorder.mediaRecorder = recorder;
-  Recorder.state = "recording";
-  Recorder.startedAt = performance.now();
-  recorder.start(1000); // 1s timeslices — a crash loses at most the last second
+    Recorder.chunks = [];
+    Recorder.mimeType = mimeType;
+    const recorder = new MediaRecorder(combined, {
+      mimeType, videoBitsPerSecond: 5_000_000, audioBitsPerSecond: 192_000,
+    });
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size) Recorder.chunks.push(e.data); };
+    recorder.onerror = (e) => {
+      console.error("MediaRecorder error", e.error);
+      document.getElementById("rec-result").textContent = "Recorder error — take ended early, salvaging what was captured.";
+      stopRecording();
+    };
+    recorder.onstop = () => finalizeAndUpload();
 
-  window.addEventListener("beforeunload", recBeforeUnloadGuard);
+    Recorder.mediaRecorder = recorder;
+    Recorder.state = "recording";
+    Recorder.startedAt = performance.now();
+    recorder.start(1000); // 1s timeslices — a crash loses at most the last second
 
-  if (document.getElementById("rec-start-with-playback").checked && State.track && Audio.duration) {
-    startPlaybackAt(Audio.playStartOffset); // app.js — same gesture, current position
+    window.addEventListener("beforeunload", recBeforeUnloadGuard);
+
+    if (doPlayback) startPlaybackAt(Audio.playStartOffset); // app.js — same instant, current position
+
+    document.getElementById("rec-result").innerHTML = "";
+    updateRecUI();
+    recTick();
+    Recorder.tickInterval = setInterval(recTick, 250);
   }
 
-  document.getElementById("rec-result").innerHTML = "";
-  updateRecUI();
-  recTick();
-  Recorder.tickInterval = setInterval(recTick, 250);
+  withOptionalCountIn(doCountIn, beginTake); // app.js
 }
 
 function stopRecording() {
