@@ -354,6 +354,42 @@ async function vdAutoCalibrate() {
     `audio spike at ${audioSpikeT.toFixed(0)}ms). Applied to the field above — still adjustable by hand.`;
 }
 
+// VD-09: preview-only thirds/grid + a "fretboard visible?" guide box, drawn
+// on a canvas layered ON TOP of the <video> element (never composited into
+// the recorded stream, which comes straight from the raw camera track) —
+// same "preview vs. recorded" separation the mirrored-preview CSS already
+// uses. Static overlay, no need to redraw per-frame.
+function drawFramingOverlay() {
+  const canvas = document.getElementById("rec-framing-overlay");
+  const W = 320, H = 180;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.strokeStyle = "rgba(255,255,255,0.5)";
+  ctx.lineWidth = 1;
+  for (let i = 1; i <= 2; i++) {
+    const x = (W / 3) * i;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    const y = (H / 3) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  // Lower-diagonal band where a horizontally-held guitar neck typically
+  // falls in a seated player shot.
+  ctx.strokeStyle = "rgba(91,140,255,0.85)";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(W * 0.05, H * 0.55, W * 0.55, H * 0.3);
+  ctx.setLineDash([]);
+}
+
+function updateFramingOverlayVisibility() {
+  const canvas = document.getElementById("rec-framing-overlay");
+  canvas.style.display = document.getElementById("rec-framing-toggle").checked ? "block" : "none";
+}
+
 function wireRecorderControls() {
   document.getElementById("rec-camera-enable-btn").addEventListener("click", () => {
     const deviceId = document.getElementById("rec-camera-select").value;
@@ -371,6 +407,9 @@ function wireRecorderControls() {
     localStorage.setItem("gs_av_offset_ms", String(Recorder.avOffsetMs));
   });
   document.getElementById("rec-auto-calibrate-btn").addEventListener("click", vdAutoCalibrate);
+  document.getElementById("rec-framing-toggle").addEventListener("change", updateFramingOverlayVisibility);
+  drawFramingOverlay();
+  updateFramingOverlayVisibility();
   loadAvOffset();
   recRefreshCameraDevices();
 }

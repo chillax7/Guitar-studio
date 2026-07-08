@@ -154,7 +154,14 @@
 
         <section class="pa-card" id="rec-card">
           <h3>Record performance</h3>
-          <video id="rec-preview" muted playsinline></video>
+          <div id="rec-preview-wrap">
+            <video id="rec-preview" muted playsinline></video>
+            <canvas id="rec-framing-overlay"></canvas>
+          </div>
+          <div class="row">
+            <label style="margin:0">Show framing guides</label>
+            <input type="checkbox" id="rec-framing-toggle" checked>
+          </div>
           <div class="row">
             <select id="rec-camera-select"></select>
             <button id="rec-camera-enable-btn">Enable camera</button>
