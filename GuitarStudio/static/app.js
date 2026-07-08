@@ -801,17 +801,27 @@ function wireSpeedTune() {
   tuneEl.addEventListener("input", apply);
 }
 
+const PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8; // mirrors backing_track.py's constant of the same name
+
 function renderInspector() {
   const a = State.analysis || {};
   updateBpmDisplay();
 
   let pitchHint = "";
+  const applyBtn = document.getElementById("pitch-apply-btn");
+  const offBeyondThreshold = a.pitch_offset_cents != null && Math.abs(a.pitch_offset_cents) >= PITCH_OFFSET_NOTE_THRESHOLD_CENTS;
   if (a.pitch_offset_cents != null) {
-    pitchHint = Math.abs(a.pitch_offset_cents) >= 8
-      ? `This song appears to be ${a.pitch_offset_cents >= 0 ? "+" : ""}${a.pitch_offset_cents.toFixed(1)} cents from A=440.`
+    pitchHint = offBeyondThreshold
+      ? `This song appears to be ${a.pitch_offset_cents >= 0 ? "+" : ""}${a.pitch_offset_cents.toFixed(1)} cents from A=440 — apply?`
       : `Reference pitch: ${a.pitch_offset_cents.toFixed(1)}¢ from A=440 (close enough to ignore).`;
   }
   document.getElementById("pitch-hint").textContent = pitchHint;
+  applyBtn.style.display = offBeyondThreshold ? "inline-block" : "none";
+  applyBtn.onclick = () => {
+    const tuneEl = document.getElementById("tune-slider");
+    tuneEl.value = Math.round(a.pitch_offset_cents);
+    tuneEl.dispatchEvent(new Event("input"));
+  };
 
   const hasGuitar = State.stems.some((s) => s.name === "guitar");
   document.getElementById("split-panel").style.display = hasGuitar ? "block" : "none";
