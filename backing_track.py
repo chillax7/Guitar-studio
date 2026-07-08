@@ -138,6 +138,13 @@ def content_hash(path: Path) -> str:
     return h.hexdigest()[:12]
 
 
+def has_cached_stems(out_dir: Path) -> bool:
+    """A directory only counts as a real cache entry if it actually has stem
+    audio in it — a directory that exists but is empty (e.g. debris from an
+    interrupted sync/copy) must never be mistaken for valid cached stems."""
+    return out_dir.exists() and any(out_dir.glob("*.wav"))
+
+
 def track_stem_dir(input_path: Path, model: str) -> Path:
     """Where stems for this track+model are cached, keyed by content hash
     (not just filename) so two different files sharing a name can never
@@ -147,11 +154,11 @@ def track_stem_dir(input_path: Path, model: str) -> Path:
     deletes an existing directory."""
     digest = content_hash(input_path)
     hashed_dir = SEPARATED_DIR / model / f"{input_path.stem}__{digest}"
-    if hashed_dir.exists():
+    if has_cached_stems(hashed_dir):
         return hashed_dir
 
     legacy_dir = SEPARATED_DIR / model / input_path.stem
-    if legacy_dir.exists():
+    if has_cached_stems(legacy_dir):
         return legacy_dir
 
     return hashed_dir
@@ -357,7 +364,7 @@ def cmd_separate(args: argparse.Namespace) -> None:
         sys.exit(f"Error: input file not found: {input_path}")
 
     out_dir = track_stem_dir(input_path, args.model)
-    if out_dir.exists() and not args.force:
+    if has_cached_stems(out_dir) and not args.force:
         print(f"Stems already exist at {out_dir} (use --force to redo).")
         warn_if_stale(out_dir, input_path)
         export_stem_files(list(out_dir.glob("*.wav")), input_path.stem, args.model)
@@ -391,7 +398,7 @@ def print_analysis(analysis: dict) -> None:
 def cmd_list(args: argparse.Namespace) -> None:
     input_path = Path(args.input).resolve()
     out_dir = track_stem_dir(input_path, args.model)
-    if not out_dir.exists():
+    if not has_cached_stems(out_dir):
         sys.exit(
             f"No stems found for {input_path.name} with model '{args.model}'. "
             f"Run 'separate' first."
@@ -590,7 +597,7 @@ def cmd_split_guitar(args: argparse.Namespace) -> None:
     which the printed correlation figure is meant to help you judge."""
     input_path = Path(args.input).resolve()
     out_dir = track_stem_dir(input_path, args.model)
-    if not out_dir.exists():
+    if not has_cached_stems(out_dir):
         sys.exit(
             f"No stems found for {input_path.name} with model '{args.model}'. "
             f"Run 'separate' first."
@@ -645,7 +652,7 @@ def cmd_split_guitar(args: argparse.Namespace) -> None:
 def cmd_mix(args: argparse.Namespace) -> None:
     input_path = Path(args.input).resolve()
     out_dir = track_stem_dir(input_path, args.model)
-    if not out_dir.exists():
+    if not has_cached_stems(out_dir):
         sys.exit(
             f"No stems found for {input_path.name} with model '{args.model}'. "
             f"Run 'separate' first."
