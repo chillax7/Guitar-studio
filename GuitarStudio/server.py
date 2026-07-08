@@ -351,6 +351,99 @@ def resolve_output_file(rel_path: str) -> Path:
     return candidate
 
 
+TAKE_RE = re.compile(r"take (\d+)", re.IGNORECASE)
+
+
+def recordings_dir_for(track: str) -> Path:
+    track_name = safe_name(track) if track else "_untracked"
+    return engine.OUTPUT_DIR / track_name / "recordings"
+
+
+def next_take_number(rec_dir: Path) -> int:
+    max_take = 0
+    if rec_dir.exists():
+        for f in rec_dir.iterdir():
+            m = TAKE_RE.search(f.stem)
+            if m:
+                max_take = max(max_take, int(m.group(1)))
+    return max_take + 1
+
+
+def svc_recording_save(track: str, ext: str, data: bytes) -> dict:
+    if ext not in ("mp4", "webm"):
+        raise ApiError(400, f"Unsupported extension '{ext}' — use mp4 or webm")
+    if not data:
+        raise ApiError(400, "Empty upload")
+    track_name = safe_name(track) if track else "_untracked"
+    rec_dir = recordings_dir_for(track)
+    rec_dir.mkdir(parents=True, exist_ok=True)
+    take = next_take_number(rec_dir)
+    filename = f"{track_name} - take {take:02d}.{ext}"
+    path = rec_dir / filename
+    path.write_bytes(data)
+    return {"path": str(path), "filename": filename, "take": take}
+
+
+def svc_recordings_list(track: str) -> dict:
+    rec_dir = recordings_dir_for(track)
+    takes = []
+    if rec_dir.exists():
+        for f in sorted(rec_dir.iterdir()):
+            if f.is_file() and not f.name.startswith("."):
+                takes.append({"filename": f.name, "path": str(f), "size": f.stat().st_size})
+    return {"takes": takes}
+
+
+def svc_recording_finalize(path: str, av_offset_ms: float) -> dict:
+    """Lossless remux (-c copy, always) so MediaRecorder's known container
+    quirks (missing/odd duration, non-faststart moov atom) get fixed even
+    when no A/V offset is set. When an offset IS set, delay the audio input
+    by that amount to match the (typically late) video — never destroys the
+    original: works on a temp file, only replaces on ffmpeg success."""
+    target = Path(path).resolve()
+    try:
+        target.relative_to(PROJECT_ROOT.resolve())
+    except ValueError:
+        raise ApiError(400, "path must be inside the project directory")
+    if not target.exists():
+        raise ApiError(404, "Recording not found")
+
+    ffmpeg = engine.find_ffmpeg()
+    if not ffmpeg:
+        return {"finalized": False, "reason": "ffmpeg not installed"}
+
+    ext = target.suffix.lower()
+    tmp_path = target.with_suffix(f".tmp{ext}")
+    offset_sec = (av_offset_ms or 0) / 1000.0
+
+    cmd = [ffmpeg, "-y", "-i", str(target)]
+    if abs(offset_sec) > 1e-6:
+        cmd += ["-itsoffset", f"{offset_sec:.3f}", "-i", str(target), "-map", "0:v", "-map", "1:a"]
+    cmd += ["-c", "copy"]
+    if ext == ".mp4":
+        cmd += ["-movflags", "+faststart"]
+    cmd += [str(tmp_path)]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        tmp_path.unlink(missing_ok=True)
+        return {"finalized": False, "reason": f"ffmpeg failed: {result.stderr[-500:]}"}
+
+    tmp_path.replace(target)
+    return {"finalized": True, "path": str(target)}
+
+
+def svc_recording_discard(path: str) -> dict:
+    target = Path(path).resolve()
+    try:
+        target.relative_to((engine.OUTPUT_DIR).resolve())
+    except ValueError:
+        raise ApiError(400, "path must be inside output/")
+    if target.exists():
+        target.unlink()
+    return {"ok": True}
+
+
 def svc_reveal(path: str) -> dict:
     target = Path(path).resolve()
     try:
@@ -472,6 +565,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(200, svc_ir_models())
             if path == "/api/ir_model_file":
                 return self._send_file(resolve_ir_file(query.get("filename", "")))
+            if path == "/api/recordings":
+                return self._send_json(200, svc_recordings_list(query.get("track", "")))
             if path.startswith("/api/"):
                 return self._send_json(404, {"error": f"Unknown route: {path}"})
             return self._serve_static(path)
@@ -520,6 +615,21 @@ class Handler(BaseHTTPRequestHandler):
                                   body.get("format", "wav"),
                                   bool(body.get("normalize", True)),
                                   float(body.get("max_boost_db", engine.DEFAULT_MAX_BOOST_DB)))
+                return self._send_json(200, result)
+
+            if path == "/api/recording/save":
+                _, query = self._query()
+                result = svc_recording_save(query.get("track", ""), query.get("ext", "webm"), self._read_body())
+                return self._send_json(200, result)
+
+            if path == "/api/recording/finalize":
+                body = self._read_json_body()
+                result = svc_recording_finalize(body.get("path", ""), float(body.get("av_offset_ms", 0) or 0))
+                return self._send_json(200, result)
+
+            if path == "/api/recording/discard":
+                body = self._read_json_body()
+                result = svc_recording_discard(body.get("path", ""))
                 return self._send_json(200, result)
 
             if path == "/api/reveal":

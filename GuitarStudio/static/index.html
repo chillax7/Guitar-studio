@@ -22,6 +22,7 @@
         <button id="view-mixer" class="active">Mixer</button>
         <button id="view-timeline">Timeline</button>
       </div>
+      <button id="rec-pill" style="display:none">● REC</button>
       <div class="spacer"></div>
       <div id="model-badge">
         <span id="model-badge-label">—</span>
@@ -133,6 +134,34 @@
           <p class="hint" id="pa-input-hint"></p>
         </section>
 
+        <section class="pa-card" id="rec-card">
+          <h3>Record performance</h3>
+          <video id="rec-preview" muted playsinline></video>
+          <div class="row">
+            <select id="rec-camera-select"></select>
+            <button id="rec-camera-enable-btn">Enable camera</button>
+          </div>
+          <div class="row">
+            <label style="margin:0">Quality</label>
+            <select id="rec-quality-select">
+              <option value="720p" selected>720p · 30fps</option>
+              <option value="1080p">1080p · 30fps</option>
+            </select>
+          </div>
+          <p class="hint" id="rec-camera-hint"></p>
+          <div class="row">
+            <button id="rec-toggle-btn" class="primary">● Record</button>
+            <span id="rec-elapsed">0:00</span>
+          </div>
+          <div class="row">
+            <label style="margin:0">Start backing track with recording</label>
+            <input type="checkbox" id="rec-start-with-playback" checked>
+          </div>
+          <label>A/V offset (ms) <span class="hint">delays audio to match a late camera — see manual</span></label>
+          <input type="number" id="rec-av-offset" value="0" step="10">
+          <div id="rec-result" class="hint"></div>
+        </section>
+
         <section class="pa-card">
           <h3>Noise Gate</h3>
           <div class="row"><label>Bypass</label><input type="checkbox" id="pa-gate-bypass"></div>
@@ -233,5 +262,6 @@
 </div>
 <script src="app.js"></script>
 <script src="playalong.js"></script>
+<script src="recorder.js"></script>
 </body>
 </html>

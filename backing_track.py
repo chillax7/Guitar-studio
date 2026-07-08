@@ -769,6 +769,23 @@ def normalize_loudness(mix: np.ndarray, samplerate: int, target_lufs: float,
     return mix, info
 
 
+def find_ffmpeg() -> str | None:
+    """Robust lookup beyond shutil.which(): GUI-launched processes (a
+    double-clicked .app bundle, this project's own dev-preview tooling)
+    often don't inherit the PATH an interactive shell would — notably
+    missing Homebrew's /opt/homebrew/bin on Apple Silicon, where ffmpeg can
+    be genuinely installed and still invisible to shutil.which(). Returns
+    None (not a bare "ffmpeg" guess) when truly not found, so callers can
+    give a clear error instead of a confusing subprocess failure."""
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    for candidate in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"):
+        if Path(candidate).exists():
+            return candidate
+    return None
+
+
 def write_audio(audio: np.ndarray, samplerate: int, out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     suffix = out_path.suffix.lower()
@@ -780,8 +797,12 @@ def write_audio(audio: np.ndarray, samplerate: int, out_path: Path) -> None:
         # soundfile can't write MP3 directly; write a temp WAV then use ffmpeg.
         tmp_wav = out_path.with_suffix(".tmp.wav")
         sf.write(str(tmp_wav), audio, samplerate)
+        ffmpeg = find_ffmpeg()
+        if not ffmpeg:
+            tmp_wav.unlink(missing_ok=True)
+            sys.exit("ffmpeg not found. Is it installed? (brew install ffmpeg)")
         result = subprocess.run(
-            ["ffmpeg", "-y", "-i", str(tmp_wav), "-q:a", "2", str(out_path)],
+            [ffmpeg, "-y", "-i", str(tmp_wav), "-q:a", "2", str(out_path)],
             capture_output=True, text=True,
         )
         tmp_wav.unlink(missing_ok=True)
