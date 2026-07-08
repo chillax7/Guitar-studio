@@ -84,7 +84,7 @@ async function ensurePAGraph() {
   await Audio.ctx.audioWorklet.addModule("nam-processor.js");
 
   PA.inAnal = Audio.ctx.createAnalyser();
-  PA.inAnal.fftSize = 1024;
+  PA.inAnal.fftSize = 8192; // GP-01 needs several full cycles of a low guitar E (~82Hz) for accurate autocorrelation
 
   PA.gateNode = new AudioWorkletNode(Audio.ctx, "gate-processor", {
     numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1,
@@ -233,10 +233,82 @@ async function paEnableInput() {
   }
 }
 
+// GP-01: chromatic tuner — standard autocorrelation (ACF) pitch detection
+// with parabolic interpolation for sub-bin precision, the same well-known
+// approach most browser-based tuners use (e.g. Chris Wilson's Web Audio
+// pitch-detector demo). Runs on the existing input-monitoring analyser —
+// no new audio routing, just reading the same tap the level meter already
+// uses (per the spec's own suggested approach).
+function paAutoCorrelate(buf, sampleRate) {
+  const SIZE = buf.length;
+  let rms = 0;
+  for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
+  rms = Math.sqrt(rms / SIZE);
+  if (rms < 0.01) return -1; // too quiet to trust
+
+  let r1 = 0, r2 = SIZE - 1;
+  const thres = 0.2;
+  for (let i = 0; i < SIZE / 2; i++) { if (Math.abs(buf[i]) < thres) { r1 = i; break; } }
+  for (let i = 1; i < SIZE / 2; i++) { if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; } }
+  const trimmed = buf.slice(r1, r2);
+  const n = trimmed.length;
+  if (n < 2) return -1;
+
+  const c = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let sum = 0;
+    for (let j = 0; j < n - i; j++) sum += trimmed[j] * trimmed[j + i];
+    c[i] = sum;
+  }
+  let d = 0;
+  while (d < n - 1 && c[d] > c[d + 1]) d++;
+  let maxVal = -1, maxPos = -1;
+  for (let i = d; i < n; i++) { if (c[i] > maxVal) { maxVal = c[i]; maxPos = i; } }
+  if (maxPos <= 0) return -1;
+
+  let t0 = maxPos;
+  const x1 = c[t0 - 1] ?? c[t0], x2 = c[t0], x3 = c[t0 + 1] ?? c[t0];
+  const a = (x1 + x3 - 2 * x2) / 2, b = (x3 - x1) / 2;
+  if (a !== 0) t0 -= b / (2 * a);
+  return t0 > 0 ? sampleRate / t0 : -1;
+}
+
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+function paFreqToNote(freq) {
+  const noteNum = 12 * Math.log2(freq / 440) + 69; // MIDI note number, A4=69=440Hz
+  const rounded = Math.round(noteNum);
+  const cents = Math.round((noteNum - rounded) * 100);
+  const name = NOTE_NAMES[((rounded % 12) + 12) % 12];
+  const octave = Math.floor(rounded / 12) - 1;
+  return { name: name + octave, cents };
+}
+
+function paUpdateTuner(inData) {
+  const freq = paAutoCorrelate(inData, Audio.ctx.sampleRate);
+  const noteEl = document.getElementById("pa-tuner-note");
+  const centsEl = document.getElementById("pa-tuner-cents");
+  const needleEl = document.getElementById("pa-tuner-needle");
+  if (freq < 0) {
+    noteEl.textContent = "—";
+    centsEl.textContent = "Enable input and play a single note.";
+    needleEl.style.left = "50%";
+    needleEl.classList.remove("in-tune");
+    return;
+  }
+  const { name, cents } = paFreqToNote(freq);
+  noteEl.textContent = name;
+  centsEl.textContent = `${freq.toFixed(1)} Hz, ${cents >= 0 ? "+" : ""}${cents}¢`;
+  const clamped = Math.max(-50, Math.min(50, cents));
+  needleEl.style.left = 50 + clamped + "%";
+  needleEl.classList.toggle("in-tune", Math.abs(cents) <= 5);
+}
+
 function paStartMeters() {
   if (PA.meterRaf) cancelAnimationFrame(PA.meterRaf);
   const inData = new Float32Array(PA.inAnal.fftSize);
   const outData = new Float32Array(PA.outAnal.fftSize);
+  let tunerFrameCount = 0;
   function tick() {
     PA.inAnal.getFloatTimeDomainData(inData);
     PA.outAnal.getFloatTimeDomainData(outData);
@@ -249,6 +321,10 @@ function paStartMeters() {
     inFill.classList.toggle("clip", inMax >= 0.98);
     outFill.style.width = Math.min(100, outMax * 100) + "%";
     outFill.classList.toggle("clip", outMax >= 0.98);
+
+    // Throttled — autocorrelation is O(n^2) and doesn't need 60fps for a tuner.
+    if (++tunerFrameCount % 6 === 0) paUpdateTuner(inData);
+
     PA.meterRaf = requestAnimationFrame(tick);
   }
   tick();

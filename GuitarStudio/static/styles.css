@@ -396,3 +396,38 @@ button.primary:hover { filter: brightness(1.1); }
   animation: rec-pulse 1.5s ease-in-out infinite;
 }
 @keyframes rec-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+/* ---------- Tuner ---------- */
+
+#pa-tuner-note {
+  font-size: 32px;
+  font-weight: 600;
+  text-align: center;
+  margin: 4px 0;
+}
+.pa-tuner-meter {
+  position: relative;
+  height: 10px;
+  background: var(--panel-2);
+  border-radius: 5px;
+  margin: 8px 0;
+  overflow: visible;
+}
+.pa-tuner-center-tick {
+  position: absolute;
+  left: 50%; top: -3px;
+  width: 2px; height: 16px;
+  background: var(--text-dim);
+  transform: translateX(-1px);
+}
+#pa-tuner-needle {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 50%;
+  width: 4px;
+  margin-left: -2px;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: left 80ms ease-out;
+}
+#pa-tuner-needle.in-tune { background: #4ade80; }
