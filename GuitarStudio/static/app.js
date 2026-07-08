@@ -559,6 +559,10 @@ function renderLanes() {
     lane.appendChild(body);
     container.appendChild(lane);
 
+    // XC-02: M/S keyboard shortcuts act on whichever lane the mouse is over.
+    lane.addEventListener("mouseenter", () => { hoveredStemName = name; });
+    lane.addEventListener("mouseleave", () => { if (hoveredStemName === name) hoveredStemName = null; });
+
     header.querySelector(".mute-btn").addEventListener("click", () => toggleMute(name));
     header.querySelector(".solo-btn").addEventListener("click", () => toggleSolo(name));
     const fader = header.querySelector("input[type=range]");
@@ -1090,6 +1094,89 @@ window.addEventListener("resize", () => {
   resizeTimer = setTimeout(renderLanes, 200);
 });
 
+// ---------------------------------------------------------------------------
+// XC-02: keyboard shortcuts. Scheduled last in the v0.4 roadmap deliberately
+// — several of these bind to UI (BT-05's loop handles especially) that was
+// still being built earlier in the same release.
+// ---------------------------------------------------------------------------
+
+let hoveredStemName = null; // set by renderLanes()'s mouseenter/mouseleave
+
+function isTextInputFocused() {
+  const el = document.activeElement;
+  if (!el) return false;
+  return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT";
+}
+
+function toggleShortcutsLegend() {
+  document.getElementById("shortcuts-overlay").classList.toggle("show");
+}
+
+function wireKeyboardShortcuts() {
+  document.getElementById("shortcuts-close-btn").addEventListener("click", toggleShortcutsLegend);
+  document.getElementById("shortcuts-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "shortcuts-overlay") toggleShortcutsLegend();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (isTextInputFocused()) return;
+
+    if (e.key === "?") {
+      toggleShortcutsLegend();
+      return;
+    }
+    if (!State.stems.length) return; // everything else needs a loaded track
+
+    switch (e.key) {
+      case " ":
+        // release-v0.4-spec.md's XC-02 opens with "Beyond Space: ..." —
+        // treating Space-to-play/pause as pre-existing baseline. It never
+        // actually got wired in the rebuild until now.
+        e.preventDefault();
+        document.getElementById("play-btn").click();
+        break;
+      case "l": case "L":
+        document.getElementById("loop-toggle-btn").click();
+        break;
+      case "[":
+        if (Audio.duration) {
+          if (!State.ui.loop) State.ui.loop = { start: 0, end: Audio.duration };
+          State.ui.loop.start = Math.min(currentPosition(), State.ui.loop.end - 0.1);
+          updateLoopVisual();
+          saveProjectDebounced();
+        }
+        break;
+      case "]":
+        if (Audio.duration) {
+          if (!State.ui.loop) State.ui.loop = { start: 0, end: Audio.duration };
+          State.ui.loop.end = Math.max(currentPosition(), State.ui.loop.start + 0.1);
+          updateLoopVisual();
+          saveProjectDebounced();
+        }
+        break;
+      case "m": case "M":
+        if (hoveredStemName) toggleMute(hoveredStemName);
+        break;
+      case "s": case "S":
+        if (hoveredStemName) toggleSolo(hoveredStemName);
+        break;
+      case "r": case "R":
+        if (typeof toggleRecording === "function") toggleRecording();
+        break;
+      case "ArrowLeft":
+        e.preventDefault();
+        seekTo(Math.max(0, currentPosition() - (e.shiftKey ? 5 : 1)));
+        break;
+      case "ArrowRight":
+        e.preventDefault();
+        seekTo(Math.min(Audio.duration, currentPosition() + (e.shiftKey ? 5 : 1)));
+        break;
+      default:
+        break;
+    }
+  });
+}
+
 async function init() {
   initRuler();
   wireTransport();
@@ -1101,6 +1188,7 @@ async function init() {
   wireStaleBanner();
   wireImport();
   wireSpeedTune();
+  wireKeyboardShortcuts();
 
   const modelsResp = await Api.get("/api/models");
   State.models = modelsResp.models;
