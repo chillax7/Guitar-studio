@@ -738,6 +738,48 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
+// BT-06: 1-2 bars of click before playback starts. No audio file needed —
+// synthesized oscillator blips. Uses the track's own detected BPM (BT-01)
+// when known, else a manual 120 BPM guess (never errors either way).
+// Reused as-is by VD-01 for count-in-before-recording.
+function countInBpm() {
+  return (State.analysis && State.analysis.bpm) || 120;
+}
+
+function scheduleCountIn(bpm) {
+  ensureCtx();
+  const beatDuration = 60 / bpm;
+  const beats = 8; // 2 bars of 4/4
+  const startAt = Audio.ctx.currentTime + 0.05;
+  const bus = Audio.ctx.createGain();
+  bus.gain.value = 0.5;
+  bus.connect(Audio.ctx.destination);
+  for (let i = 0; i < beats; i++) {
+    const osc = Audio.ctx.createOscillator();
+    osc.frequency.value = (i % 4 === 0) ? 1500 : 1000; // accent beat 1 of each bar
+    const g = Audio.ctx.createGain();
+    const t = startAt + i * beatDuration;
+    g.gain.setValueAtTime(0.001, t);
+    g.gain.exponentialRampToValueAtTime(0.6, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    osc.connect(g).connect(bus);
+    osc.start(t);
+    osc.stop(t + 0.06);
+  }
+  return startAt + beats * beatDuration; // ctx time playback should begin at
+}
+
+// Runs the count-in (if the toggle is on) then calls onBeatOne() at the
+// moment playback should actually start. setTimeout-based, not sample-
+// scheduled — a few ms of slop here is imperceptible, unlike the
+// sample-accurate multi-stem sync startPlaybackAt() itself needs.
+function withOptionalCountIn(enabled, onBeatOne) {
+  if (!enabled) { onBeatOne(); return; }
+  const playAt = scheduleCountIn(countInBpm());
+  const delayMs = Math.max(0, (playAt - Audio.ctx.currentTime) * 1000);
+  setTimeout(onBeatOne, delayMs);
+}
+
 function wireTransport() {
   document.getElementById("play-btn").addEventListener("click", () => {
     if (!Audio.ctx || State.stems.length === 0) return;
@@ -746,7 +788,8 @@ function wireTransport() {
       document.getElementById("play-btn").textContent = "▶";
     } else {
       if (Audio.ctx.state === "suspended") Audio.ctx.resume();
-      startPlaybackAt(Audio.playStartOffset);
+      const offset = Audio.playStartOffset;
+      withOptionalCountIn(document.getElementById("count-in-toggle").checked, () => startPlaybackAt(offset));
       document.getElementById("play-btn").textContent = "⏸";
     }
   });
