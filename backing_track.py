@@ -69,6 +69,7 @@ python3 backing_track.py mix path/to/song.mp3 --mute-range "guitar=1:15-1:45,gui
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -276,6 +277,19 @@ def run_audio_separator_backend(input_path: Path, model: str, out_dir: Path) -> 
     them (per engine-spec's stem-discovery-from-disk design). Imported
     lazily so a Demucs-only install doesn't need this dependency."""
     from audio_separator.separator import Separator
+
+    # audio-separator shells out to a bare "ffmpeg" command internally (not
+    # configurable) to check for its presence — a GUI-launched .app doesn't
+    # inherit the PATH find_ffmpeg() below otherwise works around by
+    # resolving a full path, so make sure that binary's directory is
+    # actually on PATH for this process too before it gets a chance to look.
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        sys.exit("ffmpeg not found. Is it installed? (brew install ffmpeg)")
+    ffmpeg_dir = str(Path(ffmpeg).parent)
+    path_entries = os.environ.get("PATH", "").split(os.pathsep)
+    if ffmpeg_dir not in path_entries:
+        os.environ["PATH"] = os.pathsep.join([ffmpeg_dir, *path_entries])
 
     model_info = AUDIO_SEPARATOR_MODELS[model]
     out_dir.mkdir(parents=True, exist_ok=True)
