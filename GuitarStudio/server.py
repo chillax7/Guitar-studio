@@ -25,6 +25,7 @@ import mimetypes
 import re
 import subprocess
 import sys
+import threading
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -49,6 +50,29 @@ INPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 SAFE_NAME_RE = re.compile(r"[\x00/]+")
 DEFAULT_PORT = 8765
+
+# Demucs and audio-separator both use PyTorch/MPS + ONNXRuntime/CoreML
+# under the hood, neither of which is safe to drive concurrently from two
+# threads — running two separations at once has been observed to hang
+# indefinitely rather than error. SEPARATION_LOCK serializes the actual
+# heavy work; a second request just waits its turn instead of racing the
+# first one for the GPU. _JOBS tracks per-(track, model) progress so a
+# concurrent status poll can show a real progress bar while a request is
+# either queued behind the lock or actively running.
+SEPARATION_LOCK = threading.Lock()
+_JOBS: dict[tuple[str, str], dict] = {}
+_JOBS_LOCK = threading.Lock()
+
+
+def _set_job(key: tuple[str, str], **fields) -> None:
+    with _JOBS_LOCK:
+        job = _JOBS.setdefault(key, {"status": "idle", "percent": 0})
+        job.update(fields)
+
+
+def _get_job(key: tuple[str, str]) -> dict:
+    with _JOBS_LOCK:
+        return dict(_JOBS.get(key, {"status": "idle", "percent": 0}))
 
 
 class ApiError(Exception):
@@ -191,26 +215,49 @@ def svc_import(filename: str, data: bytes) -> dict:
 
 def svc_separate(source_path: str, model: str, force: bool) -> dict:
     input_path = resolve_source_path(source_path)
-    out_dir = engine.track_stem_dir(input_path, model)
+    key = (input_path.name, model)
+    _set_job(key, status="queued", percent=0)
+    try:
+        with SEPARATION_LOCK:
+            _set_job(key, status="running", percent=0)
+            out_dir = engine.track_stem_dir(input_path, model)
 
-    reused = engine.has_cached_stems(out_dir) and not force
-    if not reused:
-        if model in engine.AUDIO_SEPARATOR_MODELS:
-            engine.run_audio_separator_backend(input_path, model, out_dir)
-        else:
-            engine.run_demucs_backend(input_path, model, out_dir)
-        engine.write_fingerprint(out_dir, input_path)
+            reused = engine.has_cached_stems(out_dir) and not force
+            if not reused:
+                def progress_cb(pct, _key=key):
+                    # Demucs runs multiple internal passes for bagged
+                    # models (e.g. mdx_extra ensembles several checkpoints),
+                    # each restarting its own 0-100% tqdm bar — never let
+                    # the reported percent visibly jump backward.
+                    current = _get_job(_key).get("percent", 0)
+                    _set_job(_key, status="running", percent=max(current, pct))
 
-    engine.export_stem_files(list(out_dir.glob("*.wav")), input_path.stem, model)
+                if model in engine.AUDIO_SEPARATOR_MODELS:
+                    engine.run_audio_separator_backend(input_path, model, out_dir, progress_cb=progress_cb)
+                else:
+                    engine.run_demucs_backend(input_path, model, out_dir, progress_cb=progress_cb)
+                engine.write_fingerprint(out_dir, input_path)
 
-    return {
-        "cache_dir": str(out_dir),
-        "output_dir": str(engine.track_output_dir(input_path.stem)),
-        "stems": stem_info(out_dir, model),
-        "analysis": engine.ensure_analysis(out_dir),
-        "stale": engine.fingerprint_is_stale(out_dir, input_path) if reused else False,
-        "reused_cache": reused,
-    }
+            engine.export_stem_files(list(out_dir.glob("*.wav")), input_path.stem, model)
+
+            result = {
+                "cache_dir": str(out_dir),
+                "output_dir": str(engine.track_output_dir(input_path.stem)),
+                "stems": stem_info(out_dir, model),
+                "analysis": engine.ensure_analysis(out_dir),
+                "stale": engine.fingerprint_is_stale(out_dir, input_path) if reused else False,
+                "reused_cache": reused,
+            }
+        _set_job(key, status="done", percent=100)
+        return result
+    except Exception:
+        _set_job(key, status="error", percent=0)
+        raise
+
+
+def svc_separate_status(source_path: str, model: str) -> dict:
+    input_path = resolve_source_path(source_path)
+    return _get_job((input_path.name, model))
 
 
 def svc_list_stems(source_path: str, model: str) -> dict:
@@ -660,6 +707,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/list_stems":
                 result = svc_list_stems(query.get("source_path", ""),
                                         query.get("model", engine.DEFAULT_MODEL))
+                return self._send_json(200, result)
+            if path == "/api/separate_status":
+                result = svc_separate_status(query.get("source_path", ""),
+                                              query.get("model", engine.DEFAULT_MODEL))
                 return self._send_json(200, result)
             if path == "/api/project":
                 result = svc_load_project(query.get("track", ""))

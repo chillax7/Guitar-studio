@@ -410,7 +410,7 @@ function saveProjectDebounced() {
 // ---------------------------------------------------------------------------
 
 function showState(name) {
-  for (const s of ["empty-state", "separate-cta", "separating-state", "workspace"]) {
+  for (const s of ["empty-state", "no-stems-state", "separating-state", "workspace"]) {
     document.getElementById(s).classList.toggle("show", s === name);
   }
   document.getElementById("transport").classList.toggle("show", name === "workspace");
@@ -443,6 +443,7 @@ async function selectTrack(name) {
   renderTrackList();
   stopPlayback();
   showState("empty-state");
+  document.getElementById("separate-btn").style.display = "inline-block";
 
   // Speed/Tune aren't part of the saved project (deliberately — carrying
   // yesterday's half-speed setting silently into a new song would be a
@@ -476,15 +477,15 @@ async function refreshStemsForCurrentModelAndTrack() {
     await onStemsLoaded(r);
   } catch (e) {
     if (e.status === 404) {
-      showSeparateCta();
+      showNoStemsState();
     } else {
       alert("Error loading stems: " + e.message);
     }
   }
 }
 
-function showSeparateCta() {
-  showState("separate-cta");
+function showNoStemsState() {
+  showState("no-stems-state");
   updateModelBadge();
 }
 
@@ -996,56 +997,58 @@ function wireModelBadge() {
 }
 
 // ---------------------------------------------------------------------------
-// Separate CTA + stale banner
+// Separate (toolbar button — always the current model-badge selection) +
+// stale banner. force=true always: if stems already exist for this model,
+// hitting Separate overwrites them (the toolbar is the one place a rerun
+// is always available, whether or not stems already exist).
 // ---------------------------------------------------------------------------
 
-function populateSeparateModelSelect() {
-  const sel = document.getElementById("separate-model-select");
-  sel.innerHTML = "";
-  for (const m of State.models) {
-    const opt = document.createElement("option");
-    opt.value = m.name;
-    opt.textContent = `${m.name} (${m.stems.join(", ")})`;
-    if (m.name === State.defaultModel) opt.selected = true;
-    sel.appendChild(opt);
-  }
-  function updateHint() {
-    const guitarCapable = sel.value === "htdemucs_6s" || sel.value === "bs_roformer_sw";
-    document.getElementById("separate-model-hint").textContent = guitarCapable
-      ? "Isolates guitar (and piano) separately — needed for the guitar split feature."
-      : "Standard 4-stem split — fastest.";
-  }
-  sel.addEventListener("change", updateHint);
-  updateHint();
+function updateSeparatingProgress(percent, status) {
+  const fill = document.getElementById("separating-progress-fill");
+  const text = document.getElementById("separating-progress-text");
+  const pct = Math.max(0, Math.min(100, percent || 0));
+  fill.style.width = pct + "%";
+  text.textContent = status === "queued"
+    ? "Queued — waiting for another separation to finish..."
+    : `${pct}%`;
 }
 
-function wireSeparateCta() {
-  document.getElementById("separate-btn").addEventListener("click", async () => {
-    const model = document.getElementById("separate-model-select").value;
-    State.model = model;
-    showState("separating-state");
-    try {
-      const r = await Api.post("/api/separate", { source_path: State.track, model });
-      await onStemsLoaded(r);
-      saveProjectDebounced();
-    } catch (e) {
-      alert("Separation failed: " + e.message);
-      showSeparateCta();
+async function runSeparate(force) {
+  const model = State.model;
+  const track = State.track;
+  showState("separating-state");
+  updateSeparatingProgress(0, "queued");
+
+  let polling = true;
+  (async () => {
+    while (polling) {
+      try {
+        const s = await Api.get(`/api/separate_status?source_path=${encodeURIComponent(track)}` +
+          `&model=${encodeURIComponent(model)}`);
+        if (polling) updateSeparatingProgress(s.percent, s.status);
+      } catch (e) { /* best-effort — a missed poll just means one stale frame */ }
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
-  });
+  })();
+
+  try {
+    const r = await Api.post("/api/separate", { source_path: track, model, force });
+    polling = false;
+    await onStemsLoaded(r);
+    saveProjectDebounced();
+  } catch (e) {
+    polling = false;
+    alert("Separation failed: " + e.message);
+    await refreshStemsForCurrentModelAndTrack();
+  }
+}
+
+function wireSeparateButton() {
+  document.getElementById("separate-btn").addEventListener("click", () => runSeparate(true));
 }
 
 function wireStaleBanner() {
-  document.getElementById("reseparate-btn").addEventListener("click", async () => {
-    showState("separating-state");
-    try {
-      const r = await Api.post("/api/separate", { source_path: State.track, model: State.model, force: true });
-      await onStemsLoaded(r);
-    } catch (e) {
-      alert("Re-separation failed: " + e.message);
-      showState("workspace");
-    }
-  });
+  document.getElementById("reseparate-btn").addEventListener("click", () => runSeparate(true));
   document.getElementById("dismiss-stale-btn").addEventListener("click", () => {
     document.getElementById("stale-banner").classList.remove("show");
   });
@@ -1184,7 +1187,7 @@ async function init() {
   wireModelBadge();
   wireSplitPanel();
   wireExportPanel();
-  wireSeparateCta();
+  wireSeparateButton();
   wireStaleBanner();
   wireImport();
   wireSpeedTune();
@@ -1194,7 +1197,6 @@ async function init() {
   State.models = modelsResp.models;
   State.defaultModel = modelsResp.default;
   renderModelMenu();
-  populateSeparateModelSelect();
 
   await refreshTrackList();
   requestAnimationFrame(tick);

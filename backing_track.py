@@ -70,6 +70,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -238,7 +239,26 @@ def warn_if_stale(out_dir: Path, input_path: Path) -> None:
               f"Re-run 'separate --force' to refresh.\n")
 
 
-def run_demucs_backend(input_path: Path, model: str, out_dir: Path) -> None:
+_TQDM_PERCENT_RE = re.compile(r"(\d{1,3})%\|")
+
+
+def _scan_for_percent(buf: bytes | str, progress_cb) -> None:
+    """Both separation backends print tqdm-style progress bars (`43%|...|`)
+    that update in place via carriage returns rather than newlines. Given
+    one flushed chunk of raw output, pull out the last percentage seen and
+    report it — good enough for a UI progress bar without needing either
+    library to expose a real progress callback (neither does)."""
+    if not progress_cb:
+        return
+    matches = _TQDM_PERCENT_RE.findall(buf if isinstance(buf, str) else buf.decode("utf-8", "replace"))
+    if matches:
+        # Cap below 100 — 100 is reserved for "actually finished" (stem
+        # files written), which happens slightly after the model's own
+        # last progress tick.
+        progress_cb(min(99, int(matches[-1])))
+
+
+def run_demucs_backend(input_path: Path, model: str, out_dir: Path, progress_cb=None) -> None:
     if model not in MODEL_STEMS:
         print(f"Warning: '{model}' isn't a model this script recognizes — "
               f"stems will be whatever Demucs produces for it.")
@@ -246,16 +266,24 @@ def run_demucs_backend(input_path: Path, model: str, out_dir: Path) -> None:
     print(f"Running Demucs ({model}) on {input_path.name} ...")
     print("This can take a minute or two depending on song length and hardware.")
 
-    result = subprocess.run(
+    process = subprocess.Popen(
         [
             sys.executable, "-m", "demucs",
             "-n", model,
             "-o", str(SEPARATED_DIR),
             str(input_path),
         ],
-        capture_output=False,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0,
     )
-    if result.returncode != 0:
+    while True:
+        chunk = process.stdout.read(1024)
+        if not chunk:
+            break
+        sys.stdout.buffer.write(chunk)
+        sys.stdout.flush()
+        _scan_for_percent(chunk, progress_cb)
+    returncode = process.wait()
+    if returncode != 0:
         sys.exit("Demucs separation failed. See output above for details.")
 
     # Demucs always writes to <out root>/<model>/<track filename stem>/*.wav —
@@ -269,7 +297,34 @@ def run_demucs_backend(input_path: Path, model: str, out_dir: Path) -> None:
         demucs_out_dir.rename(out_dir)
 
 
-def run_audio_separator_backend(input_path: Path, model: str, out_dir: Path) -> None:
+class _ProgressStderr:
+    """Stand-in for sys.stderr during a run_audio_separator_backend() call.
+    audio-separator's own tqdm progress bars (and everything else it or its
+    dependencies write to stderr) pass through unchanged; percentages are
+    additionally skimmed off and reported via progress_cb — the library has
+    no progress-callback API of its own to hook instead."""
+
+    def __init__(self, real, progress_cb):
+        self._real = real
+        self._progress_cb = progress_cb
+        self._buf = ""
+
+    def write(self, s: str) -> int:
+        self._real.write(s)
+        self._buf += s
+        if "\r" in self._buf or "\n" in self._buf:
+            _scan_for_percent(self._buf, self._progress_cb)
+            self._buf = ""
+        return len(s)
+
+    def flush(self) -> None:
+        self._real.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+def run_audio_separator_backend(input_path: Path, model: str, out_dir: Path, progress_cb=None) -> None:
     """Run separation via the `audio-separator` package (UVR-family
     checkpoints) instead of Demucs. Writes stems into out_dir using the same
     <stem>.wav naming convention Demucs stems use, so 'list'/'mix'/
@@ -298,8 +353,14 @@ def run_audio_separator_backend(input_path: Path, model: str, out_dir: Path) -> 
     print("First run downloads the model checkpoint (~700 MB) — subsequent runs reuse it.")
 
     separator = Separator(output_dir=str(out_dir), output_format="WAV")
-    separator.load_model(model_filename=model_info["filename"])
-    produced_names = separator.separate(str(input_path))
+    old_stderr = sys.stderr
+    if progress_cb:
+        sys.stderr = _ProgressStderr(old_stderr, progress_cb)
+    try:
+        separator.load_model(model_filename=model_info["filename"])
+        produced_names = separator.separate(str(input_path))
+    finally:
+        sys.stderr = old_stderr
     produced = [out_dir / name for name in produced_names]
 
     # audio-separator names outputs like "<input_stem>_(guitar)_BS-Roformer-SW.wav";

@@ -158,7 +158,7 @@ button.primary:hover { filter: brightness(1.1); }
 }
 #stale-banner.show { display: flex; }
 
-#empty-state, #separate-cta, #separating-state {
+#empty-state, #no-stems-state, #separating-state {
   display: none;
   flex: 1;
   flex-direction: column;
@@ -167,16 +167,9 @@ button.primary:hover { filter: brightness(1.1); }
   gap: 14px;
   color: var(--text-dim);
 }
-#empty-state.show, #separate-cta.show, #separating-state.show { display: flex; }
+#empty-state.show, #no-stems-state.show, #separating-state.show { display: flex; }
 
-#separate-cta select {
-  background: var(--panel-2);
-  color: var(--text);
-  border: 1px solid var(--border);
-  padding: 6px 10px;
-  border-radius: 4px;
-}
-#separate-cta .hint { font-size: 12px; max-width: 320px; text-align: center; }
+#no-stems-state .hint { font-size: 12px; max-width: 320px; text-align: center; }
 
 .spinner {
   width: 28px; height: 28px;
@@ -186,6 +179,22 @@ button.primary:hover { filter: brightness(1.1); }
   animation: spin 0.9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+#separating-progress {
+  width: 260px;
+  height: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+#separating-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+#separating-state .hint { font-size: 12px; }
 
 /* ---------- Transport ---------- */
 

@@ -28,6 +28,7 @@
         <span id="model-badge-label">—</span>
         <div id="model-menu"></div>
       </div>
+      <button id="separate-btn" style="display:none">Separate</button>
       <button id="split-open-btn" style="display:none">⑂ Split guitar</button>
       <button id="export-open-btn" class="primary" style="display:none">Export</button>
     </div>
@@ -58,16 +59,15 @@
       <p>Select a track from the Library, or drop an audio file to import one.</p>
     </div>
 
-    <div id="separate-cta">
-      <p>This track hasn't been separated into stems yet.</p>
-      <select id="separate-model-select"></select>
-      <p class="hint" id="separate-model-hint"></p>
-      <button id="separate-btn" class="primary">Separate</button>
+    <div id="no-stems-state">
+      <p class="hint">No stems yet for this model. Click Separate above to run it.</p>
     </div>
 
     <div id="separating-state">
       <div class="spinner"></div>
       <p>Separating — this can take a minute or two depending on song length.</p>
+      <div id="separating-progress"><div id="separating-progress-fill"></div></div>
+      <p class="hint" id="separating-progress-text"></p>
     </div>
 
     <div id="workspace">
@@ -84,7 +84,7 @@
     </section>
 
     <section id="split-panel" style="display:none">
-      <h3>Guitar Split</h3>
+      <h3>Guitar - Lead / Rhythm Split</h3>
       <p class="hint">Neither candidate is guaranteed to be the lead or rhythm part — this is a panning-based guess and varies by song. Solo each and listen to decide.</p>
       <div id="split-methods">
         <button data-method="spectral" class="active">Spectral</button>
