@@ -27,7 +27,18 @@
 
 const FFT_SIZE = 2048;
 const SYNTHESIS_HOP = 512; // 75% overlap
-const BLOCK_SIZE = 8192; // samples of output regenerated per synthesis pass
+// Samples of output regenerated per synthesis pass. Deliberately equal to
+// SYNTHESIS_HOP (i.e. exactly one phase-vocoder hop per regeneration) —
+// with up to 6 simultaneous stems (htdemucs_6s), each running its own
+// worklet instance, a larger block size (originally 8192 = 16 hops) meant
+// every stem burst through 16 hops' worth of FFT work synchronously at
+// the same synchronized moment roughly every 170ms, well over 100 FFTs
+// total in a single ~128-sample audio callback — enough to blow the
+// real-time budget and cause audible dropouts ("volume cutting in and
+// out") independent of the overlap-add correctness fix above. One hop at
+// a time spreads that same total work evenly across many small callbacks
+// instead of bursting it into one.
+const BLOCK_SIZE = SYNTHESIS_HOP;
 const TWO_PI = Math.PI * 2;
 
 class FFT {
