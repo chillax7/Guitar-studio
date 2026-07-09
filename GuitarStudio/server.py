@@ -633,7 +633,7 @@ def svc_save_project(track: str, project: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "GuitarStudio/0.1"
+    server_version = "GuitarStudio/2.0"
 
     def log_message(self, fmt, *args):
         sys.stderr.write(f"{self.address_string()} - {fmt % args}\n")

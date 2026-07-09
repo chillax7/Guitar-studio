@@ -340,7 +340,19 @@ function applyLiveMuteRanges(pos) {
 // Waveforms
 // ---------------------------------------------------------------------------
 
+// Peaks are a pure function of (buffer, buckets) and a full linear scan over
+// the whole PCM buffer (millions of samples per stem). renderLanes() runs on
+// every mute/solo toggle and every mute-region paint, so without this cache
+// that scan repeated across all stems on every such interaction. Keyed by the
+// AudioBuffer in a WeakMap: the same buffer object is reused across renders
+// and only replaced when stems reload, at which point the old entry is GC'd
+// automatically — no manual invalidation needed.
+const _peaksCache = new WeakMap();
+
 function computePeaks(buffer, buckets) {
+  const cached = _peaksCache.get(buffer);
+  if (cached && cached.buckets === buckets) return cached.peaks;
+
   const data = buffer.getChannelData(0);
   const peaks = new Float32Array(buckets);
   const perBucket = Math.max(1, Math.floor(data.length / buckets));
@@ -354,6 +366,7 @@ function computePeaks(buffer, buckets) {
     }
     peaks[i] = max;
   }
+  _peaksCache.set(buffer, { buckets, peaks });
   return peaks;
 }
 
