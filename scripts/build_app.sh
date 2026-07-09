@@ -62,7 +62,12 @@ URL="http://127.0.0.1:$PORT/"
 
 if ! curl -s -o /dev/null "$URL"; then
   LOG="$DIR/GuitarStudio/server.log"
-  "$DIR/venv/bin/python" "$DIR/GuitarStudio/server.py" --port "$PORT" >> "$LOG" 2>&1 &
+  # cd first: a double-clicked .app's working directory is whatever Finder
+  # gives it (not this project folder), and the engine's relative paths
+  # (separated/, output/) resolve against it — belt-and-suspenders on top
+  # of backing_track.py now anchoring those paths to its own file location
+  # regardless of CWD.
+  (cd "$DIR" && "$DIR/venv/bin/python" "$DIR/GuitarStudio/server.py" --port "$PORT" >> "$LOG" 2>&1) &
   for _ in $(seq 1 30); do
     curl -s -o /dev/null "$URL" && break
     sleep 0.5

@@ -25,3 +25,4 @@ GuitarStudio/models/*
 
 # Build artifacts
 *.app/
+GuitarStudio/server.log

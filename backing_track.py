@@ -80,8 +80,16 @@ import scipy.signal
 import soundfile as sf
 
 DEFAULT_MODEL = "htdemucs"
-SEPARATED_DIR = Path("separated")
-OUTPUT_DIR = Path("output")
+# Anchored to this script's own location, not the process's ambient working
+# directory: a plain Path("separated") resolves against whatever CWD the
+# process happened to start with, which is only ever correct by accident
+# for the CLI (run from a shell already cd'd here) and is flat-out wrong for
+# a double-clicked Guitar Studio.app launch (Finder gives it some other
+# CWD, so "separated" silently resolved to the wrong place — including, in
+# one real case, macOS's read-only sealed system volume).
+_PROJECT_ROOT = Path(__file__).resolve().parent
+SEPARATED_DIR = _PROJECT_ROOT / "separated"
+OUTPUT_DIR = _PROJECT_ROOT / "output"
 FINGERPRINT_FILE = ".source.json"
 ANALYSIS_FILE = "analysis.json"
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
