@@ -675,6 +675,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        # Same reasoning as _send_file's no-store: this app is actively
+        # developed against a running server, and a stale cached API
+        # response (e.g. /api/nam_models missing a field a newer client
+        # expects) has already caused real confusion once.
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 

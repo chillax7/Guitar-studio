@@ -442,7 +442,10 @@ function paHighlightBrowserSelection(prefix, filename) {
 
 function renderModelBrowser(prefix) {
   const state = modelBrowserState[prefix];
-  const models = paModelsFor(prefix);
+  // Defensive: a stale cached /api/nam_models or /api/ir_models response
+  // (from before this feature shipped) wouldn't carry a folder field at
+  // all — normalize rather than throw and dead-end the whole panel on it.
+  const models = paModelsFor(prefix).map((m) => ({ ...m, folder: m.folder || "" }));
   const listEl = document.getElementById(`pa-${prefix}-list`);
   const breadcrumbEl = document.getElementById(`pa-${prefix}-breadcrumb`);
   const icon = prefix === "nam" ? "🎸" : "🔊";
