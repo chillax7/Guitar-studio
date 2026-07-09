@@ -452,6 +452,11 @@ function renderTrackList() {
 }
 
 async function selectTrack(name) {
+  // Picking a track from the library is a clear intent to work on the
+  // mixer — if Play Along is open over it, close it rather than leaving
+  // the newly-selected track loaded silently behind the overlay.
+  if (typeof closePlayAlong === "function") closePlayAlong();
+
   State.track = name;
   renderTrackList();
   stopPlayback();

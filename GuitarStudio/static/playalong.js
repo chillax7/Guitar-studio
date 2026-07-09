@@ -44,6 +44,8 @@ const PA = {
   meterRaf: null,
   namModels: [],
   irModels: [],
+  tunerEnabled: false, // GP-01 — off by default; autocorrelation is O(n^2)
+                       // and there's no reason to spend it when not tuning
 };
 
 // ---------------------------------------------------------------------------
@@ -290,24 +292,36 @@ function paFreqToNote(freq) {
   return { name: name + octave, cents };
 }
 
+function paResetTunerDisplay(hint) {
+  document.getElementById("pa-tuner-note").textContent = "—";
+  document.getElementById("pa-tuner-cents").textContent = hint;
+  const needleEl = document.getElementById("pa-tuner-needle");
+  needleEl.style.left = "50%";
+  needleEl.classList.remove("in-tune");
+}
+
 function paUpdateTuner(inData) {
   const freq = paAutoCorrelate(inData, Audio.ctx.sampleRate);
+  if (freq < 0) {
+    paResetTunerDisplay("Enable input and play a single note.");
+    return;
+  }
   const noteEl = document.getElementById("pa-tuner-note");
   const centsEl = document.getElementById("pa-tuner-cents");
   const needleEl = document.getElementById("pa-tuner-needle");
-  if (freq < 0) {
-    noteEl.textContent = "—";
-    centsEl.textContent = "Enable input and play a single note.";
-    needleEl.style.left = "50%";
-    needleEl.classList.remove("in-tune");
-    return;
-  }
   const { name, cents } = paFreqToNote(freq);
   noteEl.textContent = name;
   centsEl.textContent = `${freq.toFixed(1)} Hz, ${cents >= 0 ? "+" : ""}${cents}¢`;
   const clamped = Math.max(-50, Math.min(50, cents));
   needleEl.style.left = 50 + clamped + "%";
   needleEl.classList.toggle("in-tune", Math.abs(cents) <= 5);
+}
+
+function paSetTunerEnabled(enabled) {
+  PA.tunerEnabled = enabled;
+  document.getElementById("pa-tuner-toggle").classList.toggle("active", enabled);
+  document.getElementById("pa-tuner-toggle").textContent = enabled ? "Tuner: On" : "Tuner: Off";
+  if (!enabled) paResetTunerDisplay("Tuner is off.");
 }
 
 // GP-10: fixed -1dBFS clip threshold, deliberately NOT self-clearing — the
@@ -344,7 +358,8 @@ function paStartMeters() {
     }
 
     // Throttled — autocorrelation is O(n^2) and doesn't need 60fps for a tuner.
-    if (++tunerFrameCount % 6 === 0) paUpdateTuner(inData);
+    // Skipped entirely (not just left unread) when the tuner is off.
+    if (PA.tunerEnabled && ++tunerFrameCount % 6 === 0) paUpdateTuner(inData);
 
     PA.meterRaf = requestAnimationFrame(tick);
   }
@@ -595,6 +610,8 @@ function wirePAControls() {
     updateClipIndicator();
   });
   document.getElementById("pa-calibrate-btn").addEventListener("click", paCalibrate);
+  document.getElementById("pa-tuner-toggle").addEventListener("click", () => paSetTunerEnabled(!PA.tunerEnabled));
+  paSetTunerEnabled(false); // sync button label/state with the PA.tunerEnabled default
 
   document.querySelectorAll("#pa-amp-modes button").forEach((btn) => {
     btn.addEventListener("click", () => setAmpMode(btn.dataset.mode));
