@@ -763,6 +763,20 @@ function wirePAControls() {
   document.getElementById("playalong-open-btn").addEventListener("click", openPlayAlong);
   document.getElementById("playalong-close-btn").addEventListener("click", closePlayAlong);
   document.getElementById("pa-enable-btn").addEventListener("click", paEnableInput);
+  // Picking a different device in the list did nothing on its own — input
+  // stayed on whatever was live already (often the system default, since
+  // device labels/values only populate after the *first* permission grant,
+  // so the very first Enable click can't have targeted a specific device).
+  // That's how you end up with two sources feeding in "at once": the
+  // original stream never actually stopped, a second one just looked
+  // selected. paEnableInput() already tears down the previous stream
+  // before opening a new one, so re-running it on change is enough to
+  // guarantee only one is ever live — but only if input was already
+  // enabled, so just refreshing the (empty) device list on first open
+  // doesn't itself trigger a permission prompt.
+  document.getElementById("pa-device-select").addEventListener("change", () => {
+    if (PA.stream) paEnableInput();
+  });
   document.getElementById("pa-clip-clear-btn").addEventListener("click", () => {
     PA.inputClipped = false;
     updateClipIndicator();
