@@ -146,7 +146,17 @@ class PVChannel {
         const expected = (TWO_PI * k * Ha) / n;
         let delta = phase - this.lastPhase[k] - expected;
         delta -= TWO_PI * Math.round(delta / TWO_PI); // wrap to [-pi, pi]
-        this.sumPhase[k] += expected + delta;
+        // (expected + delta) is how much phase bin k actually advanced
+        // across the Ha-sample ANALYSIS hop just taken from the source.
+        // Frames are re-emitted every SYNTHESIS_HOP samples regardless of
+        // Ha (that's the whole mechanism of time-stretching), so the
+        // phase must be rescaled from "advance per Ha samples" to
+        // "advance per SYNTHESIS_HOP samples" before accumulating —
+        // otherwise, whenever Ha != SYNTHESIS_HOP (i.e. whenever Speed or
+        // Tune is off unity), every bin's reconstructed frequency is
+        // wrong by the same factor Ha/SYNTHESIS_HOP, which is audible as
+        // Speed shifting pitch instead of preserving it.
+        this.sumPhase[k] += (expected + delta) * (SYNTHESIS_HOP / Ha);
       }
       this.lastPhase[k] = phase;
 
