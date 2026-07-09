@@ -280,6 +280,53 @@ function forwardSample(model, rawInputSample) {
   return model.headScale * headOut[0];
 }
 
+// Real-world .nam captures overwhelmingly lack the metadata.loudness field
+// the reference-wrapper normalization above depends on (measured: 260/261
+// in one real community NAM library) — leaving them at raw, uncalibrated
+// output level, which for some captures is 20+ dB quieter than others. Amp
+// mode selection consequently barely seemed to do anything: not because
+// inference was broken, but because the quiet captures were nearly
+// inaudible next to whatever was played before them. Auto-calibrate against
+// a fixed test tone the same way GP-10 auto-calibrates input level from a
+// played chord, just with a synthesized signal instead of a live one (no
+// take-back-able "play your loudest chord" step makes sense for a file
+// that loads instantly). Runs on a disposable second model build so the
+// real model's causal-conv history stays untouched (zeroed) for actual
+// playback, not polluted by the calibration tone.
+// Runs synchronously on the worklet's message handler, which shares the
+// same real-time render thread as every process() call in this audio
+// context — measured at ~240ms for 8192 samples on this machine, ~80x a
+// single 128-sample quantum's budget, enough to audibly glitch other
+// concurrent playback if a model is (re)loaded mid-session. Trimmed to the
+// shortest burst that still gives a stable RMS reading: at 110Hz, 2048
+// measured samples is still ~5 full cycles.
+const CALIBRATION_TEST_FREQ = 110; // Hz — roughly guitar A2
+const CALIBRATION_TEST_AMPLITUDE = 0.3; // typical DI/pickup level pre-amp
+const CALIBRATION_WARMUP_SAMPLES = 1024; // let dilated-conv history settle before measuring
+const CALIBRATION_MEASURE_SAMPLES = 2048;
+const CALIBRATION_SAMPLES = CALIBRATION_WARMUP_SAMPLES + CALIBRATION_MEASURE_SAMPLES;
+const CALIBRATION_TARGET_RMS = 0.2; // comfortable reference level, well under clipping
+
+function measureModelRms(model) {
+  let sumSq = 0;
+  let measured = 0;
+  const omega = (2 * Math.PI * CALIBRATION_TEST_FREQ) / sampleRate;
+  for (let i = 0; i < CALIBRATION_SAMPLES; i++) {
+    const x = CALIBRATION_TEST_AMPLITUDE * Math.sin(omega * i);
+    const y = forwardSample(model, x);
+    if (i >= CALIBRATION_WARMUP_SAMPLES) { sumSq += y * y; measured++; }
+  }
+  return Math.sqrt(sumSq / Math.max(1, measured));
+}
+
+function autoCalibrateOutputGainDb(namJson) {
+  const calibrationModel = buildModel(namJson);
+  const measuredRms = measureModelRms(calibrationModel);
+  if (measuredRms <= 1e-6) return 0; // silent capture — nothing sensible to compute
+  const gainDb = 20 * Math.log10(CALIBRATION_TARGET_RMS / measuredRms);
+  return Math.max(-24, Math.min(24, gainDb));
+}
+
 // ---------------------------------------------------------------------------
 // Worklet processor: input/output trim (dB), model-loudness auto-normalize,
 // DC blocker — matching the reference wrapper's simple wrapper DSP
@@ -309,6 +356,9 @@ class NAMProcessor extends AudioWorkletProcessor {
     if (msg.type === "load") {
       try {
         this.model = buildModel(msg.nam);
+        if (!(msg.nam.metadata && typeof msg.nam.metadata.loudness === "number")) {
+          this.model.outputGainDb = autoCalibrateOutputGainDb(msg.nam);
+        }
         this.modelOutputGainDb = this.model.outputGainDb;
         const cutoffHz = 10.0;
         const omega = (2 * Math.PI * cutoffHz) / sampleRate;
