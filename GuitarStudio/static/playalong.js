@@ -470,8 +470,19 @@ function renderModelBrowser(prefix) {
     row.addEventListener("click", () => {
       state.selected = m.filename;
       renderModelBrowser(prefix);
-      if (prefix === "nam") paLoadNamModel(m.filename);
-      else paLoadIr(m.filename);
+      if (prefix === "nam") {
+        paLoadNamModel(m.filename);
+      } else {
+        paLoadIr(m.filename);
+        // Bypass defaults on (IR off) — picking one is a clear signal to
+        // hear it. Without this, "picking an IR doesn't change the tone"
+        // is just Bypass still being checked.
+        const bypassEl = document.getElementById("pa-ir-bypass");
+        if (bypassEl.checked) {
+          bypassEl.checked = false;
+          bypassEl.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }
     });
     return row;
   }
@@ -569,9 +580,21 @@ async function paLoadNamModel(filename) {
 }
 
 async function paLoadIr(filename) {
-  if (!filename) { PA.convolver.buffer = null; return; }
-  const arrBuf = await (await fetch(`/api/ir_model_file?filename=${encodeURIComponent(filename)}`)).arrayBuffer();
-  PA.convolver.buffer = await Audio.ctx.decodeAudioData(arrBuf);
+  const statusEl = document.getElementById("pa-ir-status");
+  if (!filename) { PA.convolver.buffer = null; statusEl.textContent = ""; return; }
+  statusEl.textContent = "Loading…";
+  try {
+    const resp = await fetch(`/api/ir_model_file?filename=${encodeURIComponent(filename)}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const arrBuf = await resp.arrayBuffer();
+    PA.convolver.buffer = await Audio.ctx.decodeAudioData(arrBuf);
+    statusEl.textContent = `Loaded: ${filename}`;
+  } catch (e) {
+    // Previously unhandled — a failed fetch/decode silently left the old
+    // (or no) IR buffer in place with zero feedback, indistinguishable
+    // from "picking an IR doesn't change the tone."
+    statusEl.textContent = "Failed to load: " + e.message;
+  }
 }
 
 // ---------------------------------------------------------------------------
