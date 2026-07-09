@@ -40,6 +40,14 @@ body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  /* Grid/flex items default to min-height:auto, which means they refuse to
+     shrink below their content's natural size even with height:100vh on an
+     ancestor — a long track list would silently grow #sidebar (and this
+     whole grid cell) taller than the viewport instead of clipping and
+     scrolling, pushing the Play Along button below the fold with no way to
+     reach it (body has overflow:hidden). min-height:0 lets it actually
+     respect the grid row's height so overflow-y:auto can do its job. */
+  min-height: 0;
 }
 
 #sidebar h2 {
@@ -51,7 +59,7 @@ body {
   margin: 0;
 }
 
-#track-list { flex: 1; overflow-y: auto; }
+#track-list { flex: 1; overflow-y: auto; min-height: 0; }
 
 .track-row {
   padding: 8px 12px;
@@ -84,6 +92,7 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0; /* same grid/flex shrink issue as #sidebar above */
 }
 
 #toolbar {
@@ -208,6 +217,8 @@ button.primary:hover { filter: brightness(1.1); }
   flex: 1;
   overflow: auto;
   padding: 10px 14px;
+  min-height: 0; /* same grid/flex shrink issue as #sidebar — otherwise a
+    6-stem track grows #workspace past the viewport instead of scrolling. */
 }
 #workspace.show { display: block; }
 
