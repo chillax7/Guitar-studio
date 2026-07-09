@@ -108,6 +108,16 @@ async function ensurePAGraph() {
   PA.namNode = new AudioWorkletNode(Audio.ctx, "nam-processor", {
     numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
   });
+  // paLoadNamModel() only listens on this port transiently (for the
+  // "loaded" ack); this catches the process()-side failure fallback
+  // instead of it going silently unnoticed if it's ever actually hit.
+  PA.namNode.port.addEventListener("message", (e) => {
+    if (e.data.type === "runtime-error") {
+      document.getElementById("pa-nam-status").textContent =
+        `Model disabled after a processing error: ${e.data.error}`;
+    }
+  });
+  PA.namNode.port.start();
 
   PA.ampOut = Audio.ctx.createGain();
 

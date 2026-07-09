@@ -390,21 +390,43 @@ class NAMProcessor extends AudioWorkletProcessor {
     const paramInGain = parameters.inputGainDb;
     const paramOutGain = parameters.outputGainDb;
     const frames = outCh.length;
-    for (let i = 0; i < frames; i++) {
-      const inGainDb = paramInGain.length > 1 ? paramInGain[i] : paramInGain[0];
-      const outGainDb = (paramOutGain.length > 1 ? paramOutGain[i] : paramOutGain[0]) + this.modelOutputGainDb;
-      const dry = inCh ? inCh[i] : 0;
-      const withInGain = dry * Math.pow(10, inGainDb / 20);
-      let sample = forwardSample(this.model, withInGain);
-      sample *= Math.pow(10, outGainDb / 20);
+    // process() has no caller-side try/catch (it can't — the browser calls
+    // it directly on the real-time render thread), so an uncaught throw
+    // here is undefined behavior for however many other nodes share this
+    // audio context, not just this one. 261 real-world .nam captures each
+    // have their own weights, and only a handful were exercised in testing
+    // — fail safe (silence + disable this model, not a live crash on
+    // someone's actual playing) rather than assume every possible real
+    // file is covered.
+    try {
+      for (let i = 0; i < frames; i++) {
+        const inGainDb = paramInGain.length > 1 ? paramInGain[i] : paramInGain[0];
+        const outGainDb = (paramOutGain.length > 1 ? paramOutGain[i] : paramOutGain[0]) + this.modelOutputGainDb;
+        const dry = inCh ? inCh[i] : 0;
+        const withInGain = dry * Math.pow(10, inGainDb / 20);
+        let sample = forwardSample(this.model, withInGain);
+        sample *= Math.pow(10, outGainDb / 20);
 
-      // One-pole DC blocker (matches the reference wrapper's 10Hz high-pass)
-      const dcIn = sample;
-      sample = sample - this.dcPrevIn + this.dcCoeff * this.dcPrevOut;
-      this.dcPrevIn = dcIn;
-      this.dcPrevOut = sample;
+        // One-pole DC blocker (matches the reference wrapper's 10Hz high-pass)
+        const dcIn = sample;
+        sample = sample - this.dcPrevIn + this.dcCoeff * this.dcPrevOut;
+        this.dcPrevIn = dcIn;
+        this.dcPrevOut = sample;
+        // Recursive filter state can decay into denormal range during quiet
+        // passages/silence between notes — on some engines/CPUs that's a
+        // 100x+ per-op slowdown, which on a shared single-threaded audio
+        // render callback can starve every other node in the context, not
+        // just this one. Flush-to-zero well below audibility.
+        if (Math.abs(this.dcPrevOut) < 1e-15) this.dcPrevOut = 0;
 
-      outCh[i] = sample;
+        outCh[i] = Number.isFinite(sample) ? sample : 0;
+      }
+    } catch (err) {
+      this.model = null;
+      this.dcPrevIn = 0;
+      this.dcPrevOut = 0;
+      if (inCh) outCh.set(inCh); else outCh.fill(0);
+      this.port.postMessage({ type: "runtime-error", error: String(err && err.message || err) });
     }
     return true;
   }
