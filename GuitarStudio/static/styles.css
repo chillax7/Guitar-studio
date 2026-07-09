@@ -292,6 +292,10 @@ button.primary:hover { filter: brightness(1.1); }
   width: 6px;
   background: var(--accent);
   cursor: ew-resize;
+  /* left is set to 0%/100% (the region's two edges) in JS — center the
+     handle itself on that edge rather than hanging entirely to its right. */
+  transform: translateX(-50%);
+  z-index: 1;
 }
 
 .playhead {

@@ -705,6 +705,15 @@ function updateLoopVisual() {
     return;
   }
   region.classList.add("show");
+  // The handles are children of #loop-region (which is itself positioned
+  // at the loop's start/end below), so they need their own left set
+  // relative to THAT box — 0%/100% of the region, i.e. its two edges —
+  // or both sit wherever their last inline style left them (their
+  // original HTML default: both at left:0, stacked on top of each
+  // other at the region's start, making the start handle unreachable
+  // since the end handle is later in the DOM and grabs every click).
+  document.getElementById("loop-handle-a").style.left = "0%";
+  document.getElementById("loop-handle-b").style.left = "100%";
   const s = State.ui.loop.start / Audio.duration * 100;
   const e = State.ui.loop.end / Audio.duration * 100;
   region.style.left = s + "%";
@@ -874,7 +883,6 @@ function renderInspector() {
 
   const hasGuitar = State.stems.some((s) => s.name === "guitar");
   document.getElementById("split-panel").style.display = hasGuitar ? "block" : "none";
-  document.getElementById("split-open-btn").style.display = hasGuitar ? "inline-block" : "none";
   document.getElementById("export-open-btn").style.display = "inline-block";
 }
 
@@ -903,9 +911,6 @@ function wireSplitPanel() {
     } finally {
       btn.disabled = false;
     }
-  });
-  document.getElementById("split-open-btn").addEventListener("click", () => {
-    document.getElementById("split-panel").scrollIntoView({ behavior: "smooth" });
   });
 }
 
