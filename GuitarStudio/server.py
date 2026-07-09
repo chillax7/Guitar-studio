@@ -624,6 +624,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type or "application/octet-stream")
         self.send_header("Content-Length", str(len(data)))
+        # This app is actively developed against a running server — a
+        # cached stale copy of a .js file (especially an AudioWorklet
+        # module, which only re-registers on a full page reload) has
+        # already caused real confusion once. Not worth any browser cache
+        # ambiguity for a single-user local app.
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 
