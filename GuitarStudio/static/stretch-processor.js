@@ -175,6 +175,13 @@ class StretchProcessor extends AudioWorkletProcessor {
     this.readPos = 0;
 
     this.outBlocks = [new Float32Array(BLOCK_SIZE), new Float32Array(BLOCK_SIZE)];
+    // Synthesis frames (FFT_SIZE) always overhang the BLOCK_SIZE boundary
+    // since FFT_SIZE > SYNTHESIS_HOP — this scratch buffer holds a full
+    // block plus the max possible overhang so that overhang can be carried
+    // into the next block instead of being silently dropped (which caused
+    // a periodic amplitude dip, audible as "volume cutting in and out",
+    // at every block boundary — roughly every 170ms at 48kHz).
+    this.extended = [new Float32Array(BLOCK_SIZE + FFT_SIZE), new Float32Array(BLOCK_SIZE + FFT_SIZE)];
     this.blockPos = BLOCK_SIZE; // force regeneration on first process()
     this.ended = false;
     this.samplesSinceReport = 0;
@@ -191,6 +198,7 @@ class StretchProcessor extends AudioWorkletProcessor {
         this.blockPos = BLOCK_SIZE;
         this.ended = false;
         this.channels.forEach((c) => c.reset());
+        this.extended.forEach((e) => e.fill(0));
         break;
       case "params":
         if (typeof msg.speed === "number") this.speed = msg.speed;
@@ -205,6 +213,7 @@ class StretchProcessor extends AudioWorkletProcessor {
           this.blockPos = BLOCK_SIZE;
           this.ended = false;
           this.channels.forEach((c) => c.reset());
+          this.extended.forEach((e) => e.fill(0));
         }
         break;
       default:
@@ -229,8 +238,20 @@ class StretchProcessor extends AudioWorkletProcessor {
   }
 
   _regenerateBlock() {
-    for (const b of this.outBlocks) b.fill(0);
-    if (!this.sourceChannels) { this.blockPos = 0; return; }
+    if (!this.sourceChannels) {
+      for (const b of this.outBlocks) b.fill(0);
+      this.blockPos = 0;
+      return;
+    }
+
+    // extended[0..FFT_SIZE) starts holding the overhang carried from the
+    // previous block's frames (already accumulated there last call); the
+    // rest starts at zero. Frame contributions are accumulated with no
+    // upper-bound clipping (the buffer is sized to fit the worst-case
+    // overhang), then [0, BLOCK_SIZE) is handed to the caller and
+    // [BLOCK_SIZE, BLOCK_SIZE+FFT_SIZE) becomes the new overhang, shifted
+    // down to [0, FFT_SIZE) for next time.
+    for (const e of this.extended) e.fill(0, FFT_SIZE);
 
     const Ha = SYNTHESIS_HOP * (this.speed / this.pitchRatio);
     let written = 0;
@@ -244,13 +265,19 @@ class StretchProcessor extends AudioWorkletProcessor {
           frame[j] = this._readVirtual(ch, this.readPos + j) * this.window[j];
         }
         const synth = this.channels[ch].synthesize(frame, Ha);
+        const ext = this.extended[ch];
         for (let j = 0; j < FFT_SIZE; j++) {
-          const idx = written + j;
-          if (idx >= 0 && idx < BLOCK_SIZE) this.outBlocks[ch][idx] += synth[j];
+          ext[written + j] += synth[j];
         }
       }
       this.readPos += Ha;
       written += SYNTHESIS_HOP;
+    }
+
+    for (let ch = 0; ch < 2; ch++) {
+      const ext = this.extended[ch];
+      this.outBlocks[ch].set(ext.subarray(0, BLOCK_SIZE));
+      ext.copyWithin(0, BLOCK_SIZE, BLOCK_SIZE + FFT_SIZE);
     }
     this.blockPos = 0;
   }
