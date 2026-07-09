@@ -39,6 +39,8 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <string>0.4</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>CFBundleGetInfoString</key>
+    <string>Guitar Studio 0.4 "Orpheus"</string>
     <key>LSMinimumSystemVersion</key>
     <string>11.0</string>
     <key>NSHighResolutionCapable</key>
