@@ -46,7 +46,7 @@ const State = {
   // mix is the live recipe AND the export recipe (minus solo — solo is
   // monitoring-only, per ui-spec.md §5.4).
   mix: { gains: {}, muted: {}, solo: null, muteRanges: {} },
-  ui: { viewMode: "mixer", loop: null, loopEnabled: false },
+  ui: { loop: null, loopEnabled: false },
 };
 
 const STEM_ORDER = ["vocals", "drums", "bass", "guitar", "piano", "other"];
@@ -461,8 +461,7 @@ async function selectTrack(name) {
 
   State.model = (project && project.model) || State.defaultModel;
   State.mix = (project && project.mix) || { gains: {}, muted: {}, solo: null, muteRanges: {} };
-  State.ui = (project && project.ui) || { viewMode: "mixer", loop: null, loopEnabled: false };
-  setViewMode(State.ui.viewMode, /*save=*/false);
+  State.ui = (project && project.ui) || { loop: null, loopEnabled: false };
   document.getElementById("loop-toggle-btn").classList.toggle("active", State.ui.loopEnabled);
   updateModelBadge();
   if (typeof refreshTakesList === "function") refreshTakesList(); // recorder.js — takes are per-track
@@ -512,13 +511,14 @@ function updateStaleBanner() {
 }
 
 // ---------------------------------------------------------------------------
-// Lanes (Mixer + Timeline share this — Timeline just adds the mute-paint lane)
+// Lanes — waveform + mute-region painting, always shown together (the
+// separate Mixer/Timeline view toggle was removed; painting is opt-in per
+// lane via click-drag, so there's no reason to hide it behind a mode).
 // ---------------------------------------------------------------------------
 
 function renderLanes() {
   const container = document.getElementById("lanes");
   container.innerHTML = "";
-  const timeline = State.ui.viewMode === "timeline";
 
   for (const stem of orderedStems()) {
     const name = stem.name;
@@ -543,20 +543,19 @@ function renderLanes() {
     lane.appendChild(header);
 
     const body = document.createElement("div");
-    body.className = "lane-body" + (timeline ? " timeline" : "");
+    body.className = "lane-body";
     const canvas = document.createElement("canvas");
     body.appendChild(canvas);
     const playhead = document.createElement("div");
     playhead.className = "playhead";
     body.appendChild(playhead);
 
-    if (timeline) {
-      const muteLane = document.createElement("div");
-      muteLane.className = "mute-lane";
-      wireMuteLane(muteLane, name);
-      renderMuteRegions(muteLane, name);
-      body.appendChild(muteLane);
-    }
+    const muteLane = document.createElement("div");
+    muteLane.className = "mute-lane";
+    wireMuteLane(muteLane, name);
+    renderMuteRegions(muteLane, name);
+    body.appendChild(muteLane);
+
     lane.appendChild(body);
     container.appendChild(lane);
 
@@ -825,14 +824,6 @@ function wireTransport() {
   });
 }
 
-function setViewMode(mode, save = true) {
-  State.ui.viewMode = mode;
-  document.getElementById("view-mixer").classList.toggle("active", mode === "mixer");
-  document.getElementById("view-timeline").classList.toggle("active", mode === "timeline");
-  renderLanes();
-  if (save) saveProjectDebounced();
-}
-
 // ---------------------------------------------------------------------------
 // Inspector: track analysis, guitar split, export
 // ---------------------------------------------------------------------------
@@ -1091,11 +1082,6 @@ async function importFile(file) {
 // Init
 // ---------------------------------------------------------------------------
 
-function wireViewToggle() {
-  document.getElementById("view-mixer").addEventListener("click", () => setViewMode("mixer"));
-  document.getElementById("view-timeline").addEventListener("click", () => setViewMode("timeline"));
-}
-
 let resizeTimer = null;
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
@@ -1188,7 +1174,6 @@ function wireKeyboardShortcuts() {
 async function init() {
   initRuler();
   wireTransport();
-  wireViewToggle();
   wireModelBadge();
   wireSplitPanel();
   wireExportPanel();

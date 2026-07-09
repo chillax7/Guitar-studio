@@ -96,18 +96,6 @@ body {
 
 #toolbar .spacer { flex: 1; }
 
-.view-toggle button {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  padding: 4px 10px;
-  cursor: pointer;
-  font-size: 12px;
-}
-.view-toggle button.active { background: var(--accent-dim); color: var(--text); border-color: var(--accent); }
-.view-toggle button:first-child { border-radius: 4px 0 0 4px; }
-.view-toggle button:last-child { border-radius: 0 4px 4px 0; border-left: none; }
-
 button {
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -250,8 +238,7 @@ button.primary:hover { filter: brightness(1.1); }
 .lane.solo-active { background: rgba(224, 195, 74, 0.06); }
 
 .lane-body { position: relative; min-height: 56px; }
-.lane-body canvas { width: 100%; height: 56px; display: block; background: var(--panel-2); border-radius: 3px; }
-.lane-body.timeline canvas { height: 90px; }
+.lane-body canvas { width: 100%; height: 90px; display: block; background: var(--panel-2); border-radius: 3px; }
 
 .mute-lane {
   position: relative;
