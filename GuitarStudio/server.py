@@ -172,36 +172,66 @@ def svc_tracks() -> dict:
     return {"tracks": tracks}
 
 
+def _scan_model_dir(root: Path, suffixes: tuple[str, ...]) -> list[dict]:
+    """Recursively list matching files under root, for libraries organized
+    into pack subfolders (a real user's NAM/IR collection ran to 4600+ files
+    across 260+ subdirectories — a flat, non-recursive scan found almost
+    none of it). filename is the root-relative path (with '/' separators),
+    used both as the picker's grouping key and as the id passed back to
+    resolve_nam_file/resolve_ir_file. Suffix match is case-insensitive
+    (real packs mix .wav and .WAV)."""
+    suffixes_lower = tuple(s.lower() for s in suffixes)
+    out = []
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in suffixes_lower:
+            continue
+        rel = path.relative_to(root)
+        out.append({
+            "name": path.stem,
+            "filename": str(rel),
+            "folder": str(rel.parent) if rel.parent != Path(".") else "",
+            "size": path.stat().st_size,
+        })
+    out.sort(key=lambda m: (m["folder"], m["name"]))
+    return out
+
+
 def svc_nam_models() -> dict:
-    """Every .nam capture under models/nam/, for the Play Along amp picker.
-    A plain directory listing (GP-05's pattern) so dropping a new capture in
-    shows up after a refresh — no separate registration step."""
-    models = []
-    for path in sorted(NAM_DIR.glob("*.nam")):
-        models.append({"name": path.stem, "filename": path.name, "size": path.stat().st_size})
-    return {"models": models}
+    """Every .nam capture under models/nam/ (recursively — see
+    _scan_model_dir), for the Play Along amp picker. A plain directory
+    listing (GP-05's pattern) so dropping a new capture in shows up after a
+    refresh — no separate registration step."""
+    return {"models": _scan_model_dir(NAM_DIR, (".nam",))}
 
 
 def svc_ir_models() -> dict:
-    """Every cab IR under models/ir/, same pattern as svc_nam_models."""
-    irs = []
-    for path in sorted(IR_DIR.glob("*.wav")):
-        irs.append({"name": path.stem, "filename": path.name, "size": path.stat().st_size})
-    return {"irs": irs}
+    """Every cab IR under models/ir/ (recursively), same pattern as
+    svc_nam_models. Only .wav — real IR packs also ship .syx (hardware
+    sysex dumps) and other formats decodeAudioData can't read."""
+    return {"irs": _scan_model_dir(IR_DIR, (".wav",))}
+
+
+def _resolve_model_file(root: Path, rel_filename: str, kind: str) -> Path:
+    """Nested pack subfolders mean this can't use safe_name() (which strips
+    '/' as a traversal defense) — resolve the joined path directly and
+    verify containment instead, the same pattern _serve_static() uses for
+    STATIC_DIR."""
+    path = (root / rel_filename).resolve()
+    try:
+        path.relative_to(root.resolve())
+    except ValueError:
+        raise ApiError(400, f"Invalid {kind} path")
+    if not path.exists():
+        raise ApiError(404, f"No {kind} named '{rel_filename}'")
+    return path
 
 
 def resolve_nam_file(filename: str) -> Path:
-    path = NAM_DIR / safe_name(filename)
-    if not path.exists():
-        raise ApiError(404, f"No NAM model named '{filename}'")
-    return path
+    return _resolve_model_file(NAM_DIR, filename, "NAM model")
 
 
 def resolve_ir_file(filename: str) -> Path:
-    path = IR_DIR / safe_name(filename)
-    if not path.exists():
-        raise ApiError(404, f"No IR named '{filename}'")
-    return path
+    return _resolve_model_file(IR_DIR, filename, "IR")
 
 
 def svc_import(filename: str, data: bytes) -> dict:

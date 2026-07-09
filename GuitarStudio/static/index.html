@@ -238,7 +238,11 @@
           </div>
 
           <div id="pa-amp-neural" class="pa-mode-panel" style="display:none">
-            <select id="pa-nam-select"></select>
+            <div class="model-browser" id="pa-nam-browser">
+              <input type="text" class="model-browser-search" id="pa-nam-search" placeholder="Search all models…">
+              <div class="model-browser-breadcrumb" id="pa-nam-breadcrumb"></div>
+              <div class="model-browser-list" id="pa-nam-list"></div>
+            </div>
             <p class="hint" id="pa-nam-status"></p>
             <label>Input trim <span id="pa-nam-in-val">0 dB</span></label>
             <input type="range" id="pa-nam-in" min="-24" max="24" step="1" value="0">
@@ -253,7 +257,11 @@
         <section class="pa-card">
           <h3>Cab IR</h3>
           <div class="row"><label>Bypass</label><input type="checkbox" id="pa-ir-bypass" checked></div>
-          <select id="pa-ir-select"></select>
+          <div class="model-browser" id="pa-ir-browser">
+            <input type="text" class="model-browser-search" id="pa-ir-search" placeholder="Search all IRs…">
+            <div class="model-browser-breadcrumb" id="pa-ir-breadcrumb"></div>
+            <div class="model-browser-list" id="pa-ir-list"></div>
+          </div>
         </section>
 
         <section class="pa-card">

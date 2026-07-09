@@ -408,31 +408,131 @@ async function paCalibrate() {
 async function paRefreshNamModels() {
   const r = await Api.get("/api/nam_models");
   PA.namModels = r.models;
-  const sel = document.getElementById("pa-nam-select");
-  const prev = sel.value;
-  sel.innerHTML = '<option value="">— choose a model —</option>';
-  for (const m of PA.namModels) {
-    const opt = document.createElement("option");
-    opt.value = m.filename;
-    opt.textContent = m.name;
-    sel.appendChild(opt);
-  }
-  if (prev) sel.value = prev;
+  renderModelBrowser("nam");
 }
 
 async function paRefreshIrModels() {
   const r = await Api.get("/api/ir_models");
   PA.irModels = r.irs;
-  const sel = document.getElementById("pa-ir-select");
-  const prev = sel.value;
-  sel.innerHTML = '<option value="">— none —</option>';
-  for (const m of PA.irModels) {
-    const opt = document.createElement("option");
-    opt.value = m.filename;
-    opt.textContent = m.name;
-    sel.appendChild(opt);
+  renderModelBrowser("ir");
+}
+
+// ---------------------------------------------------------------------------
+// NAM/IR folder browser — real libraries run to hundreds/thousands of files
+// across nested pack subfolders (a real user's IR collection: 3065 files
+// across 143 folders), so a flat <select> stopped being usable. One folder
+// level at a time with a breadcrumb; a non-empty search box flattens to a
+// filtered list across the whole library instead (a pure folder browser
+// alone doesn't scale to "which of 3000 files was that IR again").
+// ---------------------------------------------------------------------------
+
+const modelBrowserState = {
+  nam: { folder: "", search: "", selected: null },
+  ir: { folder: "", search: "", selected: null },
+};
+
+function paModelsFor(prefix) {
+  return prefix === "nam" ? PA.namModels : PA.irModels;
+}
+
+function paHighlightBrowserSelection(prefix, filename) {
+  modelBrowserState[prefix].selected = filename;
+  renderModelBrowser(prefix);
+}
+
+function renderModelBrowser(prefix) {
+  const state = modelBrowserState[prefix];
+  const models = paModelsFor(prefix);
+  const listEl = document.getElementById(`pa-${prefix}-list`);
+  const breadcrumbEl = document.getElementById(`pa-${prefix}-breadcrumb`);
+  const icon = prefix === "nam" ? "🎸" : "🔊";
+  listEl.innerHTML = "";
+  breadcrumbEl.innerHTML = "";
+
+  function makeFileRow(m, showFolder) {
+    const row = document.createElement("div");
+    row.className = "model-browser-row file" + (state.selected === m.filename ? " selected" : "");
+    row.textContent = `${icon} ${m.name}` + (showFolder && m.folder ? `  —  ${m.folder}` : "");
+    row.title = m.filename;
+    row.addEventListener("click", () => {
+      state.selected = m.filename;
+      renderModelBrowser(prefix);
+      if (prefix === "nam") paLoadNamModel(m.filename);
+      else paLoadIr(m.filename);
+    });
+    return row;
   }
-  if (prev) sel.value = prev;
+
+  const query = state.search.trim().toLowerCase();
+  if (query) {
+    const matches = models.filter((m) =>
+      m.name.toLowerCase().includes(query) || m.folder.toLowerCase().includes(query));
+    breadcrumbEl.textContent = `${matches.length} result${matches.length === 1 ? "" : "s"} for "${state.search.trim()}"`;
+    for (const m of matches) listEl.appendChild(makeFileRow(m, true));
+    if (!matches.length) {
+      const empty = document.createElement("div");
+      empty.className = "model-browser-row empty";
+      empty.textContent = "No matches.";
+      listEl.appendChild(empty);
+    }
+    return;
+  }
+
+  // Breadcrumb: root label + one clickable crumb per path segment.
+  const rootCrumb = document.createElement("span");
+  rootCrumb.className = "crumb";
+  rootCrumb.textContent = prefix === "nam" ? "All models" : "All IRs";
+  rootCrumb.addEventListener("click", () => { state.folder = ""; renderModelBrowser(prefix); });
+  breadcrumbEl.appendChild(rootCrumb);
+  const segments = state.folder ? state.folder.split("/") : [];
+  let accum = "";
+  for (const seg of segments) {
+    accum = accum ? `${accum}/${seg}` : seg;
+    breadcrumbEl.appendChild(document.createTextNode("  /  "));
+    const crumb = document.createElement("span");
+    crumb.className = "crumb";
+    crumb.textContent = seg;
+    const target = accum;
+    crumb.addEventListener("click", () => { state.folder = target; renderModelBrowser(prefix); });
+    breadcrumbEl.appendChild(crumb);
+  }
+
+  // Immediate child folders and files of the current folder.
+  const childFolders = new Set();
+  const childFiles = [];
+  for (const m of models) {
+    if (m.folder === state.folder) {
+      childFiles.push(m);
+    } else if (state.folder === "" || m.folder.startsWith(state.folder + "/")) {
+      const rest = state.folder === "" ? m.folder : m.folder.slice(state.folder.length + 1);
+      const firstSeg = rest.split("/")[0];
+      if (firstSeg) childFolders.add(firstSeg);
+    }
+  }
+  for (const folderName of [...childFolders].sort((a, b) => a.localeCompare(b))) {
+    const row = document.createElement("div");
+    row.className = "model-browser-row folder";
+    row.textContent = "📁 " + folderName;
+    row.addEventListener("click", () => {
+      state.folder = state.folder ? `${state.folder}/${folderName}` : folderName;
+      renderModelBrowser(prefix);
+    });
+    listEl.appendChild(row);
+  }
+  for (const m of childFiles) listEl.appendChild(makeFileRow(m, false));
+  if (!childFolders.size && !childFiles.length) {
+    const empty = document.createElement("div");
+    empty.className = "model-browser-row empty";
+    empty.textContent = "Empty folder.";
+    listEl.appendChild(empty);
+  }
+}
+
+function wireModelBrowser(prefix) {
+  document.getElementById(`pa-${prefix}-search`).addEventListener("input", (e) => {
+    modelBrowserState[prefix].search = e.target.value;
+    renderModelBrowser(prefix);
+  });
 }
 
 async function paLoadNamModel(filename) {
@@ -496,6 +596,19 @@ async function paSuggestClosestModel() {
   return paSuggestNamModel();
 }
 
+// Each candidate costs a fetch + a real offline render through the model
+// (measured ~740ms/model on this machine, dominated by rendering — this is
+// a from-scratch, non-WASM WaveNet, slower than real-time). That was fine
+// against the two bundled starter captures this was built/tested against,
+// but a real community NAM library can run to hundreds of files — 261
+// measured extrapolates to ~3 minutes with zero feedback, indistinguishable
+// from hung. Cap the candidate count and stride evenly through the full
+// (folder-sorted) list so a capped sample still spans every pack rather
+// than just whichever sorts first; report live progress since even the
+// capped run takes several seconds.
+const SUGGEST_MAX_CANDIDATES = 30;
+const SUGGEST_TEST_SECONDS = 0.15; // enough samples for a stable ZCR reading
+
 async function paSuggestNamModel() {
   const resultEl = document.getElementById("pa-suggest-result");
   resultEl.textContent = "Analyzing…";
@@ -503,11 +616,18 @@ async function paSuggestNamModel() {
     const targetZcr = await paTargetGuitarZcr();
     if (!PA.namModels.length) await paRefreshNamModels();
 
-    const testSignal = new Float32Array(Math.floor(Audio.ctx.sampleRate * 0.5));
+    const all = PA.namModels;
+    const step = Math.max(1, Math.floor(all.length / SUGGEST_MAX_CANDIDATES));
+    const candidates = [];
+    for (let i = 0; i < all.length && candidates.length < SUGGEST_MAX_CANDIDATES; i += step) candidates.push(all[i]);
+
+    const testSignal = new Float32Array(Math.floor(Audio.ctx.sampleRate * SUGGEST_TEST_SECONDS));
     for (let i = 0; i < testSignal.length; i++) testSignal[i] = (Math.random() * 2 - 1) * 0.3;
 
     const scored = [];
-    for (const m of PA.namModels) {
+    for (let ci = 0; ci < candidates.length; ci++) {
+      const m = candidates[ci];
+      resultEl.textContent = `Analyzing… (${ci + 1}/${candidates.length})`;
       try {
         const namJson = await (await fetch(`/api/nam_model_file?filename=${encodeURIComponent(m.filename)}`)).json();
         const offlineCtx = new OfflineAudioContext(1, testSignal.length, Audio.ctx.sampleRate);
@@ -534,11 +654,13 @@ async function paSuggestNamModel() {
     if (!scored.length) { resultEl.textContent = "No models available to compare."; return; }
 
     const best = scored[0];
+    const sampledNote = all.length > candidates.length
+      ? ` (sampled ${candidates.length} of ${all.length} models across the library)` : "";
     resultEl.innerHTML = `Closest match: <b>${escapeHtml(best.name)}</b> ` +
-      `(brightness-proxy match, not a guaranteed tone match — audition and pick by ear).<br>` +
+      `(brightness-proxy match, not a guaranteed tone match — audition and pick by ear)${sampledNote}.<br>` +
       `Ranking: ${scored.map((s) => escapeHtml(s.name)).join(" → ")}`;
-    document.getElementById("pa-nam-select").value = best.filename;
     await paLoadNamModel(best.filename);
+    paHighlightBrowserSelection("nam", best.filename);
     setAmpMode("neural");
   } catch (e) {
     resultEl.textContent = "Could not analyze: " + e.message;
@@ -637,7 +759,7 @@ function wirePAControls() {
     });
   }
 
-  document.getElementById("pa-nam-select").addEventListener("change", (e) => { if (e.target.value) paLoadNamModel(e.target.value); });
+  wireModelBrowser("nam");
   document.getElementById("pa-nam-in").addEventListener("input", (e) => {
     PA.namNode.parameters.get("inputGainDb").value = parseFloat(e.target.value);
     document.getElementById("pa-nam-in-val").textContent = e.target.value + " dB";
@@ -648,7 +770,7 @@ function wirePAControls() {
   });
   document.getElementById("pa-suggest-btn").addEventListener("click", paSuggestClosestModel);
 
-  document.getElementById("pa-ir-select").addEventListener("change", (e) => paLoadIr(e.target.value));
+  wireModelBrowser("ir");
   document.getElementById("pa-ir-bypass").addEventListener("change", (e) => {
     const bypassed = e.target.checked;
     PA.irDryGain.gain.value = bypassed ? 1 : 0;

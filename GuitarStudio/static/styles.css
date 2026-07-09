@@ -375,6 +375,48 @@ button.primary:hover { filter: brightness(1.1); }
 
 .pa-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
 .pa-tabs button { flex: 1; font-size: 11px; }
+
+/* Folder-navigable NAM/IR picker — a flat <select> stopped being usable
+   once real libraries ran to hundreds/thousands of files across nested
+   pack subfolders. Breadcrumb + one folder level at a time, with a search
+   box that flattens across the whole library when non-empty. */
+.model-browser-search {
+  width: 100%;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 6px;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.model-browser-breadcrumb {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  min-height: 14px;
+}
+.model-browser-breadcrumb .crumb { cursor: pointer; color: var(--accent); }
+.model-browser-breadcrumb .crumb:hover { text-decoration: underline; }
+.model-browser-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-2);
+}
+.model-browser-row {
+  padding: 5px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.model-browser-row:hover { background: var(--accent-dim); }
+.model-browser-row.file.selected { background: var(--accent); color: #fff; }
+.model-browser-row.empty { color: var(--text-dim); cursor: default; }
+.model-browser-row.empty:hover { background: none; }
 .pa-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 .pa-meter {
