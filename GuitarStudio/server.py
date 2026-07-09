@@ -47,7 +47,7 @@ NAM_DIR.mkdir(parents=True, exist_ok=True)
 IR_DIR.mkdir(parents=True, exist_ok=True)
 INPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9 ._\-\[\]()]+")
+SAFE_NAME_RE = re.compile(r"[\x00/]+")
 DEFAULT_PORT = 8765
 
 
@@ -68,12 +68,17 @@ class ApiError(Exception):
 # ---------------------------------------------------------------------------
 
 def safe_name(name: str) -> str:
-    """Sanitize a user-supplied filename: drop any directory component and
-    replace anything that isn't a simple filename character, so upload
-    filenames and query params can never be used to escape input/ or
-    output/ (e.g. via '../../etc/passwd' or an absolute path)."""
+    """Sanitize a user-supplied filename: drop any directory component
+    (Path(...).name is the actual traversal defense — '../../etc/passwd'
+    and '/etc/passwd' both collapse to just 'passwd') and strip only NUL
+    bytes / stray slashes as a belt-and-suspenders backstop. Deliberately
+    permissive beyond that: real music filenames routinely contain commas,
+    apostrophes, ampersands, accented characters, etc., and an earlier,
+    much stricter character allowlist here was silently mangling those
+    (e.g. a comma became '_', so a track saved as "A, B.mp3" could no
+    longer be found under its real name)."""
     name = Path(name).name
-    name = SAFE_NAME_RE.sub("_", name).strip()
+    name = SAFE_NAME_RE.sub("", name).strip()
     if not name or name in (".", ".."):
         raise ApiError(400, "Invalid or empty name")
     return name
