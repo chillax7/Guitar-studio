@@ -185,7 +185,7 @@ button.primary:hover { filter: brightness(1.1); }
 }
 #stale-banner.show { display: flex; }
 
-#empty-state, #no-stems-state, #separating-state {
+#empty-state, #loading-state, #no-stems-state, #separating-state {
   display: none;
   flex: 1;
   flex-direction: column;
@@ -194,7 +194,7 @@ button.primary:hover { filter: brightness(1.1); }
   gap: 14px;
   color: var(--text-dim);
 }
-#empty-state.show, #no-stems-state.show, #separating-state.show { display: flex; }
+#empty-state.show, #loading-state.show, #no-stems-state.show, #separating-state.show { display: flex; }
 
 #no-stems-state .hint { font-size: 12px; max-width: 320px; text-align: center; }
 

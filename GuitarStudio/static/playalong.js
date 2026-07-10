@@ -375,6 +375,20 @@ function paSetTunerEnabled(enabled) {
   document.getElementById("pa-tuner-toggle").classList.toggle("active", enabled);
   document.getElementById("pa-tuner-toggle").textContent = enabled ? "Tuner: On" : "Tuner: Off";
   if (!enabled) paResetTunerDisplay("Tuner is off.");
+
+  // Tuning by ear against a live amp tone (or the backing track) fights the
+  // whole point of a tuner — mute both while it's on, same convention as a
+  // hardware tuner pedal muting its through signal. Restores to whatever
+  // level each was actually set to (not just back to 1.0/unity) by
+  // re-reading their own controls, since either could differ from default.
+  if (PA.outputGain) {
+    const outEl = document.getElementById("pa-output-level");
+    PA.outputGain.gain.value = enabled ? 0 : Math.pow(10, parseFloat((outEl && outEl.value) || "0") / 20);
+  }
+  if (Audio.master) {
+    const volEl = transportEls("volume-slider")[0];
+    Audio.master.gain.value = enabled ? 0 : parseFloat((volEl && volEl.value) || "100") / 100;
+  }
 }
 
 // GP-10: fixed -1dBFS clip threshold, deliberately NOT self-clearing — the

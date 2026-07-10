@@ -39,23 +39,31 @@
     </div>
 
     <div id="transport">
-      <button id="play-btn">▶</button>
-      <button id="stop-btn">■</button>
-      <span id="time-display">0:00 / 0:00</span>
-      <button id="loop-toggle-btn">Loop</button>
-      <label class="transport-label"><input type="checkbox" id="count-in-toggle"> Count-in</label>
+      <button id="play-btn" data-transport="play-btn">▶</button>
+      <button id="stop-btn" data-transport="stop-btn">■</button>
+      <span id="time-display" data-transport="time-display">0:00 / 0:00</span>
+      <button id="loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
+      <label class="transport-label"><input type="checkbox" id="count-in-toggle" data-transport="count-in-toggle"> Count-in</label>
       <span class="transport-label">BPM</span>
-      <span id="bpm-display">—</span>
+      <span id="bpm-display" data-transport="bpm-display">—</span>
       <span class="transport-label">Speed</span>
-      <input type="range" id="speed-slider" min="0.5" max="2" step="0.05" value="1">
-      <span id="speed-display">1.00×</span>
+      <input type="range" id="speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
+      <span id="speed-display" data-transport="speed-display">1.00×</span>
       <span class="transport-label">Tune</span>
-      <input type="range" id="tune-slider" min="-100" max="100" step="1" value="0">
-      <span id="tune-display">0¢</span>
+      <input type="range" id="tune-slider" data-transport="tune-slider" min="-100" max="100" step="1" value="0">
+      <span id="tune-display" data-transport="tune-display">0¢</span>
+      <span class="transport-label">Volume</span>
+      <input type="range" id="volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
+      <span id="volume-display" data-transport="volume-display">100%</span>
     </div>
 
     <div id="empty-state" class="show">
       <p>Select a track from the Library, or drop an audio file to import one.</p>
+    </div>
+
+    <div id="loading-state">
+      <div class="spinner"></div>
+      <p>Loading…</p>
     </div>
 
     <div id="no-stems-state">
@@ -129,6 +137,26 @@
         <button id="playalong-close-btn">✕ Close</button>
       </div>
       <div id="playalong-body">
+
+        <section class="pa-card">
+          <h3>Backing Track</h3>
+          <div class="row">
+            <button id="pa-bt-play-btn" data-transport="play-btn" class="primary">▶</button>
+            <button id="pa-bt-stop-btn" data-transport="stop-btn">■</button>
+            <span id="pa-bt-time-display" data-transport="time-display">0:00 / 0:00</span>
+          </div>
+          <div class="row">
+            <button id="pa-bt-loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
+            <label style="margin:0"><input type="checkbox" id="pa-bt-count-in-toggle" data-transport="count-in-toggle"> Count-in</label>
+          </div>
+          <label>BPM <span id="pa-bt-bpm-display" data-transport="bpm-display">—</span></label>
+          <label>Speed <span id="pa-bt-speed-display" data-transport="speed-display">1.00×</span></label>
+          <input type="range" id="pa-bt-speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
+          <label>Tune <span id="pa-bt-tune-display" data-transport="tune-display">0¢</span></label>
+          <input type="range" id="pa-bt-tune-slider" data-transport="tune-slider" min="-100" max="100" step="1" value="0">
+          <label>Volume <span id="pa-bt-volume-display" data-transport="volume-display">100%</span></label>
+          <input type="range" id="pa-bt-volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
+        </section>
 
         <section class="pa-card">
           <h3>Input</h3>

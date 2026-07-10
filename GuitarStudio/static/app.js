@@ -423,7 +423,7 @@ function saveProjectDebounced() {
 // ---------------------------------------------------------------------------
 
 function showState(name) {
-  for (const s of ["empty-state", "no-stems-state", "separating-state", "workspace"]) {
+  for (const s of ["empty-state", "loading-state", "no-stems-state", "separating-state", "workspace"]) {
     document.getElementById(s).classList.toggle("show", s === name);
   }
   document.getElementById("transport").classList.toggle("show", name === "workspace");
@@ -460,16 +460,20 @@ async function selectTrack(name) {
   State.track = name;
   renderTrackList();
   stopPlayback();
-  showState("empty-state");
+  // "Loading…" instead of the empty-state's "select a track" message —
+  // a track WAS just selected, that message briefly re-showing while
+  // stems load read as if the click hadn't registered.
+  showState("loading-state");
   document.getElementById("separate-btn").style.display = "inline-block";
 
   // Speed/Tune aren't part of the saved project (deliberately — carrying
   // yesterday's half-speed setting silently into a new song would be a
-  // trap, not a feature); reset to unity on every track switch.
-  document.getElementById("speed-slider").value = "1";
-  document.getElementById("tune-slider").value = "0";
-  document.getElementById("speed-display").textContent = "1.00×";
-  document.getElementById("tune-display").textContent = "0¢";
+  // trap, not a feature); reset to unity on every track switch. Volume is
+  // NOT reset here — it's a listening-level preference, not song data.
+  setTransportValue("speed-slider", "1");
+  setTransportValue("tune-slider", "0");
+  setTransportText("speed-display", "1.00×");
+  setTransportText("tune-display", "0¢");
   await setSpeedTune(1.0, 1.0);
 
   let project = null;
@@ -480,7 +484,7 @@ async function selectTrack(name) {
   State.model = (project && project.model) || State.defaultModel;
   State.mix = (project && project.mix) || { gains: {}, muted: {}, solo: null, muteRanges: {} };
   State.ui = (project && project.ui) || { loop: null, loopEnabled: false };
-  document.getElementById("loop-toggle-btn").classList.toggle("active", State.ui.loopEnabled);
+  toggleTransportClass("loop-toggle-btn", "active", State.ui.loopEnabled);
   updateModelBadge();
   if (typeof refreshTakesList === "function") refreshTakesList(); // recorder.js — takes are per-track
 
@@ -749,7 +753,7 @@ function renderPlayhead(pos) {
 }
 
 function renderTimeDisplay(pos) {
-  document.getElementById("time-display").textContent = `${fmtTime(pos)} / ${fmtTime(Audio.duration)}`;
+  setTransportText("time-display", `${fmtTime(pos)} / ${fmtTime(Audio.duration)}`);
 }
 
 function tick() {
@@ -770,7 +774,7 @@ function tick() {
         seekTo(State.ui.loop.start);
       } else if (pos >= Audio.duration && Audio.duration > 0) {
         stopPlayback();
-        document.getElementById("play-btn").textContent = "▶";
+        setTransportText("play-btn", "▶");
       }
     }
     applyLiveMuteRanges(currentPosition());
@@ -822,33 +826,89 @@ function withOptionalCountIn(enabled, onBeatOne) {
   setTimeout(onBeatOne, delayMs);
 }
 
+// ---------------------------------------------------------------------------
+// Transport mirroring — the main toolbar transport (play/stop/loop/count-in/
+// BPM/speed/tune/volume) is duplicated verbatim as a "Backing Track" card at
+// the top of the Play Along panel (index.html), so switching amp models
+// doesn't mean leaving Play Along to reach playback controls. Every mirrored
+// control shares a data-transport="<name>" attribute across both copies;
+// these helpers read/write "all copies of control X" instead of one
+// getElementById, so the two stay in lockstep with no separate state.
+// ---------------------------------------------------------------------------
+
+function transportEls(name) {
+  return Array.from(document.querySelectorAll(`[data-transport="${name}"]`));
+}
+function setTransportText(name, text) {
+  for (const el of transportEls(name)) el.textContent = text;
+}
+function setTransportValue(name, value) {
+  for (const el of transportEls(name)) el.value = value;
+}
+function toggleTransportClass(name, cls, on) {
+  for (const el of transportEls(name)) el.classList.toggle(cls, on);
+}
+function onTransportClick(name, handler) {
+  for (const el of transportEls(name)) el.addEventListener("click", handler);
+}
+// Fires handler(value) once per user interaction (not once per mirrored
+// element) — the triggering element's value is pushed to every mirror
+// BEFORE handler runs, so handler can read any transport value via
+// transportEls(...)[0] and see the just-updated state.
+function onTransportInput(name, handler) {
+  for (const el of transportEls(name)) {
+    el.addEventListener("input", () => {
+      setTransportValue(name, el.value);
+      handler(el.value);
+    });
+  }
+}
+function onTransportChange(name, handler) {
+  for (const el of transportEls(name)) {
+    el.addEventListener("change", () => {
+      for (const other of transportEls(name)) other.checked = el.checked;
+      handler(el.checked);
+    });
+  }
+}
+
 function wireTransport() {
-  document.getElementById("play-btn").addEventListener("click", () => {
+  onTransportClick("play-btn", () => {
     if (!Audio.ctx || State.stems.length === 0) return;
     if (Audio.playing) {
       pausePlayback();
-      document.getElementById("play-btn").textContent = "▶";
+      setTransportText("play-btn", "▶");
     } else {
       if (Audio.ctx.state === "suspended") Audio.ctx.resume();
       const offset = Audio.playStartOffset;
-      withOptionalCountIn(document.getElementById("count-in-toggle").checked, () => startPlaybackAt(offset));
-      document.getElementById("play-btn").textContent = "⏸";
+      const countInEl = transportEls("count-in-toggle")[0];
+      withOptionalCountIn(!!(countInEl && countInEl.checked), () => startPlaybackAt(offset));
+      setTransportText("play-btn", "⏸");
     }
   });
-  document.getElementById("stop-btn").addEventListener("click", () => {
+  onTransportClick("stop-btn", () => {
     stopPlayback();
-    document.getElementById("play-btn").textContent = "▶";
+    setTransportText("play-btn", "▶");
     renderPlayhead(0);
     renderTimeDisplay(0);
   });
-  document.getElementById("loop-toggle-btn").addEventListener("click", () => {
+  onTransportClick("loop-toggle-btn", () => {
     State.ui.loopEnabled = !State.ui.loopEnabled;
     if (State.ui.loopEnabled && !State.ui.loop) {
       State.ui.loop = { start: 0, end: Audio.duration || 0 };
     }
-    document.getElementById("loop-toggle-btn").classList.toggle("active", State.ui.loopEnabled);
+    toggleTransportClass("loop-toggle-btn", "active", State.ui.loopEnabled);
     updateLoopVisual();
     saveProjectDebounced();
+  });
+  onTransportChange("count-in-toggle", () => {}); // no behavior of its own — just keeps both checkboxes in sync
+}
+
+function wireVolumeSlider() {
+  onTransportInput("volume-slider", (val) => {
+    const pct = parseFloat(val);
+    setTransportText("volume-display", pct + "%");
+    if (Audio.master) Audio.master.gain.value = pct / 100;
   });
 }
 
@@ -858,24 +918,25 @@ function wireTransport() {
 
 function updateBpmDisplay() {
   const a = State.analysis || {};
-  if (!a.bpm) { document.getElementById("bpm-display").textContent = "—"; return; }
-  const speed = parseFloat(document.getElementById("speed-slider").value || "1");
-  document.getElementById("bpm-display").textContent = Math.round(a.bpm * speed);
+  if (!a.bpm) { setTransportText("bpm-display", "—"); return; }
+  const speedEl = transportEls("speed-slider")[0];
+  const speed = parseFloat((speedEl && speedEl.value) || "1");
+  setTransportText("bpm-display", Math.round(a.bpm * speed));
 }
 
 function wireSpeedTune() {
-  const speedEl = document.getElementById("speed-slider");
-  const tuneEl = document.getElementById("tune-slider");
   function apply() {
+    const speedEl = transportEls("speed-slider")[0];
+    const tuneEl = transportEls("tune-slider")[0];
     const speed = parseFloat(speedEl.value);
     const cents = parseFloat(tuneEl.value);
-    document.getElementById("speed-display").textContent = speed.toFixed(2) + "×";
-    document.getElementById("tune-display").textContent = (cents >= 0 ? "+" : "") + cents + "¢";
+    setTransportText("speed-display", speed.toFixed(2) + "×");
+    setTransportText("tune-display", (cents >= 0 ? "+" : "") + cents + "¢");
     updateBpmDisplay();
     setSpeedTune(speed, Math.pow(2, cents / 1200));
   }
-  speedEl.addEventListener("input", apply);
-  tuneEl.addEventListener("input", apply);
+  onTransportInput("speed-slider", apply);
+  onTransportInput("tune-slider", apply);
 }
 
 const PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8; // mirrors backing_track.py's constant of the same name
@@ -895,9 +956,8 @@ function renderInspector() {
   document.getElementById("pitch-hint").textContent = pitchHint;
   applyBtn.style.display = offBeyondThreshold ? "inline-block" : "none";
   applyBtn.onclick = () => {
-    const tuneEl = document.getElementById("tune-slider");
-    tuneEl.value = Math.round(a.pitch_offset_cents);
-    tuneEl.dispatchEvent(new Event("input"));
+    setTransportValue("tune-slider", Math.round(a.pitch_offset_cents));
+    transportEls("tune-slider")[0].dispatchEvent(new Event("input"));
   };
 
   const hasGuitar = State.stems.some((s) => s.name === "guitar");
@@ -1177,10 +1237,10 @@ function wireKeyboardShortcuts() {
         // treating Space-to-play/pause as pre-existing baseline. It never
         // actually got wired in the rebuild until now.
         e.preventDefault();
-        document.getElementById("play-btn").click();
+        transportEls("play-btn")[0].click();
         break;
       case "l": case "L":
-        document.getElementById("loop-toggle-btn").click();
+        transportEls("loop-toggle-btn")[0].click();
         break;
       case "[":
         if (Audio.duration) {
@@ -1231,6 +1291,7 @@ async function init() {
   wireStaleBanner();
   wireImport();
   wireSpeedTune();
+  wireVolumeSlider();
   wireKeyboardShortcuts();
 
   const modelsResp = await Api.get("/api/models");
