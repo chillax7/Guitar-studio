@@ -478,6 +478,240 @@ const CALIBRATION_TARGET_RMS = 0.2; // comfortable reference level, well under c
 const CALIBRATION_SAMPLES_PER_QUANTUM = 64;
 
 // ---------------------------------------------------------------------------
+// WASM/SIMD engine — same math as buildModel/forwardBlock above (the JS
+// engine stays as the correctness reference AND the fallback path), ported
+// to a standalone WebAssembly module (GuitarStudio/static/nam-wasm-src/
+// nam.zig, compiled to nam.wasm) so the hot per-(out,in) matVec loops run
+// as SIMD v128/f32x4 dot products instead of scalar JS. Measured ~11x
+// faster than the block-processed JS engine on real standard-architecture
+// captures (see the commit message for numbers) — the point isn't shaving
+// the JS engine's ~1x-of-realtime down further, it's putting real headroom
+// under NAM_REFUSE_RT_FACTOR instead of sitting right at its edge.
+//
+// This module does NOT fetch its own .wasm bytes — AudioWorkletGlobalScope
+// has no reliable fetch/streaming-compile in every browser, so
+// playalong.js compiles nam.wasm on the main thread and posts the
+// resulting WebAssembly.Module over to this processor's port (a Module is
+// structured-clone-transferable). If that never arrives, fails to compile,
+// or fails to instantiate (e.g. no wasm SIMD support), this processor
+// falls back to the JS engine above — the WASM path is strictly additive,
+// never a hard requirement, per every model-load call site's own
+// try/catch.
+//
+// Memory layout: a bump-allocated arena inside the WASM module's own
+// linear memory (self-locating heap base — see nam.zig's resetArena()/
+// allocBytes(), no hardcoded offsets). buildModelWasm() below mirrors
+// buildModel/buildLayerArray/buildLayer's weight-consumption order exactly
+// (WeightReader's interleaved Conv1D-tap order in particular) but writes
+// straight into that WASM memory instead of separate JS Float32Arrays, and
+// emits a compact "layout table" (a flat run of i32 fields — channel
+// counts, gated/activation flags, byte-offset pointers to every weight
+// matrix/bias/history-ring/scratch buffer) that nam.zig's forward() walks
+// each block. Field order is duplicated by hand in both nam.zig and here;
+// LA_*/LY_* below must stay in sync with nam.zig's LA_*/LY_* constants.
+const NAM_WASM_MAX_BLOCK = 128;
+const LA_STRIDE = 18; // words per layer-array record
+const LY_STRIDE = 11; // words per per-dilation-layer record
+const WASM_ACT_CODE = { tanh: 0, fasttanh: 0, sigmoid: 1, softsign: 2, relu: 3, identity: 4, "": 4 };
+
+class WasmArena {
+  constructor(exports) {
+    this.exports = exports;
+    this.exports.resetArena();
+    this._refresh();
+  }
+  _refresh() {
+    this.i32 = new Int32Array(this.exports.memory.buffer);
+    this.f32 = new Float32Array(this.exports.memory.buffer);
+  }
+  // allocBytes() may grow WASM memory, which detaches the previous
+  // ArrayBuffer — refresh the typed-array views after every call before
+  // writing through them again.
+  allocBytes(n) {
+    const off = this.exports.allocBytes(n >>> 0);
+    this._refresh();
+    return off;
+  }
+  allocF32(nFloats) { return this.allocBytes(nFloats * 4); }
+  writeF32(off, arr) { this.f32.set(arr, off / 4); }
+  writeI32(off, idx, val) { this.i32[off / 4 + idx] = val; }
+}
+
+// Interleaved Conv1D taps (see WeightReader.takeConv1DWeights above) ->
+// K separate (outCh x inCh) matrices written CONTIGUOUSLY (matches
+// nam.zig's `convMatsBase + k*convOutCh*channels*4` addressing).
+function wasmWriteConv1DWeights(arena, reader, outCh, inCh, kernelSize) {
+  const base = arena.allocF32(kernelSize * outCh * inCh);
+  const tmp = new Float32Array(kernelSize * outCh * inCh);
+  for (let i = 0; i < outCh; i++) {
+    for (let j = 0; j < inCh; j++) {
+      for (let k = 0; k < kernelSize; k++) tmp[k * outCh * inCh + i * inCh + j] = reader.next();
+    }
+  }
+  arena.writeF32(base, tmp);
+  return base;
+}
+function wasmWriteMatrix(arena, reader, outCh, inCh) {
+  const base = arena.allocF32(outCh * inCh);
+  const tmp = new Float32Array(outCh * inCh);
+  for (let i = 0; i < outCh; i++) for (let j = 0; j < inCh; j++) tmp[i * inCh + j] = reader.next();
+  arena.writeF32(base, tmp);
+  return base;
+}
+function wasmWriteVector(arena, reader, n) {
+  const base = arena.allocF32(n);
+  const tmp = new Float32Array(n);
+  for (let i = 0; i < n; i++) tmp[i] = reader.next();
+  arena.writeF32(base, tmp);
+  return base;
+}
+function wasmWriteZeroVector(arena, n) {
+  const base = arena.allocF32(n);
+  arena.writeF32(base, new Float32Array(n));
+  return base;
+}
+
+// Builds a model's full WASM-memory layout. Throws on the same conditions
+// buildModel() would (unsupported architecture etc.) — callers must catch
+// and fall back to buildModel() exactly like they already catch buildModel
+// itself failing.
+function buildModelWasm(namJson, exports) {
+  if (namJson.architecture !== "WaveNet") {
+    throw new Error(`Unsupported architecture '${namJson.architecture}' — only WaveNet .nam files are supported`);
+  }
+  const arena = new WasmArena(exports);
+  const config = namJson.config;
+  const reader = new WeightReader(Float32Array.from(namJson.weights));
+
+  const numLA = config.layers.length;
+  const headerPtr = arena.allocBytes(4 + numLA * LA_STRIDE * 4);
+  arena.writeI32(headerPtr, 0, numLA);
+
+  for (let li = 0; li < numLA; li++) {
+    const cfg = config.layers[li];
+    const channels = cfg.channels;
+    const bottleneck = cfg.bottleneck ?? channels;
+    const conditionSize = cfg.condition_size;
+    const inputSize = cfg.input_size;
+    const kernelSize = cfg.kernel_size;
+    const dilations = cfg.dilations;
+    const gated = !!cfg.gated;
+    const headSize = cfg.head_size;
+    const headBias = !!cfg.head_bias;
+    const activationName = (Array.isArray(cfg.activation) ? cfg.activation[0] : cfg.activation || "").toLowerCase();
+    const actCode = WASM_ACT_CODE[activationName] ?? 0;
+    const headOutSize = bottleneck; // head1x1 not supported — see file header
+
+    const rechannelW = wasmWriteMatrix(arena, reader, channels, inputSize);
+
+    // Reserve the whole contiguous per-layer record run up front (nam.zig
+    // walks layersPtr + i*LY_STRIDE*4), then fill each slot's weight data
+    // (which itself bump-allocates elsewhere in the arena) before patching
+    // that slot's int fields.
+    const layersPtr = arena.allocBytes(dilations.length * LY_STRIDE * 4);
+    for (let k = 0; k < dilations.length; k++) {
+      const dilation = dilations[k];
+      const convOutCh = gated ? 2 * bottleneck : bottleneck;
+      const convMatsBase = wasmWriteConv1DWeights(arena, reader, convOutCh, channels, kernelSize);
+      const convBias = wasmWriteVector(arena, reader, convOutCh);
+      const mixinW = wasmWriteMatrix(arena, reader, convOutCh, conditionSize);
+      const layer1x1W = wasmWriteMatrix(arena, reader, channels, bottleneck);
+      const layer1x1Bias = wasmWriteVector(arena, reader, channels);
+      const histLen = NAM_WASM_MAX_BLOCK + dilation * (kernelSize - 1);
+      const histBuf = arena.allocF32(channels * histLen);
+      arena.writeF32(histBuf, new Float32Array(channels * histLen));
+
+      const recOff = layersPtr + k * LY_STRIDE * 4;
+      arena.writeI32(recOff, 0, dilation);
+      arena.writeI32(recOff, 1, kernelSize);
+      arena.writeI32(recOff, 2, convOutCh);
+      arena.writeI32(recOff, 3, convMatsBase);
+      arena.writeI32(recOff, 4, convBias);
+      arena.writeI32(recOff, 5, mixinW);
+      arena.writeI32(recOff, 6, layer1x1W);
+      arena.writeI32(recOff, 7, layer1x1Bias);
+      arena.writeI32(recOff, 8, histBuf);
+      arena.writeI32(recOff, 9, histLen);
+      arena.writeI32(recOff, 10, 0); // histPos
+    }
+
+    const headRechannelMatBase = wasmWriteConv1DWeights(arena, reader, headSize, headOutSize, 1); // K=1
+    const headRechannelBias = headBias ? wasmWriteVector(arena, reader, headSize) : wasmWriteZeroVector(arena, headSize);
+
+    const blkA = arena.allocF32(NAM_WASM_MAX_BLOCK * channels);
+    const blkB = arena.allocF32(NAM_WASM_MAX_BLOCK * channels);
+    const headAccum = arena.allocF32(NAM_WASM_MAX_BLOCK * headOutSize);
+    const headOut = arena.allocF32(NAM_WASM_MAX_BLOCK * headSize);
+
+    const laOff = headerPtr + 4 + li * LA_STRIDE * 4;
+    arena.writeI32(laOff, 0, channels);
+    arena.writeI32(laOff, 1, bottleneck);
+    arena.writeI32(laOff, 2, conditionSize);
+    arena.writeI32(laOff, 3, inputSize);
+    arena.writeI32(laOff, 4, headSize);
+    arena.writeI32(laOff, 5, gated ? 1 : 0);
+    arena.writeI32(laOff, 6, actCode);
+    arena.writeI32(laOff, 7, dilations.length);
+    arena.writeI32(laOff, 8, headOutSize);
+    arena.writeI32(laOff, 9, rechannelW);
+    arena.writeI32(laOff, 10, headRechannelMatBase);
+    arena.writeI32(laOff, 11, headRechannelBias);
+    arena.writeI32(laOff, 12, layersPtr);
+    arena.writeI32(laOff, 13, blkA);
+    arena.writeI32(laOff, 14, blkB);
+    arena.writeI32(laOff, 15, headAccum);
+    arena.writeI32(laOff, 16, headOut);
+    arena.writeI32(laOff, 17, 0);
+  }
+
+  const headScale = reader.remaining() >= 1 ? reader.next() : (config.head_scale ?? 1.0);
+
+  let outputGainDb = 0;
+  if (namJson.metadata && typeof namJson.metadata.loudness === "number") {
+    outputGainDb = -18 - namJson.metadata.loudness;
+  }
+
+  const condPtr = arena.allocF32(NAM_WASM_MAX_BLOCK);
+  const outPtr = arena.allocF32(NAM_WASM_MAX_BLOCK);
+
+  return {
+    isWasm: true, exports, headerPtr, headScale, outputGainDb, condPtr, outPtr,
+    _in1: new Float32Array(1), _out1: new Float32Array(1),
+  };
+}
+
+// n <= MAX_BLOCK. Mirrors forwardBlock()'s signature/semantics exactly.
+function forwardBlockWasm(model, inBlock, outBlock, n) {
+  const exports = model.exports;
+  const f32in = new Float32Array(exports.memory.buffer);
+  f32in.set(n === inBlock.length ? inBlock : inBlock.subarray(0, n), model.condPtr / 4);
+  exports.forward(model.headerPtr, model.condPtr, model.outPtr, n);
+  const f32out = new Float32Array(exports.memory.buffer);
+  const headScale = model.headScale;
+  const base = model.outPtr / 4;
+  for (let i = 0; i < n; i++) outBlock[i] = headScale * f32out[base + i];
+}
+
+function forwardSampleWasm(model, rawInputSample) {
+  model._in1[0] = rawInputSample;
+  forwardBlockWasm(model, model._in1, model._out1, 1);
+  return model._out1[0];
+}
+
+// Dispatch helpers used by NAMProcessor so its call sites don't need to
+// branch on isWasm themselves.
+function buildModelAny(namJson, wasmExports) {
+  if (wasmExports) {
+    try { return buildModelWasm(namJson, wasmExports); } catch (e) { /* fall through to JS */ }
+  }
+  return buildModel(namJson);
+}
+function forwardBlockAny(model, inBlock, outBlock, n) {
+  if (model.isWasm) forwardBlockWasm(model, inBlock, outBlock, n);
+  else forwardBlock(model, inBlock, outBlock, n);
+}
+
+// ---------------------------------------------------------------------------
 // Worklet processor: input/output trim (dB), model-loudness auto-normalize,
 // DC blocker — matching the reference wrapper's simple wrapper DSP
 // (t3k-wasm-module.cpp) around the core inference.
@@ -503,13 +737,37 @@ class NAMProcessor extends AudioWorkletProcessor {
     this.dcCoeff = 0.995;
     this._inBlock = new Float32Array(MAX_BLOCK); // gain-applied input for forwardBlock
     this._outBlock = new Float32Array(MAX_BLOCK);
+    this.wasmExports = null; // set once nam.wasm is instantiated, see "wasm-module" below
+    this.wasmInstantiating = null; // Promise while instantiation is in flight
     this.port.onmessage = (e) => this._onMessage(e.data);
   }
 
-  _onMessage(msg) {
+  // playalong.js compiles nam.wasm on the main thread (AudioWorkletGlobalScope
+  // can't reliably fetch/streaming-compile it itself) and posts the compiled
+  // WebAssembly.Module here — structured-clone-transferable, no bytes need
+  // re-parsing on this side. Instantiating a ~30KB standalone module with no
+  // imports is fast, but "load" awaits this promise first (see below) so a
+  // "wasm-module" message sent immediately before a "load" message for the
+  // same model still gets a chance to land before that load decides which
+  // engine to use — never a hard requirement either way, just a preference.
+  _onWasmModule(wasmModule) {
+    this.wasmInstantiating = WebAssembly.instantiate(wasmModule, {})
+      .then((instance) => { this.wasmExports = instance.exports; })
+      .catch((err) => {
+        this.wasmExports = null;
+        this.port.postMessage({ type: "wasm-instantiate-failed", error: String(err && err.message || err) });
+      });
+  }
+
+  async _onMessage(msg) {
+    if (msg.type === "wasm-module") {
+      this._onWasmModule(msg.module);
+      return;
+    }
     if (msg.type === "load") {
+      if (this.wasmInstantiating) { try { await this.wasmInstantiating; } catch (e) { /* already logged */ } }
       try {
-        const model = buildModel(msg.nam);
+        const model = buildModelAny(msg.nam, this.wasmExports);
         const cutoffHz = 10.0;
         const omega = (2 * Math.PI * cutoffHz) / sampleRate;
         this.dcCoeff = 1.0 - omega;
@@ -536,7 +794,7 @@ class NAMProcessor extends AudioWorkletProcessor {
           this.model = null;
           this.calib = {
             pending: model,
-            probe: buildModel(msg.nam),
+            probe: buildModelAny(msg.nam, this.wasmExports),
             i: 0, sumSq: 0, measured: 0,
           };
           // sync: offline-render callers (the Suggest feature) ask for
@@ -595,7 +853,7 @@ class NAMProcessor extends AudioWorkletProcessor {
       const inBlock = this._inBlock;
       const outBlock = this._outBlock;
       for (let i = 0; i < n; i++) inBlock[i] = CALIBRATION_TEST_AMPLITUDE * Math.sin(omega * (c.i + i));
-      forwardBlock(c.probe, inBlock, outBlock, n);
+      forwardBlockAny(c.probe, inBlock, outBlock, n);
       for (let i = 0; i < n; i++) {
         if (c.i + i >= CALIBRATION_WARMUP_SAMPLES) { c.sumSq += outBlock[i] * outBlock[i]; c.measured++; }
       }
@@ -665,7 +923,7 @@ class NAMProcessor extends AudioWorkletProcessor {
           const inLin = inGainIsKRate ? inLinK : Math.pow(10, paramInGain[off + i] / 20);
           inBlock[i] = (inCh ? inCh[off + i] : 0) * inLin;
         }
-        forwardBlock(this.model, inBlock, outBlock, n);
+        forwardBlockAny(this.model, inBlock, outBlock, n);
         for (let i = 0; i < n; i++) {
           const outLin = outGainIsKRate ? outLinK : Math.pow(10, (paramOutGain[off + i] + this.modelOutputGainDb) / 20);
           let sample = outBlock[i] * outLin;

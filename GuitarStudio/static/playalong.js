@@ -49,6 +49,48 @@ const PA = {
 };
 
 // ---------------------------------------------------------------------------
+// NAM WASM/SIMD module — compiled once here on the main thread and handed
+// to every "nam-processor" AudioWorkletNode we create (the live node in
+// ensurePAGraph, plus every throwaway probe node in paProbeNamModel and the
+// Suggest loop below). AudioWorkletGlobalScope can't reliably fetch or
+// streaming-compile wasm itself in every browser, so this is the one place
+// that ever touches the network for it; a compiled WebAssembly.Module is
+// structured-clone-transferable over a MessagePort, so each worklet
+// instantiates its own Instance (its own private linear memory) from the
+// same compiled Module, cheaply.
+//
+// Strictly best-effort: any failure here (fetch fails, browser lacks wasm
+// SIMD, compile throws) just leaves paNamWasmModulePromise resolved to
+// null, and every call site below skips sending a "wasm-module" message —
+// nam-processor.js's own fallback (buildModelAny/forwardBlockAny) then
+// silently stays on the JS engine, exactly like it does for a model whose
+// architecture the WASM path can't handle. Never a hard failure.
+let paNamWasmModulePromise = null;
+function paGetNamWasmModule() {
+  if (!paNamWasmModulePromise) {
+    paNamWasmModulePromise = (async () => {
+      try {
+        const bytes = await (await fetch("nam.wasm")).arrayBuffer();
+        return await WebAssembly.compile(bytes);
+      } catch (e) {
+        console.warn("NAM WASM engine unavailable, falling back to JS engine:", e);
+        return null;
+      }
+    })();
+  }
+  return paNamWasmModulePromise;
+}
+// Sends the compiled module (if available) to a freshly-created nam-processor
+// node's port, BEFORE any "load" message for the same node — nam-processor.js
+// awaits its own in-flight instantiation before deciding which engine a
+// pending "load" uses, so message order (not a round-trip ack) is what makes
+// this race-free.
+async function paSendNamWasmModule(node) {
+  const mod = await paGetNamWasmModule();
+  if (mod) node.port.postMessage({ type: "wasm-module", module: mod });
+}
+
+// ---------------------------------------------------------------------------
 // Synthetic curves/impulses (no bundled assets needed for the basics)
 // ---------------------------------------------------------------------------
 
@@ -108,6 +150,7 @@ async function ensurePAGraph() {
   PA.namNode = new AudioWorkletNode(Audio.ctx, "nam-processor", {
     numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
   });
+  paSendNamWasmModule(PA.namNode); // best-effort; see paGetNamWasmModule
   // paLoadNamModel() only listens on this port transiently (for the
   // "loaded" ack); this catches the process()-side failure fallback
   // instead of it going silently unnoticed if it's ever actually hit.
@@ -589,6 +632,11 @@ async function paProbeNamModel(namJson) {
     const node = new AudioWorkletNode(offlineCtx, "nam-processor", {
       numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
     });
+    // Probing the WASM engine's speed (not the JS fallback's) is the whole
+    // point here — this is exactly the number that decides whether a real
+    // capture clears NAM_REFUSE_RT_FACTOR — so wait for the module send
+    // before posting "load", not fire-and-forget like the live node above.
+    await paSendNamWasmModule(node);
     const gain = await new Promise((resolve, reject) => {
       node.port.onmessage = (e) => {
         if (e.data.type !== "loaded") return;
@@ -860,6 +908,11 @@ async function paSuggestNamModel() {
         const node = new AudioWorkletNode(offlineCtx, "nam-processor", {
           numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
         });
+        // Same reasoning as paProbeNamModel: this render's timing feeds the
+        // same NAM_REFUSE_RT_FACTOR check just below, so it needs to be
+        // timing the WASM engine (when available), not the JS fallback —
+        // await the module send before "load".
+        await paSendNamWasmModule(node);
         await new Promise((resolve) => {
           node.port.onmessage = () => resolve();
           // sync: block this offline context's render thread for the
