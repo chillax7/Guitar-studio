@@ -81,7 +81,7 @@ import pyloudnorm as pyln
 import scipy.signal
 import soundfile as sf
 
-DEFAULT_MODEL = "htdemucs"
+DEFAULT_MODEL = "bs_roformer_sw"  # BT-13: measurably better guitar-stem SDR than htdemucs
 # Anchored to this script's own location, not the process's ambient working
 # directory: a plain Path("separated") resolves against whatever CWD the
 # process happened to start with, which is only ever correct by accident
@@ -111,7 +111,6 @@ MODEL_STEMS = {
     "mdx": ("vocals", "drums", "bass", "other"),
     "mdx_extra": ("vocals", "drums", "bass", "other"),
 }
-DEFAULT_STEM_NAMES = MODEL_STEMS[DEFAULT_MODEL]
 
 # Models run through the `audio-separator` package (UVR-family checkpoints)
 # instead of Demucs. Chosen for BT-13 (see guitar-separation-upgrade-spec.md):
@@ -126,7 +125,12 @@ AUDIO_SEPARATOR_MODELS = {
     },
 }
 
+# DEFAULT_MODEL (bs_roformer_sw) lives in AUDIO_SEPARATOR_MODELS, not
+# MODEL_STEMS — index the merged dict, not just the Demucs half, or this
+# throws KeyError at import time the moment DEFAULT_MODEL isn't a Demucs
+# model.
 ALL_KNOWN_MODELS = {**MODEL_STEMS, **{k: v["stems"] for k, v in AUDIO_SEPARATOR_MODELS.items()}}
+DEFAULT_STEM_NAMES = ALL_KNOWN_MODELS[DEFAULT_MODEL]
 
 
 def existing_stems(out_dir: Path) -> tuple:
@@ -375,13 +379,14 @@ def run_audio_separator_backend(input_path: Path, model: str, out_dir: Path, pro
 
 def analyze_track(out_dir: Path) -> dict:
     """BT-01/BT-16: best-effort tempo + reference-pitch analysis. Tempo comes
-    from the drums stem (present for every model) via librosa's beat
-    tracker; pitch offset from A=440 (in cents) comes from librosa's own
+    from the drums stem (present for every model) via librosa's tempo
+    estimator; pitch offset from A=440 (in cents) comes from librosa's own
     tuning estimator run on the first harmonic-ish stem available. Either
     figure is simply omitted from the result if its stem is missing or the
     estimate fails — a missing BPM/pitch reading is fine; this must never
     be the reason a separation run fails."""
     import librosa
+    import librosa.feature.rhythm
 
     result = {}
 
@@ -389,7 +394,21 @@ def analyze_track(out_dir: Path) -> dict:
     if drums_path.exists():
         try:
             y, sr = librosa.load(str(drums_path), sr=None, mono=True)
-            tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+            # librosa's tempo estimator defaults to a start_bpm=120 prior,
+            # which on fast material reliably locks onto half the true
+            # tempo instead (the autocorrelation genuinely finds stronger
+            # periodicity at half-speed for some drum patterns — this
+            # isn't a fluke of one song). Verified against this project's
+            # own real tracks: default settings misread four different
+            # fast rock/metal songs at ~85-88 BPM when the true tempo is
+            # ~170-178; a start_bpm=140 prior corrects all four to within
+            # a few BPM of their known tempo while leaving every
+            # already-correct mid-tempo track (~90-115 BPM) completely
+            # unchanged — the true tempo dominates the estimate regardless
+            # of prior once it's not competing with a spuriously-stronger
+            # half-tempo peak.
+            onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+            tempo = librosa.feature.rhythm.tempo(onset_envelope=onset_env, sr=sr, start_bpm=140)
             bpm = float(np.asarray(tempo).reshape(-1)[0])
             if bpm > 0:
                 result["bpm"] = round(bpm, 1)

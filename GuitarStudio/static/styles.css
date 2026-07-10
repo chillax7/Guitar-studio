@@ -29,7 +29,36 @@ body {
 #app {
   display: grid;
   grid-template-columns: 240px 1fr 280px;
+  grid-template-rows: auto 1fr;
   height: 100vh;
+}
+
+/* ---------- Top banner ---------- */
+
+#top-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Same treatment as #sidebar h2 (LIBRARY) / #inspector h3 (TRACK) — small
+   uppercase label style, just carried through to the app's own title. */
+#app-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  font-weight: 600;
+}
+#app-version {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
 }
 
 /* ---------- Sidebar ---------- */

@@ -850,7 +850,7 @@ function updateBpmDisplay() {
   const a = State.analysis || {};
   if (!a.bpm) { document.getElementById("bpm-display").textContent = "—"; return; }
   const speed = parseFloat(document.getElementById("speed-slider").value || "1");
-  document.getElementById("bpm-display").textContent = (a.bpm * speed).toFixed(1);
+  document.getElementById("bpm-display").textContent = Math.round(a.bpm * speed);
 }
 
 function wireSpeedTune() {
@@ -925,7 +925,14 @@ function wireSplitPanel() {
 
 function wireExportPanel() {
   document.getElementById("export-open-btn").addEventListener("click", () => {
+    // Used to only scroll the export panel into view — if it was already
+    // visible (a wide window, or already scrolled there), clicking the
+    // toolbar's prominent Export button did nothing observable at all.
+    // Now it actually exports (using whatever settings are currently set
+    // in the panel — sensible defaults out of the box), and still scrolls
+    // there so the result/any settings are visible.
     document.getElementById("export-panel").scrollIntoView({ behavior: "smooth" });
+    runExport();
   });
   document.getElementById("export-normalize").addEventListener("change", (e) => {
     document.getElementById("boost-cap-row").style.display = e.target.checked ? "block" : "none";
@@ -1074,14 +1081,28 @@ function wireStaleBanner() {
 
 function wireImport() {
   const dropEl = document.getElementById("import-drop");
+  const sidebarEl = document.getElementById("sidebar");
   const inputEl = document.getElementById("import-input");
   dropEl.addEventListener("click", () => inputEl.click());
   inputEl.addEventListener("change", (e) => {
     if (e.target.files[0]) importFile(e.target.files[0]);
   });
-  dropEl.addEventListener("dragover", (e) => { e.preventDefault(); dropEl.classList.add("dragover"); });
-  dropEl.addEventListener("dragleave", () => dropEl.classList.remove("dragover"));
-  dropEl.addEventListener("drop", (e) => {
+
+  // Without a document-level dragover/drop handler, a drop that misses the
+  // (small, easy to miss) drop box falls through to the browser's own
+  // default: navigating the tab to the dropped file, replacing the whole
+  // app. Catch anything not handled by a more specific target below.
+  document.addEventListener("dragover", (e) => e.preventDefault());
+  document.addEventListener("drop", (e) => e.preventDefault());
+
+  // The whole sidebar is a drop target, not just the dashed box — "drop it
+  // somewhere in the library area" is what people actually do, and the box
+  // alone is a small target to hit precisely.
+  sidebarEl.addEventListener("dragover", (e) => { e.preventDefault(); dropEl.classList.add("dragover"); });
+  sidebarEl.addEventListener("dragleave", (e) => {
+    if (!sidebarEl.contains(e.relatedTarget)) dropEl.classList.remove("dragover");
+  });
+  sidebarEl.addEventListener("drop", (e) => {
     e.preventDefault();
     dropEl.classList.remove("dragover");
     const f = e.dataTransfer.files[0];
@@ -1090,10 +1111,22 @@ function wireImport() {
 }
 
 async function importFile(file) {
-  const buf = await file.arrayBuffer();
-  const r = await Api.postRaw(`/api/import?filename=${encodeURIComponent(file.name)}`, buf);
-  await refreshTrackList();
-  await selectTrack(r.name);
+  // This project directory is cloud-synced (OneDrive), so a full-file
+  // write on import can genuinely take a while depending on file size and
+  // sync load — not something the app can speed up, but a bare, unchanging
+  // "Drop a file" box while a multi-MB upload is in flight reads as hung.
+  // Make it visibly do something instead.
+  const dropEl = document.getElementById("import-drop");
+  const originalHtml = dropEl.innerHTML;
+  dropEl.textContent = `Importing ${file.name}…`;
+  try {
+    const buf = await file.arrayBuffer();
+    const r = await Api.postRaw(`/api/import?filename=${encodeURIComponent(file.name)}`, buf);
+    await refreshTrackList();
+    await selectTrack(r.name);
+  } finally {
+    dropEl.innerHTML = originalHtml;
+  }
 }
 
 // ---------------------------------------------------------------------------
