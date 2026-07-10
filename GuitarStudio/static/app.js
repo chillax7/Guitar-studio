@@ -935,14 +935,13 @@ function wireSplitPanel() {
 
 function wireExportPanel() {
   document.getElementById("export-open-btn").addEventListener("click", () => {
-    // Used to only scroll the export panel into view — if it was already
-    // visible (a wide window, or already scrolled there), clicking the
-    // toolbar's prominent Export button did nothing observable at all.
-    // Now it actually exports (using whatever settings are currently set
-    // in the panel — sensible defaults out of the box), and still scrolls
-    // there so the result/any settings are visible.
+    // export-panel is display:none in the HTML and nothing else ever
+    // un-hides it — so this button (despite being named "open") only ever
+    // scrolled to (and, in an earlier fix, silently ran an export against)
+    // an invisible panel. Actually show it, then scroll it into view so
+    // its settings and the Export button inside are visible and usable.
+    document.getElementById("export-panel").style.display = "block";
     document.getElementById("export-panel").scrollIntoView({ behavior: "smooth" });
-    runExport();
   });
   document.getElementById("export-normalize").addEventListener("change", (e) => {
     document.getElementById("boost-cap-row").style.display = e.target.checked ? "block" : "none";
