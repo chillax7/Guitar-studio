@@ -188,6 +188,9 @@ function stopRecording() {
   Recorder.mediaRecorder.stop();
   Recorder.state = "saving";
   window.removeEventListener("beforeunload", recBeforeUnloadGuard);
+  // Stop Record started the backing track (rec-start-with-playback); leaving
+  // it running after Stop meant the take ended but the mix kept going.
+  if (typeof pausePlayback === "function") pausePlayback();
   updateRecUI();
 }
 
@@ -437,7 +440,16 @@ async function refreshTakesList() {
       const newName = prompt("Rename take to:", base);
       if (!newName || newName === base) return;
       try {
-        await Api.post("/api/recording/rename", { path: take.path, new_name: newName });
+        const r = await Api.post("/api/recording/rename", { path: take.path, new_name: newName });
+        // currentTake (used by Play/Trim) holds its own copy of path/filename
+        // captured when loaded — refreshTakesList() rebuilds the row list but
+        // doesn't touch that copy, so a rename of the take in the player left
+        // it pointing at a path that no longer existed ("file not found" on
+        // the next Trim). Update it in place when it's the renamed take.
+        if (currentTake && currentTake.path === take.path) {
+          currentTake.path = r.path;
+          currentTake.filename = r.filename;
+        }
         refreshTakesList();
       } catch (e) { alert("Rename failed: " + e.message); }
     });
