@@ -584,11 +584,95 @@ async function paCalibrateNamOffline(namJson) {
       };
       node.port.postMessage({ type: "load", nam: namJson, sync: true });
     });
-    return typeof gain === "number" ? gain : null;
+    return Number.isFinite(gain) ? gain : null;
   } catch (e) {
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// gsDiag — console diagnostic for the NAM silence reports. Run `await gsDiag()`
+// in the browser console immediately after the audio dies; the snapshot
+// distinguishes the three failure classes:
+//   - ctx.currentTime frozen + no pong        → render thread wedged / stream dead
+//   - currentTime advancing + no pong          → namNode alone is dead
+//   - pong + modelActive + silent output taps  → routing or math bug (NaN etc.)
+// ---------------------------------------------------------------------------
+
+async function gsDiag() {
+  const out = { when: new Date().toISOString() };
+  const ctx = (typeof Audio !== "undefined") && Audio.ctx;
+  if (!ctx) { out.ctx = "Audio.ctx is null — no audio graph exists"; return out; }
+
+  out.ctx = { state: ctx.state, sampleRate: ctx.sampleRate, baseLatency: ctx.baseLatency };
+  const t0 = ctx.currentTime;
+  await new Promise((r) => setTimeout(r, 600));
+  out.currentTimeAdvanced = +(ctx.currentTime - t0).toFixed(3); // ~0.6 expected; 0 = stream dead
+
+  if (PA.namNode) {
+    out.namPong = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve("NO PONG within 1s — node/render thread not responding"), 1000);
+      const onMsg = (e) => {
+        if (e.data.type !== "pong") return;
+        clearTimeout(timer);
+        PA.namNode.port.removeEventListener("message", onMsg);
+        resolve(e.data);
+      };
+      PA.namNode.port.addEventListener("message", onMsg);
+      PA.namNode.port.start();
+      PA.namNode.port.postMessage({ type: "ping" });
+    });
+    // Second ping after a beat: framesProcessed should be HIGHER if the
+    // node is actually being pulled by the render loop.
+    if (out.namPong && out.namPong.framesProcessed !== undefined) {
+      await new Promise((r) => setTimeout(r, 300));
+      const again = await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(null), 1000);
+        const onMsg = (e) => {
+          if (e.data.type !== "pong") return;
+          clearTimeout(timer);
+          PA.namNode.port.removeEventListener("message", onMsg);
+          resolve(e.data);
+        };
+        PA.namNode.port.addEventListener("message", onMsg);
+        PA.namNode.port.postMessage({ type: "ping" });
+      });
+      out.namBeingPulled = again ? (again.framesProcessed > out.namPong.framesProcessed) : "no second pong";
+    }
+  } else {
+    out.namPong = "PA.namNode is null — Play Along graph not built";
+  }
+
+  const rmsOf = (analyser) => {
+    if (!analyser) return null;
+    const d = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(d);
+    let s = 0; for (const v of d) s += v * v;
+    return +Math.sqrt(s / d.length).toFixed(5);
+  };
+  out.levels = {
+    paInput: rmsOf(PA.inAnal), // live guitar as captured
+    paOutput: rmsOf(PA.outAnal), // Play Along rig output
+    master: rmsOf(Audio.analyser), // mixer/backing output
+  };
+
+  if (PA.stream) {
+    out.inputTracks = PA.stream.getAudioTracks().map((t) => ({
+      label: t.label, readyState: t.readyState, muted: t.muted, enabled: t.enabled,
+    }));
+  } else {
+    out.inputTracks = "no input stream (guitar input not enabled)";
+  }
+
+  out.misc = {
+    ampMode: PA.ampMode, namLoaded: PA.namLoaded || null,
+    mixerPlaying: !!Audio.playing,
+    namStatusText: (document.getElementById("pa-nam-status") || {}).textContent || "",
+  };
+  console.log("gsDiag:", JSON.stringify(out, null, 2));
+  return out;
+}
+window.gsDiag = gsDiag;
 
 async function paLoadNamModel(filename) {
   const statusEl = document.getElementById("pa-nam-status");

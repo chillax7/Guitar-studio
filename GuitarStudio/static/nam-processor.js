@@ -342,6 +342,7 @@ class NAMProcessor extends AudioWorkletProcessor {
     this.model = null;
     this.modelOutputGainDb = 0;
     this.calib = null; // in-flight incremental calibration state, see process()
+    this.framesProcessed = 0; // diagnostics: proves process() is being pulled
     this.dcPrevIn = 0;
     this.dcPrevOut = 0;
     this.dcCoeff = 0.995;
@@ -356,7 +357,7 @@ class NAMProcessor extends AudioWorkletProcessor {
         const omega = (2 * Math.PI * cutoffHz) / sampleRate;
         this.dcCoeff = 1.0 - omega;
         this.calib = null;
-        if (typeof msg.outputGainDb === "number") {
+        if (Number.isFinite(msg.outputGainDb)) {
           // Pre-calibrated by the caller (playalong.js measures the model
           // in a throwaway OfflineAudioContext first — see
           // paCalibrateNamOffline) — nothing to measure on the real-time
@@ -410,6 +411,19 @@ class NAMProcessor extends AudioWorkletProcessor {
     } else if (msg.type === "unload") {
       this.model = null;
       this.calib = null;
+    } else if (msg.type === "ping") {
+      // Diagnostics: port messages are serviced on the render thread, so a
+      // pong proves that thread is alive; its payload says whether a model
+      // is actually active and with what gain. If the render thread is
+      // wedged or the stream is dead, this never answers — which is itself
+      // the diagnostic (see gsDiag in playalong.js).
+      this.port.postMessage({
+        type: "pong",
+        modelActive: !!this.model,
+        calibInFlight: !!this.calib,
+        modelOutputGainDb: this.modelOutputGainDb,
+        framesProcessed: this.framesProcessed || 0,
+      });
     }
   }
 
@@ -428,9 +442,14 @@ class NAMProcessor extends AudioWorkletProcessor {
       }
       if (c.i >= CALIBRATION_SAMPLES) {
         const rms = Math.sqrt(c.sumSq / Math.max(1, c.measured));
-        // Silent capture (rms ~ 0): nothing sensible to compute, leave 0 dB.
-        c.pending.outputGainDb = rms <= 1e-6 ? 0
-          : Math.max(-24, Math.min(24, 20 * Math.log10(CALIBRATION_TARGET_RMS / rms)));
+        // Silent capture (rms ~ 0) or NaN-producing inference: nothing
+        // sensible to compute, leave 0 dB. Without the isFinite check a
+        // NaN rms sails through the <= comparison (false) into log10 →
+        // NaN gain → every output sample NaN → the isFinite output guard
+        // turns it all into pure silence with no error anywhere.
+        const gainDb = 20 * Math.log10(CALIBRATION_TARGET_RMS / rms);
+        c.pending.outputGainDb = (rms <= 1e-6 || !Number.isFinite(gainDb)) ? 0
+          : Math.max(-24, Math.min(24, gainDb));
         this.model = c.pending;
         this.modelOutputGainDb = c.pending.outputGainDb;
         this.calib = null;
@@ -442,6 +461,7 @@ class NAMProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs, outputs, parameters) {
+    this.framesProcessed++;
     const input = inputs[0];
     const output = outputs[0];
     if (!output || !output[0]) return true;
