@@ -304,9 +304,15 @@ function forwardSample(model, rawInputSample) {
 // whole audio stream: every node in the context goes permanently silent
 // until a page reload builds a new context. So calibration is spread
 // across process() calls instead, CALIBRATION_SAMPLES_PER_QUANTUM probe
-// samples per quantum (~2x a loaded model's normal per-quantum inference
-// cost, well inside budget), passing the dry signal through until done —
-// full calibration completes in ~12 quanta, ~30ms of wall time.
+// samples per quantum, passing the dry signal through until done. The
+// slice is HALF a normal quantum's inference (the model is inactive while
+// calibrating, so total load stays below the model-loaded steady state the
+// machine demonstrably sustains — a first cut at 256/quantum was 3x that
+// and caused 12 consecutive deadline overruns on a real USB audio stream,
+// killing it just like the original blocking version). This in-process()
+// path is a fallback only: the primary caller (playalong.js) pre-computes
+// the gain in a throwaway OfflineAudioContext, where blocking is free, and
+// the live node then activates instantly with zero measurement work.
 // At 110Hz, 2048 measured samples is still ~5 full cycles.
 const CALIBRATION_TEST_FREQ = 110; // Hz — roughly guitar A2
 const CALIBRATION_TEST_AMPLITUDE = 0.3; // typical DI/pickup level pre-amp
@@ -314,7 +320,7 @@ const CALIBRATION_WARMUP_SAMPLES = 1024; // let dilated-conv history settle befo
 const CALIBRATION_MEASURE_SAMPLES = 2048;
 const CALIBRATION_SAMPLES = CALIBRATION_WARMUP_SAMPLES + CALIBRATION_MEASURE_SAMPLES;
 const CALIBRATION_TARGET_RMS = 0.2; // comfortable reference level, well under clipping
-const CALIBRATION_SAMPLES_PER_QUANTUM = 256;
+const CALIBRATION_SAMPLES_PER_QUANTUM = 64;
 
 // ---------------------------------------------------------------------------
 // Worklet processor: input/output trim (dB), model-loudness auto-normalize,
@@ -350,7 +356,15 @@ class NAMProcessor extends AudioWorkletProcessor {
         const omega = (2 * Math.PI * cutoffHz) / sampleRate;
         this.dcCoeff = 1.0 - omega;
         this.calib = null;
-        if (msg.nam.metadata && typeof msg.nam.metadata.loudness === "number") {
+        if (typeof msg.outputGainDb === "number") {
+          // Pre-calibrated by the caller (playalong.js measures the model
+          // in a throwaway OfflineAudioContext first — see
+          // paCalibrateNamOffline) — nothing to measure on the real-time
+          // thread, activate immediately.
+          model.outputGainDb = msg.outputGainDb;
+          this.model = model;
+          this.modelOutputGainDb = msg.outputGainDb;
+        } else if (msg.nam.metadata && typeof msg.nam.metadata.loudness === "number") {
           // Known loudness — activate immediately, nothing to measure.
           this.model = model;
           this.modelOutputGainDb = model.outputGainDb;
@@ -380,8 +394,14 @@ class NAMProcessor extends AudioWorkletProcessor {
         // node is disconnected and process() is never pulled, so an ack
         // deferred to calibration completion would leave the loader's
         // promise hanging forever. The parse succeeding is what "loaded"
-        // means; the amp goes live a few quanta later.
-        this.port.postMessage({ type: "loaded", ok: true });
+        // means; the amp goes live a few quanta later. outputGainDb is the
+        // calibrated gain when known at ack time (sync/pre-calibrated/
+        // metadata loads) — paCalibrateNamOffline reads it back — and null
+        // for a still-pending deferred calibration.
+        this.port.postMessage({
+          type: "loaded", ok: true,
+          outputGainDb: this.model ? this.modelOutputGainDb : null,
+        });
       } catch (err) {
         this.model = null;
         this.calib = null;

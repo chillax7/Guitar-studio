@@ -559,18 +559,52 @@ function wireModelBrowser(prefix) {
   });
 }
 
+// Measure a model's output-level calibration gain in a throwaway
+// OfflineAudioContext, so the LIVE node never runs the measurement on the
+// real-time render thread. The offline render thread can block freely
+// (sync: true), and the sample rate matches the live context so the
+// measurement is identical to what the live node would have computed
+// itself. Returns the gain in dB, or null if anything fails (the live
+// node's own incremental in-process() calibration is the fallback then).
+async function paCalibrateNamOffline(namJson) {
+  if (namJson.metadata && typeof namJson.metadata.loudness === "number") return null; // nothing to measure
+  try {
+    // Audio.ctx always exists by the time Play Along's load paths run, but
+    // don't let a null ctx silently disable pre-calibration.
+    const sr = (typeof Audio !== "undefined" && Audio.ctx && Audio.ctx.sampleRate) || 48000;
+    const offlineCtx = new OfflineAudioContext(1, 128, sr);
+    await offlineCtx.audioWorklet.addModule("nam-processor.js");
+    const node = new AudioWorkletNode(offlineCtx, "nam-processor", {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
+    });
+    const gain = await new Promise((resolve, reject) => {
+      node.port.onmessage = (e) => {
+        if (e.data.type !== "loaded") return;
+        e.data.ok ? resolve(e.data.outputGainDb) : reject(new Error(e.data.error));
+      };
+      node.port.postMessage({ type: "load", nam: namJson, sync: true });
+    });
+    return typeof gain === "number" ? gain : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function paLoadNamModel(filename) {
   const statusEl = document.getElementById("pa-nam-status");
   if (!filename) { statusEl.textContent = ""; return; }
   statusEl.textContent = "Loading…";
   try {
     const namJson = await (await fetch(`/api/nam_model_file?filename=${encodeURIComponent(filename)}`)).json();
+    const outputGainDb = await paCalibrateNamOffline(namJson);
     await new Promise((resolve, reject) => {
       PA.namNode.port.onmessage = (e) => {
         if (e.data.type !== "loaded") return;
         e.data.ok ? resolve() : reject(new Error(e.data.error));
       };
-      PA.namNode.port.postMessage({ type: "load", nam: namJson });
+      const msg = { type: "load", nam: namJson };
+      if (outputGainDb !== null) msg.outputGainDb = outputGainDb;
+      PA.namNode.port.postMessage(msg);
     });
     PA.namLoaded = filename;
     statusEl.textContent = `Loaded: ${filename}`;
