@@ -902,7 +902,6 @@ function renderInspector() {
 
   const hasGuitar = State.stems.some((s) => s.name === "guitar");
   document.getElementById("split-panel").style.display = hasGuitar ? "block" : "none";
-  document.getElementById("export-open-btn").style.display = "inline-block";
 }
 
 let splitMethod = "spectral";
@@ -934,15 +933,6 @@ function wireSplitPanel() {
 }
 
 function wireExportPanel() {
-  document.getElementById("export-open-btn").addEventListener("click", () => {
-    // export-panel is display:none in the HTML and nothing else ever
-    // un-hides it — so this button (despite being named "open") only ever
-    // scrolled to (and, in an earlier fix, silently ran an export against)
-    // an invisible panel. Actually show it, then scroll it into view so
-    // its settings and the Export button inside are visible and usable.
-    document.getElementById("export-panel").style.display = "block";
-    document.getElementById("export-panel").scrollIntoView({ behavior: "smooth" });
-  });
   document.getElementById("export-normalize").addEventListener("change", (e) => {
     document.getElementById("boost-cap-row").style.display = e.target.checked ? "block" : "none";
   });
