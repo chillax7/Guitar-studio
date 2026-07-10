@@ -293,39 +293,28 @@ function forwardSample(model, rawInputSample) {
 // that loads instantly). Runs on a disposable second model build so the
 // real model's causal-conv history stays untouched (zeroed) for actual
 // playback, not polluted by the calibration tone.
-// Runs synchronously on the worklet's message handler, which shares the
-// same real-time render thread as every process() call in this audio
-// context — measured at ~240ms for 8192 samples on this machine, ~80x a
-// single 128-sample quantum's budget, enough to audibly glitch other
-// concurrent playback if a model is (re)loaded mid-session. Trimmed to the
-// shortest burst that still gives a stable RMS reading: at 110Hz, 2048
-// measured samples is still ~5 full cycles.
+// Calibration must NOT run as one synchronous block in the message
+// handler: that handler shares the real-time render thread with every
+// process() call in the context, and one blocking pass over the test tone
+// (~90-240ms measured) overruns the 128-sample quantum budget ~35-80x.
+// With a fresh, idle context that's survivable — which is exactly why
+// "load a model first, then play" seemed to work — but stalling a render
+// thread that's actively serving audio (mixer playing, or an
+// already-loaded model doing per-sample inference) makes macOS kill the
+// whole audio stream: every node in the context goes permanently silent
+// until a page reload builds a new context. So calibration is spread
+// across process() calls instead, CALIBRATION_SAMPLES_PER_QUANTUM probe
+// samples per quantum (~2x a loaded model's normal per-quantum inference
+// cost, well inside budget), passing the dry signal through until done —
+// full calibration completes in ~12 quanta, ~30ms of wall time.
+// At 110Hz, 2048 measured samples is still ~5 full cycles.
 const CALIBRATION_TEST_FREQ = 110; // Hz — roughly guitar A2
 const CALIBRATION_TEST_AMPLITUDE = 0.3; // typical DI/pickup level pre-amp
 const CALIBRATION_WARMUP_SAMPLES = 1024; // let dilated-conv history settle before measuring
 const CALIBRATION_MEASURE_SAMPLES = 2048;
 const CALIBRATION_SAMPLES = CALIBRATION_WARMUP_SAMPLES + CALIBRATION_MEASURE_SAMPLES;
 const CALIBRATION_TARGET_RMS = 0.2; // comfortable reference level, well under clipping
-
-function measureModelRms(model) {
-  let sumSq = 0;
-  let measured = 0;
-  const omega = (2 * Math.PI * CALIBRATION_TEST_FREQ) / sampleRate;
-  for (let i = 0; i < CALIBRATION_SAMPLES; i++) {
-    const x = CALIBRATION_TEST_AMPLITUDE * Math.sin(omega * i);
-    const y = forwardSample(model, x);
-    if (i >= CALIBRATION_WARMUP_SAMPLES) { sumSq += y * y; measured++; }
-  }
-  return Math.sqrt(sumSq / Math.max(1, measured));
-}
-
-function autoCalibrateOutputGainDb(namJson) {
-  const calibrationModel = buildModel(namJson);
-  const measuredRms = measureModelRms(calibrationModel);
-  if (measuredRms <= 1e-6) return 0; // silent capture — nothing sensible to compute
-  const gainDb = 20 * Math.log10(CALIBRATION_TARGET_RMS / measuredRms);
-  return Math.max(-24, Math.min(24, gainDb));
-}
+const CALIBRATION_SAMPLES_PER_QUANTUM = 256;
 
 // ---------------------------------------------------------------------------
 // Worklet processor: input/output trim (dB), model-loudness auto-normalize,
@@ -346,6 +335,7 @@ class NAMProcessor extends AudioWorkletProcessor {
     super();
     this.model = null;
     this.modelOutputGainDb = 0;
+    this.calib = null; // in-flight incremental calibration state, see process()
     this.dcPrevIn = 0;
     this.dcPrevOut = 0;
     this.dcCoeff = 0.995;
@@ -355,21 +345,79 @@ class NAMProcessor extends AudioWorkletProcessor {
   _onMessage(msg) {
     if (msg.type === "load") {
       try {
-        this.model = buildModel(msg.nam);
-        if (!(msg.nam.metadata && typeof msg.nam.metadata.loudness === "number")) {
-          this.model.outputGainDb = autoCalibrateOutputGainDb(msg.nam);
-        }
-        this.modelOutputGainDb = this.model.outputGainDb;
+        const model = buildModel(msg.nam);
         const cutoffHz = 10.0;
         const omega = (2 * Math.PI * cutoffHz) / sampleRate;
         this.dcCoeff = 1.0 - omega;
+        this.calib = null;
+        if (msg.nam.metadata && typeof msg.nam.metadata.loudness === "number") {
+          // Known loudness — activate immediately, nothing to measure.
+          this.model = model;
+          this.modelOutputGainDb = model.outputGainDb;
+        } else {
+          // No loudness metadata — measure output level incrementally in
+          // process() before going live. The probe is a second disposable
+          // build so the real model's causal-conv history stays clean
+          // (zeroed) for actual playback, not polluted by the test tone.
+          // The current model (if any) is dropped now: the dry signal
+          // passes through for the ~30ms the calibration takes.
+          this.model = null;
+          this.calib = {
+            pending: model,
+            probe: buildModel(msg.nam),
+            i: 0, sumSq: 0, measured: 0,
+          };
+          // sync: offline-render callers (the Suggest feature) ask for
+          // blocking calibration — an OfflineAudioContext's render thread
+          // has no real-time budget to blow, and deferring would leave the
+          // first CALIBRATION_SAMPLES of their short (0.15s) test render
+          // as dry passthrough, contaminating the measurement.
+          if (msg.sync) {
+            while (this.calib) this._calibrationSlice();
+          }
+        }
+        // Ack now, not when calibration lands: in non-neural amp modes the
+        // node is disconnected and process() is never pulled, so an ack
+        // deferred to calibration completion would leave the loader's
+        // promise hanging forever. The parse succeeding is what "loaded"
+        // means; the amp goes live a few quanta later.
         this.port.postMessage({ type: "loaded", ok: true });
       } catch (err) {
         this.model = null;
+        this.calib = null;
         this.port.postMessage({ type: "loaded", ok: false, error: String(err && err.message || err) });
       }
     } else if (msg.type === "unload") {
       this.model = null;
+      this.calib = null;
+    }
+  }
+
+  // One slice of the deferred output-level calibration per render quantum —
+  // bounded work on the render thread instead of one giant blocking pass in
+  // the message handler (see the CALIBRATION_* comment block above).
+  _calibrationSlice() {
+    const c = this.calib;
+    const omega = (2 * Math.PI * CALIBRATION_TEST_FREQ) / sampleRate;
+    try {
+      const stop = Math.min(c.i + CALIBRATION_SAMPLES_PER_QUANTUM, CALIBRATION_SAMPLES);
+      for (; c.i < stop; c.i++) {
+        const x = CALIBRATION_TEST_AMPLITUDE * Math.sin(omega * c.i);
+        const y = forwardSample(c.probe, x);
+        if (c.i >= CALIBRATION_WARMUP_SAMPLES) { c.sumSq += y * y; c.measured++; }
+      }
+      if (c.i >= CALIBRATION_SAMPLES) {
+        const rms = Math.sqrt(c.sumSq / Math.max(1, c.measured));
+        // Silent capture (rms ~ 0): nothing sensible to compute, leave 0 dB.
+        c.pending.outputGainDb = rms <= 1e-6 ? 0
+          : Math.max(-24, Math.min(24, 20 * Math.log10(CALIBRATION_TARGET_RMS / rms)));
+        this.model = c.pending;
+        this.modelOutputGainDb = c.pending.outputGainDb;
+        this.calib = null;
+      }
+    } catch (err) {
+      this.calib = null;
+      this.port.postMessage({ type: "runtime-error", error: String(err && err.message || err) });
     }
   }
 
@@ -379,6 +427,8 @@ class NAMProcessor extends AudioWorkletProcessor {
     if (!output || !output[0]) return true;
     const outCh = output[0];
     const inCh = input && input[0] ? input[0] : null;
+
+    if (this.calib) this._calibrationSlice();
 
     const bypass = parameters.bypass[0] >= 0.5;
     if (!this.model || bypass) {

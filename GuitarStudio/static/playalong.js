@@ -673,7 +673,10 @@ async function paSuggestNamModel() {
         });
         await new Promise((resolve) => {
           node.port.onmessage = () => resolve();
-          node.port.postMessage({ type: "load", nam: namJson });
+          // sync: block this offline context's render thread for the
+          // output-level calibration — harmless off the real-time thread,
+          // and it keeps the whole short test render post-calibration.
+          node.port.postMessage({ type: "load", nam: namJson, sync: true });
         });
         const srcBuf = offlineCtx.createBuffer(1, testSignal.length, Audio.ctx.sampleRate);
         srcBuf.getChannelData(0).set(testSignal);
