@@ -650,11 +650,44 @@ async function gsDiag() {
     let s = 0; for (const v of d) s += v * v;
     return +Math.sqrt(s / d.length).toFixed(5);
   };
-  out.levels = {
-    paInput: rmsOf(PA.inAnal), // live guitar as captured
-    paOutput: rmsOf(PA.outAnal), // Play Along rig output
-    master: rmsOf(Audio.analyser), // mixer/backing output
+  // A single instantaneous reading can't distinguish "user wasn't playing"
+  // from "signal not flowing" — watch all three taps for 5 seconds (the
+  // user should be strumming, ideally with the backing track playing) and
+  // report the peak RMS each tap saw plus a coarse timeline.
+  console.log("gsDiag: watching levels for 5 seconds — PLAY YOUR GUITAR NOW (and hit Play on the backing if you can)…");
+  const watch = { paInput: [], paOutput: [], master: [] };
+  for (let i = 0; i < 50; i++) {
+    watch.paInput.push(rmsOf(PA.inAnal));
+    watch.paOutput.push(rmsOf(PA.outAnal));
+    watch.master.push(rmsOf(Audio.analyser));
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const summarize = (arr) => {
+    const vals = arr.filter((v) => v !== null);
+    if (!vals.length) return "no tap";
+    const max = Math.max(...vals);
+    // Sparkline: one char per 500ms, - silent / + quiet / # loud
+    let line = "";
+    for (let i = 0; i < vals.length; i += 5) {
+      const m = Math.max(...vals.slice(i, i + 5));
+      line += m > 0.02 ? "#" : (m > 0.002 ? "+" : "-");
+    }
+    return { maxRms: +max.toFixed(5), timeline: line };
   };
+  out.levels5s = {
+    paInput: summarize(watch.paInput), // live guitar as captured
+    paOutput: summarize(watch.paOutput), // Play Along rig output
+    master: summarize(watch.master), // mixer/backing output
+  };
+  // Where is the context actually rendering to?
+  out.output = {
+    outputLatency: ctx.outputLatency,
+    sinkId: "sinkId" in ctx ? (ctx.sinkId === "" ? "(default device)" : ctx.sinkId) : "unsupported",
+  };
+  try {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    out.outputDevices = devs.filter((d) => d.kind === "audiooutput").map((d) => d.label || d.deviceId);
+  } catch (e) { out.outputDevices = "enumerate failed: " + e.message; }
 
   if (PA.stream) {
     out.inputTracks = PA.stream.getAudioTracks().map((t) => ({
