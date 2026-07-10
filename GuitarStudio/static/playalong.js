@@ -559,20 +559,32 @@ function wireModelBrowser(prefix) {
   });
 }
 
-// Measure a model's output-level calibration gain in a throwaway
-// OfflineAudioContext, so the LIVE node never runs the measurement on the
-// real-time render thread. The offline render thread can block freely
-// (sync: true), and the sample rate matches the live context so the
-// measurement is identical to what the live node would have computed
-// itself. Returns the gain in dB, or null if anything fails (the live
-// node's own incremental in-process() calibration is the fallback then).
-async function paCalibrateNamOffline(namJson) {
-  if (namJson.metadata && typeof namJson.metadata.loudness === "number") return null; // nothing to measure
+// Probe a model in a throwaway OfflineAudioContext before it goes anywhere
+// near the live render thread: measure its output-level calibration gain
+// (sync/blocking — the offline render thread can block freely) AND its
+// inference speed. The speed check is what stops the "picking a NAM kills
+// the guitar and the backing until reload" failure: a capture whose
+// inference is slower than real time overruns every render quantum, and
+// macOS kills the whole audio stream — silently, with an empty console
+// (root-caused via gsDiag + per-model timing: standard-architecture
+// captures measured 1.4-1.5x slower than real time on this machine before
+// the block-processing rewrite, and still sit near 1.0x after it).
+// Returns { outputGainDb: number|null, rtFactor: number|null }; nulls mean
+// that part of the probe failed (the live node's fallbacks apply then).
+const NAM_PROBE_SECONDS = 0.25;
+// Thresholds are on the OFFLINE measurement, which runs ~10-15% slower
+// than a performance core (normal-priority thread, likely an efficiency
+// core) — the live render thread does a bit better than these numbers.
+const NAM_REFUSE_RT_FACTOR = 0.9; // near-certain stream death — don't load
+const NAM_WARN_RT_FACTOR = 0.7; // loads, but little headroom left for IR/effects
+
+async function paProbeNamModel(namJson) {
   try {
     // Audio.ctx always exists by the time Play Along's load paths run, but
-    // don't let a null ctx silently disable pre-calibration.
+    // don't let a null ctx silently disable the probe.
     const sr = (typeof Audio !== "undefined" && Audio.ctx && Audio.ctx.sampleRate) || 48000;
-    const offlineCtx = new OfflineAudioContext(1, 128, sr);
+    const len = Math.floor(sr * NAM_PROBE_SECONDS);
+    const offlineCtx = new OfflineAudioContext(1, len, sr);
     await offlineCtx.audioWorklet.addModule("nam-processor.js");
     const node = new AudioWorkletNode(offlineCtx, "nam-processor", {
       numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
@@ -584,9 +596,22 @@ async function paCalibrateNamOffline(namJson) {
       };
       node.port.postMessage({ type: "load", nam: namJson, sync: true });
     });
-    return Number.isFinite(gain) ? gain : null;
+    // Speed: time a real render through the loaded model. Calibration (if
+    // any) already ran synchronously inside the load handler above, so
+    // this times pure inference.
+    const buf = offlineCtx.createBuffer(1, len, sr);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = 0.3 * Math.sin((2 * Math.PI * 220 * i) / sr);
+    const src = offlineCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(node).connect(offlineCtx.destination);
+    src.start();
+    const t0 = performance.now();
+    await offlineCtx.startRendering();
+    const rtFactor = (performance.now() - t0) / (NAM_PROBE_SECONDS * 1000);
+    return { outputGainDb: Number.isFinite(gain) ? gain : null, rtFactor };
   } catch (e) {
-    return null;
+    return { outputGainDb: null, rtFactor: null };
   }
 }
 
@@ -710,21 +735,33 @@ window.gsDiag = gsDiag;
 async function paLoadNamModel(filename) {
   const statusEl = document.getElementById("pa-nam-status");
   if (!filename) { statusEl.textContent = ""; return; }
-  statusEl.textContent = "Loading…";
+  statusEl.textContent = "Loading (checking speed)…";
   try {
     const namJson = await (await fetch(`/api/nam_model_file?filename=${encodeURIComponent(filename)}`)).json();
-    const outputGainDb = await paCalibrateNamOffline(namJson);
+    const probe = await paProbeNamModel(namJson);
+    if (probe.rtFactor !== null && probe.rtFactor >= NAM_REFUSE_RT_FACTOR) {
+      // Loading this would take down the whole audio stream (the exact
+      // "picking a NAM cuts everything until reload" bug) — refuse, and
+      // say why in plain terms.
+      statusEl.textContent = `Not loaded: this capture needs ~${Math.round(probe.rtFactor * 100)}% ` +
+        `of this machine's audio budget — it can't run live and would cut ALL sound. ` +
+        `Look for a "Lite" or "Feather" version of the same amp instead.`;
+      return;
+    }
     await new Promise((resolve, reject) => {
       PA.namNode.port.onmessage = (e) => {
         if (e.data.type !== "loaded") return;
         e.data.ok ? resolve() : reject(new Error(e.data.error));
       };
       const msg = { type: "load", nam: namJson };
-      if (outputGainDb !== null) msg.outputGainDb = outputGainDb;
+      if (probe.outputGainDb !== null) msg.outputGainDb = probe.outputGainDb;
       PA.namNode.port.postMessage(msg);
     });
     PA.namLoaded = filename;
-    statusEl.textContent = `Loaded: ${filename}`;
+    statusEl.textContent = `Loaded: ${filename}` +
+      (probe.rtFactor !== null && probe.rtFactor >= NAM_WARN_RT_FACTOR
+        ? ` — ⚠️ heavy capture (~${Math.round(probe.rtFactor * 100)}% of audio budget); expect crackles if you add an IR or effects.`
+        : "");
   } catch (e) {
     statusEl.textContent = "Failed to load: " + e.message;
   }
@@ -812,6 +849,7 @@ async function paSuggestNamModel() {
     for (let i = 0; i < testSignal.length; i++) testSignal[i] = (Math.random() * 2 - 1) * 0.3;
 
     const scored = [];
+    let tooHeavy = 0;
     for (let ci = 0; ci < candidates.length; ci++) {
       const m = candidates[ci];
       resultEl.textContent = `Analyzing… (${ci + 1}/${candidates.length})`;
@@ -835,19 +873,30 @@ async function paSuggestNamModel() {
         src.buffer = srcBuf;
         src.connect(node).connect(offlineCtx.destination);
         src.start();
+        const t0 = performance.now();
         const rendered = await offlineCtx.startRendering();
+        // Same speed guardrail as paLoadNamModel: never suggest a capture
+        // that can't run live — it would be refused at load anyway.
+        const rtFactor = (performance.now() - t0) / (SUGGEST_TEST_SECONDS * 1000);
+        if (rtFactor >= NAM_REFUSE_RT_FACTOR) { tooHeavy++; continue; }
         const modelZcr = zeroCrossingRate(rendered.getChannelData(0));
         scored.push({ name: m.name, filename: m.filename, distance: Math.abs(modelZcr - targetZcr) });
       } catch (e) { /* skip a model that fails to load/render offline */ }
     }
     scored.sort((a, b) => a.distance - b.distance);
-    if (!scored.length) { resultEl.textContent = "No models available to compare."; return; }
+    if (!scored.length) {
+      resultEl.textContent = tooHeavy
+        ? `No usable models found — all ${tooHeavy} sampled candidates are too heavy to run live on this machine. Try searching for "lite" or "feather" captures.`
+        : "No models available to compare.";
+      return;
+    }
 
     const best = scored[0];
+    const heavyNote = tooHeavy ? ` ${tooHeavy} sampled capture${tooHeavy === 1 ? " was" : "s were"} skipped as too heavy to run live.` : "";
     const sampledNote = all.length > candidates.length
       ? ` (sampled ${candidates.length} of ${all.length} models across the library)` : "";
     resultEl.innerHTML = `Closest match: <b>${escapeHtml(best.name)}</b> ` +
-      `(brightness-proxy match, not a guaranteed tone match — audition and pick by ear)${sampledNote}.<br>` +
+      `(brightness-proxy match, not a guaranteed tone match — audition and pick by ear)${sampledNote}.${heavyNote}<br>` +
       `Ranking: ${scored.map((s) => escapeHtml(s.name)).join(" → ")}`;
     await paLoadNamModel(best.filename);
     paHighlightBrowserSelection("nam", best.filename);

@@ -36,13 +36,28 @@
 // Activations
 // ---------------------------------------------------------------------------
 
-function sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
+// Rational tanh approximation (the classic Padé form the reference C++'s
+// own "fasttanh" family uses) instead of Math.tanh: the activation runs
+// ~240x per sample ≈ 11M calls/sec for a standard-architecture capture,
+// and Math.tanh was one of the three big reasons inference measured
+// 1.4-1.5x SLOWER than real time for standard models (see the realtime-
+// factor probe in playalong.js). Max error vs true tanh ~5e-3 near the
+// clamp boundary — inaudible for an amp nonlinearity, and the reference
+// implementation itself trades the same accuracy for speed.
+function fastTanh(x) {
+  if (x > 3) return 1;
+  if (x < -3) return -1;
+  const x2 = x * x;
+  return (x * (27 + x2)) / (27 + 9 * x2);
+}
+
+function sigmoid(x) { return 0.5 * (fastTanh(0.5 * x) + 1); }
 
 function makeActivation(name) {
   switch ((name || "").toLowerCase()) {
     case "tanh":
     case "fasttanh":
-      return Math.tanh;
+      return fastTanh;
     case "sigmoid":
       return sigmoid;
     case "softsign":
@@ -53,7 +68,7 @@ function makeActivation(name) {
     case "":
       return (x) => x;
     default:
-      return Math.tanh; // the overwhelming majority of public captures use Tanh
+      return fastTanh; // the overwhelming majority of public captures use Tanh
   }
 }
 
@@ -101,25 +116,32 @@ class WeightReader {
 // Per-layer causal history ring buffer (channels x lookback)
 // ---------------------------------------------------------------------------
 
+// Sized to hold a full processing block PLUS the layer's dilation span, so
+// a whole block can be pushed up front and every tap for every sample in
+// the block is still present (a bare dilation-span ring would overwrite
+// in-block samples that later samples' taps still need).
+const MAX_BLOCK = 128; // render quantum size; process() chunks anything larger
+
 class RingHistory {
-  constructor(channels, length) {
+  constructor(channels, dilationSpan) {
     this.channels = channels;
-    this.length = length;
-    this.buf = new Float32Array(channels * length);
-    this.pos = 0;
+    this.length = MAX_BLOCK + dilationSpan;
+    this.buf = new Float32Array(this.channels * this.length);
+    this.pos = 0; // next write slot
   }
 
-  push(vec) {
-    const base = this.pos * this.channels;
-    for (let c = 0; c < this.channels; c++) this.buf[base + c] = vec[c];
-    this.pos = (this.pos + 1) % this.length;
-  }
-
-  // Writes the channel vector from `stepsBack` samples ago into `out`.
-  at(stepsBack, out) {
-    const idx = (((this.pos - 1 - stepsBack) % this.length) + this.length) % this.length;
-    const base = idx * this.channels;
-    for (let c = 0; c < this.channels; c++) out[c] = this.buf[base + c];
+  // Copies n samples (sample-major, [t*channels + c]) into the ring.
+  // Returns the ring index of the block's first sample.
+  pushBlock(block, n) {
+    const ch = this.channels, len = this.length;
+    const start = this.pos;
+    const firstChunk = Math.min(n, len - start);
+    this.buf.set(block.subarray(0, firstChunk * ch), start * ch);
+    if (firstChunk < n) {
+      this.buf.set(block.subarray(firstChunk * ch, n * ch), 0);
+    }
+    this.pos = (start + n) % len;
+    return start;
   }
 }
 
@@ -137,14 +159,11 @@ function buildLayer(reader, channels, bottleneck, conditionSize, dilation, kerne
 
   return {
     dilation, kernelSize, convMats, convBias, mixinW, layer1x1W, layer1x1Bias,
-    history: new RingHistory(channels, dilation * (kernelSize - 1) + 1),
-    // Preallocated per-sample scratch (reused every call — no per-sample GC pressure)
-    _tap: new Float32Array(channels),
-    _z: new Float32Array(convOutCh),
-    _mixinOut: new Float32Array(convOutCh),
-    _activated: new Float32Array(bottleneck),
-    _layer1x1Out: new Float32Array(channels),
-    _nextInput: new Float32Array(channels),
+    history: new RingHistory(channels, dilation * (kernelSize - 1)),
+    // Preallocated block scratch (reused every call — zero per-block GC
+    // pressure), sample-major [t*width + i].
+    _z: new Float32Array(MAX_BLOCK * convOutCh),
+    _activated: new Float32Array(MAX_BLOCK * bottleneck),
   };
 }
 
@@ -169,12 +188,19 @@ function buildLayerArray(cfg, reader) {
   const headRechannelMats = reader.takeConv1DWeights(headSize, headOutSize, 1);
   const headRechannelBias = headBias ? reader.takeVector(headSize) : new Float32Array(headSize);
 
+  // The activation is fastTanh for virtually every capture — flag it so the
+  // hot loops can call it directly instead of through a closure indirection.
+  const actIsTanh = activationFn === fastTanh;
+
   return {
-    channels, bottleneck, conditionSize, inputSize, headSize, gated, activationFn, headOutSize,
+    channels, bottleneck, conditionSize, inputSize, headSize, gated, activationFn, actIsTanh, headOutSize,
     rechannelW, layers, headRechannelMats, headRechannelBias,
-    _rechanneled: new Float32Array(channels),
-    _headAccum: new Float32Array(headOutSize),
-    _headOut: new Float32Array(headSize),
+    // Block buffers, sample-major [t*width + i]. _blkA/_blkB ping-pong as
+    // layer input/output down the stack.
+    _blkA: new Float32Array(MAX_BLOCK * channels),
+    _blkB: new Float32Array(MAX_BLOCK * channels),
+    _headAccum: new Float32Array(MAX_BLOCK * headOutSize),
+    _headOut: new Float32Array(MAX_BLOCK * headSize),
   };
 }
 
@@ -201,83 +227,212 @@ function buildModel(namJson) {
     outputGainDb = -18 - namJson.metadata.loudness;
   }
 
-  return { layerArrays, headScale, outputGainDb, conditionVec: new Float32Array(1) };
+  return {
+    layerArrays, headScale, outputGainDb,
+    _in1: new Float32Array(1), _out1: new Float32Array(1), // forwardSample's 1-sample block
+  };
 }
 
-function matVecInto(mat, outCh, inCh, vecIn, vecOut, bias) {
-  for (let i = 0; i < outCh; i++) {
-    let acc = bias ? bias[i] : 0;
-    const base = i * inCh;
-    for (let j = 0; j < inCh; j++) acc += mat[base + j] * vecIn[j];
-    vecOut[i] = acc;
+// Hot path — processes a whole block (≤ MAX_BLOCK samples) through one
+// layer array, one LAYER at a time across the full block rather than one
+// sample at a time through the whole stack. That's legal because WaveNet
+// layers have no within-sample recurrence between each other — each layer
+// only recurses on its own input history — and it's what finally made
+// standard-architecture captures realtime in plain JS: each weight matrix
+// stays hot in cache for 128 consecutive samples instead of being
+// re-walked per sample, and the inner loops get long enough for the JIT
+// to earn its keep. Additional rules: zero allocations (all buffers are
+// preallocated at build time — a single `new Float32Array` per layer per
+// sample was ~1M allocations/sec of GC pressure), history taps read in
+// place from the ring (increment + wrap check, no modulo, no copy-out),
+// and transcendentals are the fast rational approximations above.
+//
+// Layouts are all sample-major: block[t*width + i]. inputBlock has width
+// la.inputSize; condBlock is the raw network input (width 1 — the
+// condition for every ordinary capture); headCarry is the previous layer
+// array's _headOut (width prevHeadSize) or null. Returns the layer output
+// block (width la.channels); the head output lands in la._headOut.
+function processLayerArrayBlock(la, inputBlock, inputWidth, condBlock, headCarry, prevHeadSize, n) {
+  const channels = la.channels;
+
+  // Rechannel input → _blkA
+  const rechannelW = la.rechannelW;
+  let cur = la._blkA;
+  if (inputWidth === 1) {
+    for (let t = 0; t < n; t++) {
+      const x = inputBlock[t], base = t * channels;
+      for (let c = 0; c < channels; c++) cur[base + c] = rechannelW[c] * x;
+    }
+  } else {
+    for (let t = 0; t < n; t++) {
+      const inBase = t * inputWidth, outBase = t * channels;
+      for (let c = 0; c < channels; c++) {
+        let acc = 0;
+        const mBase = c * inputWidth;
+        for (let j = 0; j < inputWidth; j++) acc += rechannelW[mBase + j] * inputBlock[inBase + j];
+        cur[outBase + c] = acc;
+      }
+    }
   }
-}
 
-function processLayerArraySample(la, inputVec, conditionVec, headCarry) {
-  matVecInto(la.rechannelW, la.channels, la.inputSize, inputVec, la._rechanneled, null);
+  // Head accumulator ← previous array's head output (or zero)
+  const headOutSize = la.headOutSize;
+  const headAccum = la._headAccum;
+  if (headCarry) {
+    const copyW = Math.min(prevHeadSize, headOutSize);
+    for (let t = 0; t < n; t++) {
+      const src = t * prevHeadSize, dst = t * headOutSize;
+      for (let i = 0; i < copyW; i++) headAccum[dst + i] = headCarry[src + i];
+      for (let i = copyW; i < headOutSize; i++) headAccum[dst + i] = 0;
+    }
+  } else {
+    headAccum.fill(0, 0, n * headOutSize);
+  }
 
-  if (headCarry) la._headAccum.set(headCarry);
-  else la._headAccum.fill(0);
-
-  let layerInput = la._rechanneled;
+  const condIsScalar = la.conditionSize === 1;
+  const bottleneck = la.bottleneck;
+  const gated = la.gated;
+  const actIsTanh = la.actIsTanh;
+  const activationFn = la.activationFn;
+  let out = la._blkB;
 
   for (const layer of la.layers) {
-    layer.history.push(layerInput);
+    const hist = layer.history;
+    const histBuf = hist.buf;
+    const histLen = hist.length;
+    const startIdx = hist.pushBlock(cur, n);
     const convOutCh = layer.convBias.length;
     const K = layer.kernelSize;
-    layer._z.fill(0);
-    for (let k = 0; k < K; k++) {
-      const stepsBack = layer.dilation * (K - 1 - k);
-      layer.history.at(stepsBack, layer._tap);
-      const mat = layer.convMats[k];
-      for (let i = 0; i < convOutCh; i++) {
-        let acc = 0;
-        const base = i * la.channels;
-        for (let j = 0; j < la.channels; j++) acc += mat[base + j] * layer._tap[j];
-        layer._z[i] += acc;
-      }
-    }
-    for (let i = 0; i < convOutCh; i++) layer._z[i] += layer.convBias[i];
+    const z = layer._z;
+    const convBias = layer.convBias;
+    const mixinW = layer.mixinW;
 
-    matVecInto(layer.mixinW, convOutCh, la.conditionSize, conditionVec, layer._mixinOut, null);
-    for (let i = 0; i < convOutCh; i++) layer._z[i] += layer._mixinOut[i];
-
-    const bottleneck = la.bottleneck;
-    if (la.gated) {
-      for (let i = 0; i < bottleneck; i++) {
-        layer._activated[i] = la.activationFn(layer._z[i]) * sigmoid(layer._z[bottleneck + i]);
+    // z ← bias + conditioning mix-in (conditionSize is 1 for every ordinary
+    // capture — the raw input sample is the condition — so the mix-in
+    // collapses to one multiply per output channel).
+    if (condIsScalar) {
+      for (let t = 0; t < n; t++) {
+        const c0 = condBlock[t], base = t * convOutCh;
+        for (let i = 0; i < convOutCh; i++) z[base + i] = convBias[i] + mixinW[i] * c0;
       }
     } else {
-      for (let i = 0; i < bottleneck; i++) layer._activated[i] = la.activationFn(layer._z[i]);
+      const condW = la.conditionSize;
+      for (let t = 0; t < n; t++) {
+        const cBase = t * condW, base = t * convOutCh;
+        for (let i = 0; i < convOutCh; i++) {
+          let acc = convBias[i];
+          const mBase = i * condW;
+          for (let j = 0; j < condW; j++) acc += mixinW[mBase + j] * condBlock[cBase + j];
+          z[base + i] = acc;
+        }
+      }
     }
 
-    for (let i = 0; i < la.headOutSize; i++) la._headAccum[i] += layer._activated[i];
+    // Dilated conv: k outermost so each tap matrix stays hot across the block.
+    for (let k = 0; k < K; k++) {
+      const mat = layer.convMats[k];
+      let idx = startIdx - layer.dilation * (K - 1 - k);
+      if (idx < 0) idx += histLen;
+      for (let t = 0; t < n; t++) {
+        const hBase = idx * channels, zBase = t * convOutCh;
+        for (let i = 0; i < convOutCh; i++) {
+          let acc = 0;
+          const mBase = i * channels;
+          for (let j = 0; j < channels; j++) acc += mat[mBase + j] * histBuf[hBase + j];
+          z[zBase + i] += acc;
+        }
+        idx++;
+        if (idx === histLen) idx = 0;
+      }
+    }
 
-    matVecInto(layer.layer1x1W, la.channels, bottleneck, layer._activated, layer._layer1x1Out, layer.layer1x1Bias);
-    for (let i = 0; i < la.channels; i++) layer._nextInput[i] = layerInput[i] + layer._layer1x1Out[i];
+    // Activation (+ gate), head accumulation, 1x1 + residual — fused per block.
+    const activated = layer._activated;
+    if (gated) {
+      for (let t = 0; t < n; t++) {
+        const zBase = t * convOutCh, aBase = t * bottleneck;
+        if (actIsTanh) {
+          for (let i = 0; i < bottleneck; i++) activated[aBase + i] = fastTanh(z[zBase + i]) * sigmoid(z[zBase + bottleneck + i]);
+        } else {
+          for (let i = 0; i < bottleneck; i++) activated[aBase + i] = activationFn(z[zBase + i]) * sigmoid(z[zBase + bottleneck + i]);
+        }
+      }
+    } else if (actIsTanh) {
+      for (let t = 0; t < n; t++) {
+        const zBase = t * convOutCh, aBase = t * bottleneck;
+        for (let i = 0; i < bottleneck; i++) activated[aBase + i] = fastTanh(z[zBase + i]);
+      }
+    } else {
+      for (let t = 0; t < n; t++) {
+        const zBase = t * convOutCh, aBase = t * bottleneck;
+        for (let i = 0; i < bottleneck; i++) activated[aBase + i] = activationFn(z[zBase + i]);
+      }
+    }
 
-    // Swap buffers (avoid aliasing layerInput with the layer we just wrote)
-    const tmp = layer._nextInput;
-    layer._nextInput = layerInput === la._rechanneled ? new Float32Array(la.channels) : layerInput;
-    layerInput = tmp;
+    for (let t = 0; t < n; t++) {
+      const aBase = t * bottleneck, hBase = t * headOutSize;
+      for (let i = 0; i < headOutSize; i++) headAccum[hBase + i] += activated[aBase + i];
+    }
+
+    const w1x1 = layer.layer1x1W;
+    const b1x1 = layer.layer1x1Bias;
+    for (let t = 0; t < n; t++) {
+      const aBase = t * bottleneck, ioBase = t * channels;
+      for (let c = 0; c < channels; c++) {
+        let acc = b1x1[c];
+        const mBase = c * bottleneck;
+        for (let j = 0; j < bottleneck; j++) acc += w1x1[mBase + j] * activated[aBase + j];
+        out[ioBase + c] = cur[ioBase + c] + acc;
+      }
+    }
+
+    // Ping-pong: this layer's output is the next layer's input. Safe —
+    // pushBlock copies the input into the history before it's overwritten.
+    const tmp = cur; cur = out; out = tmp;
   }
 
-  matVecInto(la.headRechannelMats[0], la.headSize, la.headOutSize, la._headAccum, la._headOut, la.headRechannelBias);
-  return { layerOutput: layerInput, headOutput: la._headOut };
+  // Head rechannel
+  const headMat = la.headRechannelMats[0];
+  const headBias = la.headRechannelBias;
+  const headSize = la.headSize;
+  const headOut = la._headOut;
+  for (let t = 0; t < n; t++) {
+    const hBase = t * headOutSize, oBase = t * headSize;
+    for (let i = 0; i < headSize; i++) {
+      let acc = headBias[i];
+      const mBase = i * headOutSize;
+      for (let j = 0; j < headOutSize; j++) acc += headMat[mBase + j] * headAccum[hBase + j];
+      headOut[oBase + i] = acc;
+    }
+  }
+
+  return cur;
 }
 
-function forwardSample(model, rawInputSample) {
-  model.conditionVec[0] = rawInputSample;
-  let layerInputs = model.conditionVec; // inputSize=1 for the first layer array
+// n ≤ MAX_BLOCK samples: inBlock (raw input) → outBlock (amp output).
+function forwardBlock(model, inBlock, outBlock, n) {
+  let block = inBlock;
+  let width = 1;
   let headCarry = null;
-  let headOut = null;
+  let prevHeadSize = 0;
+  let lastHeadSize = 1;
   for (const la of model.layerArrays) {
-    const result = processLayerArraySample(la, layerInputs, model.conditionVec, headCarry);
-    layerInputs = result.layerOutput;
-    headCarry = result.headOutput;
-    headOut = result.headOutput;
+    block = processLayerArrayBlock(la, block, width, inBlock, headCarry, prevHeadSize, n);
+    width = la.channels;
+    headCarry = la._headOut;
+    prevHeadSize = la.headSize;
+    lastHeadSize = la.headSize;
   }
-  return model.headScale * headOut[0];
+  const headScale = model.headScale;
+  for (let t = 0; t < n; t++) outBlock[t] = headScale * headCarry[t * lastHeadSize];
+}
+
+// Single-sample convenience wrapper (calibration uses it; live audio goes
+// through forwardBlock directly).
+function forwardSample(model, rawInputSample) {
+  model._in1[0] = rawInputSample;
+  forwardBlock(model, model._in1, model._out1, 1);
+  return model._out1[0];
 }
 
 // Real-world .nam captures overwhelmingly lack the metadata.loudness field
@@ -346,6 +501,8 @@ class NAMProcessor extends AudioWorkletProcessor {
     this.dcPrevIn = 0;
     this.dcPrevOut = 0;
     this.dcCoeff = 0.995;
+    this._inBlock = new Float32Array(MAX_BLOCK); // gain-applied input for forwardBlock
+    this._outBlock = new Float32Array(MAX_BLOCK);
     this.port.onmessage = (e) => this._onMessage(e.data);
   }
 
@@ -434,12 +591,15 @@ class NAMProcessor extends AudioWorkletProcessor {
     const c = this.calib;
     const omega = (2 * Math.PI * CALIBRATION_TEST_FREQ) / sampleRate;
     try {
-      const stop = Math.min(c.i + CALIBRATION_SAMPLES_PER_QUANTUM, CALIBRATION_SAMPLES);
-      for (; c.i < stop; c.i++) {
-        const x = CALIBRATION_TEST_AMPLITUDE * Math.sin(omega * c.i);
-        const y = forwardSample(c.probe, x);
-        if (c.i >= CALIBRATION_WARMUP_SAMPLES) { c.sumSq += y * y; c.measured++; }
+      const n = Math.min(CALIBRATION_SAMPLES_PER_QUANTUM, CALIBRATION_SAMPLES - c.i);
+      const inBlock = this._inBlock;
+      const outBlock = this._outBlock;
+      for (let i = 0; i < n; i++) inBlock[i] = CALIBRATION_TEST_AMPLITUDE * Math.sin(omega * (c.i + i));
+      forwardBlock(c.probe, inBlock, outBlock, n);
+      for (let i = 0; i < n; i++) {
+        if (c.i + i >= CALIBRATION_WARMUP_SAMPLES) { c.sumSq += outBlock[i] * outBlock[i]; c.measured++; }
       }
+      c.i += n;
       if (c.i >= CALIBRATION_SAMPLES) {
         const rms = Math.sqrt(c.sumSq / Math.max(1, c.measured));
         // Silent capture (rms ~ 0) or NaN-producing inference: nothing
@@ -488,28 +648,42 @@ class NAMProcessor extends AudioWorkletProcessor {
     // — fail safe (silence + disable this model, not a live crash on
     // someone's actual playing) rather than assume every possible real
     // file is covered.
+    // Gain params are k-rate in practice (length 1) — hoist the dB→linear
+    // conversion out of the loop instead of two Math.pow calls per sample.
+    const inGainIsKRate = paramInGain.length === 1;
+    const outGainIsKRate = paramOutGain.length === 1;
+    const inLinK = inGainIsKRate ? Math.pow(10, paramInGain[0] / 20) : 0;
+    const outLinK = outGainIsKRate ? Math.pow(10, (paramOutGain[0] + this.modelOutputGainDb) / 20) : 0;
     try {
-      for (let i = 0; i < frames; i++) {
-        const inGainDb = paramInGain.length > 1 ? paramInGain[i] : paramInGain[0];
-        const outGainDb = (paramOutGain.length > 1 ? paramOutGain[i] : paramOutGain[0]) + this.modelOutputGainDb;
-        const dry = inCh ? inCh[i] : 0;
-        const withInGain = dry * Math.pow(10, inGainDb / 20);
-        let sample = forwardSample(this.model, withInGain);
-        sample *= Math.pow(10, outGainDb / 20);
+      // Render-quantum frames is 128 (== MAX_BLOCK) today; chunk defensively
+      // in case a future spec revision hands us more.
+      for (let off = 0; off < frames; off += MAX_BLOCK) {
+        const n = Math.min(MAX_BLOCK, frames - off);
+        const inBlock = this._inBlock;
+        const outBlock = this._outBlock;
+        for (let i = 0; i < n; i++) {
+          const inLin = inGainIsKRate ? inLinK : Math.pow(10, paramInGain[off + i] / 20);
+          inBlock[i] = (inCh ? inCh[off + i] : 0) * inLin;
+        }
+        forwardBlock(this.model, inBlock, outBlock, n);
+        for (let i = 0; i < n; i++) {
+          const outLin = outGainIsKRate ? outLinK : Math.pow(10, (paramOutGain[off + i] + this.modelOutputGainDb) / 20);
+          let sample = outBlock[i] * outLin;
 
-        // One-pole DC blocker (matches the reference wrapper's 10Hz high-pass)
-        const dcIn = sample;
-        sample = sample - this.dcPrevIn + this.dcCoeff * this.dcPrevOut;
-        this.dcPrevIn = dcIn;
-        this.dcPrevOut = sample;
-        // Recursive filter state can decay into denormal range during quiet
-        // passages/silence between notes — on some engines/CPUs that's a
-        // 100x+ per-op slowdown, which on a shared single-threaded audio
-        // render callback can starve every other node in the context, not
-        // just this one. Flush-to-zero well below audibility.
-        if (Math.abs(this.dcPrevOut) < 1e-15) this.dcPrevOut = 0;
+          // One-pole DC blocker (matches the reference wrapper's 10Hz high-pass)
+          const dcIn = sample;
+          sample = sample - this.dcPrevIn + this.dcCoeff * this.dcPrevOut;
+          this.dcPrevIn = dcIn;
+          this.dcPrevOut = sample;
+          // Recursive filter state can decay into denormal range during quiet
+          // passages/silence between notes — on some engines/CPUs that's a
+          // 100x+ per-op slowdown, which on a shared single-threaded audio
+          // render callback can starve every other node in the context, not
+          // just this one. Flush-to-zero well below audibility.
+          if (Math.abs(this.dcPrevOut) < 1e-15) this.dcPrevOut = 0;
 
-        outCh[i] = Number.isFinite(sample) ? sample : 0;
+          outCh[off + i] = Number.isFinite(sample) ? sample : 0;
+        }
       }
     } catch (err) {
       this.model = null;
