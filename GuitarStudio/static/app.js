@@ -754,6 +754,16 @@ function renderTimeDisplay(pos) {
 
 function tick() {
   if (Audio.ctx) {
+    // Chrome (and others) can auto-suspend an AudioContext it judges idle
+    // as a power-saving measure — e.g. a brief silence gap is plausible
+    // during a Play Along amp-model switch. Nothing else in the app
+    // resumes it outside of clicking the mixer's own Play button, so a
+    // context suspended while Play Along is in use (mixer not necessarily
+    // playing) would otherwise stay silent — both the guitar signal and
+    // the mixer, since they share this one context — until a full page
+    // reload created a fresh one. Checked every frame regardless of
+    // mixer playback state, since Play Along works without it.
+    if (Audio.ctx.state === "suspended") Audio.ctx.resume();
     const pos = currentPosition();
     if (Audio.playing) {
       if (State.ui.loopEnabled && State.ui.loop && pos >= State.ui.loop.end) {

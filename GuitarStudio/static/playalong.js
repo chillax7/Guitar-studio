@@ -727,7 +727,7 @@ async function paSuggestAnalogMatch() {
 
 function paUpdateSuggestVisibility() {
   const hasGuitar = typeof State !== "undefined" && State.stems && State.stems.some((s) => s.name === "guitar");
-  document.getElementById("pa-suggest-btn").style.display = hasGuitar ? "inline-block" : "none";
+  document.getElementById("pa-suggest-btn").style.display = hasGuitar ? "block" : "none";
 }
 
 // ---------------------------------------------------------------------------

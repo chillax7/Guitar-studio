@@ -397,6 +397,7 @@ button.primary:hover { filter: brightness(1.1); }
 }
 .pa-card h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); }
 .pa-card label { display: block; font-size: 11px; color: var(--text-dim); margin: 8px 0 2px; }
+#pa-suggest-btn { display: block; margin-top: 18px; width: 100%; }
 .pa-card input[type=range] { width: 100%; }
 .pa-card select { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 5px 6px; }
 .pa-card .row { display: flex; align-items: center; justify-content: space-between; margin: 4px 0; }
