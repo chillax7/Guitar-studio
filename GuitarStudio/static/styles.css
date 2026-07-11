@@ -408,6 +408,20 @@ button.primary:hover { filter: brightness(1.1); }
 .pa-card .row { display: flex; align-items: center; justify-content: space-between; margin: 4px 0; }
 .pa-card .hint { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
 
+/* V3-T1: NAM Tweaker metadata block — one line per field/fact, via <br>. */
+.pa-nam-meta {
+  background: var(--panel-2);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+
+/* V3-T2/GP-02: rig presets card sits between the top strip and the
+   pedalboard, full width either side. */
+#pa-presets-card { margin-bottom: 18px; }
+#pa-presets-card select { width: auto; flex: 1; margin-right: 8px; }
+#pa-presets-card input[type=text] { flex: 1; margin-right: 8px; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 5px 6px; }
+
 .pa-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
 .pa-tabs button { flex: 1; font-size: 11px; }
 

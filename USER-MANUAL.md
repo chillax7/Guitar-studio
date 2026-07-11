@@ -214,8 +214,49 @@ won't read cleanly.
 - **Analog:** a drive stage (soft-clip waveshaper) plus a 3-band tone
   stack (bass/mid/treble).
 - **Neural (NAM):** loads a `.nam` neural amp capture and runs real-time
-  inference — see §9.6 for where to get models, and §9.9 for a note on
-  which captures can and can't run live.
+  inference — see §9.6 for where to get models, §9.3a for the Tweaker
+  controls, and §9.9 for a note on which captures can and can't run live.
+
+### 9.3a The NAM Tweaker (V3)
+A standard `.nam` capture is a snapshot of one amp at one knob setting —
+there's no gain/presence/bass/treble hiding inside the file to expose, the
+knobs were frozen in when it was trained. The Neural mode panel builds a
+tone-shaping surface *around* the capture instead, the same way NAM's own
+plugin does:
+
+- **Metadata** — whatever the loaded `.nam` file's own metadata actually
+  carries (real captures usually carry little to none of it — this is
+  shown honestly, not padded out), plus what this app itself knows:
+  architecture, the realtime-cost estimate from the speed probe, whether
+  loudness metadata drove auto-calibration, and an ESR pulled from the
+  filename if one's embedded there.
+- **Drive** — the old "Input trim" slider, renamed and widened
+  (-24 to +48 dB). This is the closest thing to a real "gain knob" a frozen
+  capture allows: it's how hard you push the captured amp, like a boost
+  pedal in front — genuinely changes the distortion character.
+- **Bass / Mid / Treble / Presence** — a dedicated post-amp tone stack
+  *inside* the amp block, before Cab IR, separate from the EQ card further
+  down the chain. Presence is a high-shelf tilt around 6kHz. Flat (0dB) by
+  default — today's sound is unaffected until you reach for these.
+- **Output level** — unchanged control, but now paired with an **auto-level**
+  readout showing the calibration gain a capture without loudness metadata
+  gets measured against a test tone (previously baked in invisibly). The
+  slider still adds on top of that baked-in number.
+- **Parametric captures** — a rare "A2"/slimmable NAM family has real
+  conditioning knobs; this app's engine only supports the standard
+  (ordinary shared-capture) architecture. Loading one of these shows an
+  honest "not yet supported" message instead of a confusing generic
+  failure or silently misreading the weights.
+
+### 9.3b Rig presets (V3)
+The **Rig Presets** card (above the pedalboard) saves the *entire* rig —
+amp mode, NAM capture + Tweaker knobs (or Analog's tone stack), Cab IR,
+EQ, Compressor, Delay/Reverb, and Output level — as a named preset.
+Presets are shared across every song (stored server-side, not per-track).
+**Attach to this song** writes the preset's name into the current song's
+saved project, so reopening that song automatically recalls the rig the
+next time you open Play Along — build the tone once, never rebuild it by
+hand again for that song.
 
 ### 9.4 Cab IR
 Loads a cabinet impulse response (`.wav`) via convolution. Simple on/off —

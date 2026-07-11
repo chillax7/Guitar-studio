@@ -197,6 +197,28 @@
           </section>
         </div>
 
+        <!-- V3-T2/GP-02: rig presets — full rack state, named, recallable,
+             attachable to the current song (XC-01's project.rigPreset)
+             so loading the song loads the rig. Presets are cross-song,
+             stored server-side (/api/rig_presets); the "Attach" checkbox
+             just writes this song's project to carry the name. -->
+        <section class="pa-card" id="pa-presets-card">
+          <h3>Rig Presets</h3>
+          <div class="row">
+            <select id="pa-preset-select"></select>
+            <button id="pa-preset-load-btn">Load</button>
+            <button id="pa-preset-delete-btn">Delete</button>
+          </div>
+          <div class="row">
+            <label style="margin:0"><input type="checkbox" id="pa-preset-attach"> Attach to this song</label>
+          </div>
+          <div class="row">
+            <input type="text" id="pa-preset-name" placeholder="New preset name…">
+            <button id="pa-preset-save-btn" class="primary">Save current rig as…</button>
+          </div>
+          <p class="hint" id="pa-preset-status"></p>
+        </section>
+
         <!-- V3-U1: the rig, pedalboard order left-to-right — Input/Gate ->
              Amp -> Cab IR -> EQ -> Comp -> Delay/Reverb -> Output. Every
              card is collapsible (wirePedalboardCollapse in playalong.js);
@@ -249,10 +271,32 @@
                   <div class="model-browser-list" id="pa-nam-list"></div>
                 </div>
                 <p class="hint" id="pa-nam-status"></p>
-                <label>Input trim <span id="pa-nam-in-val">0 dB</span></label>
-                <input type="range" id="pa-nam-in" min="-24" max="24" step="1" value="0">
-                <label>Output trim <span id="pa-nam-out-val">0 dB</span></label>
+                <p class="hint" id="pa-nam-parametric-hint"></p>
+
+                <!-- V3-T1: NAM Tweaker — a .nam capture is a snapshot of one
+                     amp at one knob setting, so these controls are built
+                     AROUND the capture (same as NAM's own plugin does it),
+                     not exposing knobs that don't exist inside the file. -->
+                <div class="pa-nam-meta hint" id="pa-nam-meta"></div>
+
+                <label>Drive <span id="pa-nam-in-val">0 dB</span></label>
+                <input type="range" id="pa-nam-in" min="-24" max="48" step="1" value="0">
+                <p class="hint">How hard you push the captured amp — like a boost pedal in front. The closest thing to a real "gain knob" a frozen capture allows.</p>
+
+                <label>Bass <span id="pa-namtone-bass-val">0 dB</span></label>
+                <input type="range" id="pa-namtone-bass" min="-12" max="12" step="1" value="0">
+                <label>Mid <span id="pa-namtone-mid-val">0 dB</span></label>
+                <input type="range" id="pa-namtone-mid" min="-12" max="12" step="1" value="0">
+                <label>Treble <span id="pa-namtone-treble-val">0 dB</span></label>
+                <input type="range" id="pa-namtone-treble" min="-12" max="12" step="1" value="0">
+                <label>Presence <span id="pa-namtone-presence-val">0 dB</span></label>
+                <input type="range" id="pa-namtone-presence" min="-12" max="12" step="1" value="0">
+                <p class="hint">A dedicated post-amp tone stack, inside the amp block (before Cab IR) — separate from the EQ card further down the chain. Flat by default = today's sound.</p>
+
+                <label>Output level <span id="pa-nam-out-val">0 dB</span></label>
                 <input type="range" id="pa-nam-out" min="-24" max="24" step="1" value="0">
+                <p class="hint" id="pa-nam-autolevel"></p>
+
                 <button id="pa-suggest-btn" class="primary" style="display:none">Suggest from this track's guitar stem</button>
                 <p class="hint" id="pa-suggest-result"></p>
               </div>

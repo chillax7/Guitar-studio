@@ -47,6 +47,10 @@ const State = {
   // monitoring-only, per ui-spec.md §5.4).
   mix: { gains: {}, muted: {}, solo: null, muteRanges: {} },
   ui: { loop: null, loopEnabled: false },
+  // XC-01 (project format v2)
+  markers: [], // BT-08 (M4) — not populated until that lands
+  rigPreset: null, // GP-02 — name of the rig preset attached to this song, if any
+  rigPresetApplied: false, // has paApplyAttachedRigPreset already run for the current track
 };
 
 const STEM_ORDER = ["vocals", "drums", "bass", "guitar", "piano", "other"];
@@ -440,6 +444,30 @@ function startDrag(onMove, onUp) {
 // Project persistence (debounced autosave)
 // ---------------------------------------------------------------------------
 
+// XC-01: project format v2 — versioned, so a project file can carry more
+// than model/mix/ui (rig presets, section markers, other UI state) without
+// every reader needing to guess whether an old file has that field at all.
+// A v1 file (no "version" key — every project saved before this) has
+// exactly {model, mix, ui}; migrateProjectV2 below wraps that shape once,
+// on load, so the rest of the app only ever deals with v2 objects. Bump
+// PROJECT_VERSION and extend migrateProjectV2 with another branch whenever
+// the shape changes again — never read an unversioned field directly.
+const PROJECT_VERSION = 2;
+
+function migrateProjectV2(raw) {
+  if (!raw) return null;
+  if (raw.version >= PROJECT_VERSION) return raw;
+  // v1 (or earlier/unversioned): {model, mix, ui} only.
+  return {
+    version: PROJECT_VERSION,
+    model: raw.model,
+    mix: raw.mix || { gains: {}, muted: {}, solo: null, muteRanges: {} },
+    ui: raw.ui || { loop: null, loopEnabled: false },
+    markers: [], // BT-08 (M4) — empty until that lands
+    rigPreset: null, // GP-02 (M3) — no preset attached to a v1 project
+  };
+}
+
 let saveTimer = null;
 function saveProjectDebounced() {
   if (!State.track) return;
@@ -447,7 +475,14 @@ function saveProjectDebounced() {
   saveTimer = setTimeout(() => {
     Api.post("/api/project", {
       track: State.track,
-      project: { model: State.model, mix: State.mix, ui: State.ui },
+      project: {
+        version: PROJECT_VERSION,
+        model: State.model,
+        mix: State.mix,
+        ui: State.ui,
+        markers: State.markers || [],
+        rigPreset: State.rigPreset || null,
+      },
     }).catch(() => { /* best-effort */ });
   }, 600);
 }
@@ -523,13 +558,19 @@ async function selectTrack(name) {
 
   let project = null;
   try {
-    project = await Api.get(`/api/project?track=${encodeURIComponent(name)}`);
+    project = migrateProjectV2(await Api.get(`/api/project?track=${encodeURIComponent(name)}`));
   } catch (e) { /* no saved project yet */ }
   if (epoch !== selectTrackEpoch) return;
 
   State.model = (project && project.model) || State.defaultModel;
   State.mix = (project && project.mix) || { gains: {}, muted: {}, solo: null, muteRanges: {} };
   State.ui = (project && project.ui) || { loop: null, loopEnabled: false };
+  State.markers = (project && project.markers) || [];
+  // GP-02: a rig preset attached to this song — applied once Play Along is
+  // next opened for it (paApplyAttachedRigPreset in playalong.js), not
+  // here, since the PA audio graph doesn't exist until ensurePAGraph runs.
+  State.rigPreset = (project && project.rigPreset) || null;
+  State.rigPresetApplied = false;
   toggleTransportClass("loop-toggle-btn", "active", State.ui.loopEnabled);
   updateModelBadge();
   if (typeof refreshTakesList === "function") refreshTakesList(); // recorder.js — takes are per-track

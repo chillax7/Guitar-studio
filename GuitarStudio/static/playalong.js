@@ -43,6 +43,7 @@ const PA = {
   outputGain: null,
   outputMute: null,
   outAnal: null,
+  irLoaded: null, // GP-02: filename of the active Cab IR, if any
   meterRaf: null,
   namModels: [],
   irModels: [],
@@ -166,7 +167,26 @@ async function ensurePAGraph() {
   });
   PA.namNode.port.start();
 
+  // V3-T1: post-NAM tone stack — dedicated filters inside the amp block
+  // (before Cab IR), separate from the post-chain EQ card further down.
+  // Permanently wired bass->mid->treble->presence->ampOut regardless of amp
+  // mode (harmless when nothing feeds it — setAmpMode only ever connects
+  // PA.namNode to this chain's input in "neural" mode); flat (0dB) by
+  // default so it's a no-op until a player actually reaches for it.
+  PA.namToneBass = Audio.ctx.createBiquadFilter();
+  PA.namToneBass.type = "lowshelf"; PA.namToneBass.frequency.value = 150;
+  PA.namToneMid = Audio.ctx.createBiquadFilter();
+  PA.namToneMid.type = "peaking"; PA.namToneMid.frequency.value = 800; PA.namToneMid.Q.value = 0.7;
+  PA.namToneTreble = Audio.ctx.createBiquadFilter();
+  PA.namToneTreble.type = "highshelf"; PA.namToneTreble.frequency.value = 3000;
+  // Presence: a high-shelf tilt in the 4-8kHz "air"/pick-attack region,
+  // distinct from Treble's broader top-end shelf.
+  PA.namTonePresence = Audio.ctx.createBiquadFilter();
+  PA.namTonePresence.type = "highshelf"; PA.namTonePresence.frequency.value = 6000;
+  PA.namToneBass.connect(PA.namToneMid).connect(PA.namToneTreble).connect(PA.namTonePresence);
+
   PA.ampOut = Audio.ctx.createGain();
+  PA.namTonePresence.connect(PA.ampOut);
 
   // Cab IR (bypass = plain on/off, dry/wet gain pair)
   PA.convolver = Audio.ctx.createConvolver();
@@ -236,14 +256,17 @@ async function ensurePAGraph() {
 function setAmpMode(mode) {
   for (const [src, dst] of [
     [PA.gateNode, PA.cleanGain], [PA.gateNode, PA.analogNodes.inputGain], [PA.gateNode, PA.namNode],
-    [PA.cleanGain, PA.ampOut], [PA.analogNodes.output, PA.ampOut], [PA.namNode, PA.ampOut],
+    [PA.cleanGain, PA.ampOut], [PA.analogNodes.output, PA.ampOut], [PA.namNode, PA.namToneBass],
   ]) {
     try { src.disconnect(dst); } catch (e) { /* wasn't connected */ }
   }
 
   if (mode === "clean") { PA.gateNode.connect(PA.cleanGain); PA.cleanGain.connect(PA.ampOut); }
   else if (mode === "analog") { PA.gateNode.connect(PA.analogNodes.inputGain); PA.analogNodes.output.connect(PA.ampOut); }
-  else if (mode === "neural") { PA.gateNode.connect(PA.namNode); PA.namNode.connect(PA.ampOut); }
+  // V3-T1: namNode feeds the post-NAM tone stack, not ampOut directly — the
+  // tone stack's own output is permanently wired to ampOut (see
+  // ensurePAGraph), so only this one connection needs to toggle with mode.
+  else if (mode === "neural") { PA.gateNode.connect(PA.namNode); PA.namNode.connect(PA.namToneBass); }
 
   PA.ampMode = mode;
   document.querySelectorAll("#pa-amp-modes button").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
@@ -842,12 +865,66 @@ async function gsDiag() {
 }
 window.gsDiag = gsDiag;
 
+// V3-T1: everything nam-processor.js actually supports is the standard
+// (legacy-schema) non-parametric WaveNet architecture — see that file's own
+// header for why. A rare "parametric"/"A2"/slimmable NAM family exists with
+// real conditioning knobs, a different architecture our engine explicitly
+// doesn't implement; this is a detection stub, not support — an honest
+// message instead of either a confusing generic load failure or (worse)
+// silently misinterpreting the file's weights.
+function paIsParametricNam(namJson) {
+  return !!namJson.architecture && namJson.architecture !== "WaveNet";
+}
+
+// V3-T1: metadata surfaced for "what AM I playing through?" — enumerates
+// whatever the .nam file's own metadata object actually carries (real
+// captures overwhelmingly carry little to none of it, per nam-processor.js's
+// own calibration comment, so this degrades honestly rather than assuming
+// specific fields exist) plus what this app itself knows: architecture,
+// measured realtime cost from the probe, and an ESR pulled from the filename
+// if one's embedded there (no standard metadata field for it).
+function paDescribeNamMetadata(namJson, filename, probe) {
+  const meta = namJson.metadata || {};
+  const lines = [];
+  for (const k of Object.keys(meta)) {
+    if (k === "loudness" || meta[k] === null || meta[k] === undefined || meta[k] === "") continue;
+    lines.push(`${escapeHtml(k)}: ${escapeHtml(String(meta[k]))}`);
+  }
+  if (!lines.length) lines.push("No metadata fields in this capture's .nam file.");
+  lines.push(`Architecture: ${escapeHtml(namJson.architecture || "unknown")}` +
+    (probe && probe.rtFactor !== null ? ` — ~${Math.round(probe.rtFactor * 100)}% of this machine's audio budget` : ""));
+  lines.push(typeof meta.loudness === "number"
+    ? `Loudness: ${meta.loudness.toFixed(1)} (used for auto-calibration instead of a test-tone measurement)`
+    : "Loudness: not in metadata — auto-calibration measured from a test tone instead");
+  const esrMatch = /esr[_\s-]?([0-9.]+)/i.exec(filename || "");
+  if (esrMatch) lines.push(`ESR (from filename): ${esrMatch[1]} — lower is a more faithful capture.`);
+  return lines.join("<br>");
+}
+
 async function paLoadNamModel(filename) {
   const statusEl = document.getElementById("pa-nam-status");
-  if (!filename) { statusEl.textContent = ""; return; }
+  const parametricEl = document.getElementById("pa-nam-parametric-hint");
+  const metaEl = document.getElementById("pa-nam-meta");
+  const autolevelEl = document.getElementById("pa-nam-autolevel");
+  if (!filename) {
+    statusEl.textContent = ""; parametricEl.textContent = ""; metaEl.innerHTML = ""; autolevelEl.textContent = "";
+    return;
+  }
+  parametricEl.textContent = "";
   statusEl.textContent = "Loading (checking speed)…";
   try {
     const namJson = await (await fetch(`/api/nam_model_file?filename=${encodeURIComponent(filename)}`)).json();
+    if (paIsParametricNam(namJson)) {
+      // Fail fast on the main thread rather than spend a probe render only
+      // to have the worklet throw "Unsupported architecture" back at us.
+      statusEl.textContent = "";
+      parametricEl.textContent = `This is a parametric capture ("${namJson.architecture}" architecture, ` +
+        `not standard WaveNet) — not yet supported. Ordinary shared captures use the standard architecture ` +
+        `and will load normally.`;
+      metaEl.innerHTML = paDescribeNamMetadata(namJson, filename, null);
+      autolevelEl.textContent = "";
+      return;
+    }
     const probe = await paProbeNamModel(namJson);
     if (probe.rtFactor !== null && probe.rtFactor >= NAM_REFUSE_RT_FACTOR) {
       // Loading this would take down the whole audio stream (the exact
@@ -867,6 +944,15 @@ async function paLoadNamModel(filename) {
     // thread despite passing the offline probe above.
     PA.namLoadedPrev = PA.namLoaded;
     PA.namLoaded = filename;
+    metaEl.innerHTML = paDescribeNamMetadata(namJson, filename, probe);
+    // V3-T1: this was applied invisibly before (baked into
+    // nam-processor.js's modelOutputGainDb, added under the Output level
+    // slider with no indication it existed) — surfacing it is the whole
+    // point of "shown and adjustable rather than invisible". The slider
+    // itself is still the adjustable part, on top of this baked-in number.
+    autolevelEl.textContent = probe.outputGainDb !== null
+      ? `Auto-calibrated capture level: ${probe.outputGainDb.toFixed(1)} dB (baked in — the Output level slider above adds on top of this).`
+      : "No auto-calibration for this capture (this .nam's own loudness metadata was used instead, or none was available).";
     statusEl.textContent = `Loaded: ${filename}` +
       (probe.rtFactor !== null && probe.rtFactor >= NAM_WARN_RT_FACTOR
         ? ` — ⚠️ heavy capture (~${Math.round(probe.rtFactor * 100)}% of audio budget); expect crackles if you add an IR or effects.`
@@ -899,13 +985,14 @@ function paHandleNamLiveOverrun(rtFactor) {
 
 async function paLoadIr(filename) {
   const statusEl = document.getElementById("pa-ir-status");
-  if (!filename) { PA.convolver.buffer = null; statusEl.textContent = ""; return; }
+  if (!filename) { PA.convolver.buffer = null; PA.irLoaded = null; statusEl.textContent = ""; return; }
   statusEl.textContent = "Loading…";
   try {
     const resp = await fetch(`/api/ir_model_file?filename=${encodeURIComponent(filename)}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const arrBuf = await resp.arrayBuffer();
     PA.convolver.buffer = await Audio.ctx.decodeAudioData(arrBuf);
+    PA.irLoaded = filename; // GP-02: so a rig preset capture knows which IR is active
     statusEl.textContent = `Loaded: ${filename}`;
   } catch (e) {
     // Previously unhandled — a failed fetch/decode silently left the old
@@ -1060,6 +1147,8 @@ async function openPlayAlong() {
   paRefreshNamModels();
   paRefreshIrModels();
   paUpdateSuggestVisibility();
+  await paRefreshRigPresets();
+  await paApplyAttachedRigPreset(); // GP-02 — no-op if this track has none, or it's already been applied
 }
 
 function closePlayAlong() {
@@ -1137,6 +1226,20 @@ function wirePAControls() {
     PA.namNode.parameters.get("outputGainDb").value = parseFloat(e.target.value);
     document.getElementById("pa-nam-out-val").textContent = e.target.value + " dB";
   });
+  // V3-T1: post-NAM tone stack knobs — the "amp's tone stack" feel, flat by
+  // default (matches paNamToneStack.bass/mid/treble/presence field naming
+  // used by paCaptureRigState/paApplyRigState, GP-02).
+  for (const [id, node, valId] of [
+    ["pa-namtone-bass", "namToneBass", "pa-namtone-bass-val"],
+    ["pa-namtone-mid", "namToneMid", "pa-namtone-mid-val"],
+    ["pa-namtone-treble", "namToneTreble", "pa-namtone-treble-val"],
+    ["pa-namtone-presence", "namTonePresence", "pa-namtone-presence-val"],
+  ]) {
+    document.getElementById(id).addEventListener("input", (e) => {
+      PA[node].gain.value = parseFloat(e.target.value);
+      document.getElementById(valId).textContent = e.target.value + " dB";
+    });
+  }
   document.getElementById("pa-suggest-btn").addEventListener("click", paSuggestClosestModel);
 
   wireModelBrowser("ir");
@@ -1268,7 +1371,224 @@ function wirePASessionTabs() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// V3-T2 / GP-02: rig presets — full rack state (amp mode, capture, tweaker
+// knobs, IR, FX, output), named and recallable, attachable to a song so
+// loading the song loads the rig. Presets themselves are cross-song and
+// live server-side in one shared store (/api/rig_presets); a song's own
+// project (XC-01, project format v2) just carries the NAME of one it wants
+// auto-applied, in State.rigPreset.
+// ---------------------------------------------------------------------------
+
+function paCaptureRigState() {
+  const v = (id) => document.getElementById(id).value;
+  const c = (id) => document.getElementById(id).checked;
+  return {
+    ampMode: PA.ampMode,
+    gate: { bypass: c("pa-gate-bypass"), threshold: v("pa-gate-threshold") },
+    analog: { drive: v("pa-drive"), bass: v("pa-bass"), mid: v("pa-mid"), treble: v("pa-treble") },
+    neural: {
+      namLoaded: PA.namLoaded || null,
+      drive: v("pa-nam-in"),
+      outputLevel: v("pa-nam-out"),
+      tone: {
+        bass: v("pa-namtone-bass"), mid: v("pa-namtone-mid"),
+        treble: v("pa-namtone-treble"), presence: v("pa-namtone-presence"),
+      },
+    },
+    ir: { bypass: c("pa-ir-bypass"), loaded: PA.irLoaded || null },
+    eq: { bypass: c("pa-eq-bypass"), bass: v("pa-eq-bass"), mid: v("pa-eq-mid"), treble: v("pa-eq-treble") },
+    comp: { bypass: c("pa-comp-bypass"), threshold: v("pa-comp-threshold"), ratio: v("pa-comp-ratio") },
+    fx: {
+      delayBypass: c("pa-delay-bypass"), delayTime: v("pa-delay-time"),
+      delayFeedback: v("pa-delay-feedback"), delayMix: v("pa-delay-mix"),
+      reverbBypass: c("pa-reverb-bypass"), reverbSize: v("pa-reverb-size"), reverbMix: v("pa-reverb-mix"),
+    },
+    output: { level: v("pa-output-level") },
+  };
+}
+
+// Sets a control and re-dispatches the same event its own wiring already
+// listens for, rather than duplicating what every handler does — a preset
+// recall goes through the exact same code path a user's own drag would.
+function paSetControlValue(id, val) {
+  if (val === undefined || val === null) return;
+  const el = document.getElementById(id);
+  el.value = val;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+function paSetControlChecked(id, val) {
+  if (val === undefined || val === null) return;
+  const el = document.getElementById(id);
+  el.checked = val;
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+async function paApplyRigState(state) {
+  if (!state) return;
+  await ensurePAGraph();
+
+  if (state.gate) {
+    paSetControlValue("pa-gate-threshold", state.gate.threshold);
+    paSetControlChecked("pa-gate-bypass", state.gate.bypass);
+  }
+  if (state.analog) {
+    paSetControlValue("pa-drive", state.analog.drive);
+    paSetControlValue("pa-bass", state.analog.bass);
+    paSetControlValue("pa-mid", state.analog.mid);
+    paSetControlValue("pa-treble", state.analog.treble);
+  }
+  if (state.neural) {
+    paSetControlValue("pa-nam-in", state.neural.drive);
+    paSetControlValue("pa-nam-out", state.neural.outputLevel);
+    if (state.neural.tone) {
+      paSetControlValue("pa-namtone-bass", state.neural.tone.bass);
+      paSetControlValue("pa-namtone-mid", state.neural.tone.mid);
+      paSetControlValue("pa-namtone-treble", state.neural.tone.treble);
+      paSetControlValue("pa-namtone-presence", state.neural.tone.presence);
+    }
+    if (state.neural.namLoaded) {
+      await paLoadNamModel(state.neural.namLoaded);
+      paHighlightBrowserSelection("nam", state.neural.namLoaded);
+    }
+  }
+  if (state.ir) {
+    if (state.ir.loaded) {
+      await paLoadIr(state.ir.loaded);
+      paHighlightBrowserSelection("ir", state.ir.loaded);
+    }
+    paSetControlChecked("pa-ir-bypass", state.ir.bypass);
+  }
+  if (state.eq) {
+    paSetControlValue("pa-eq-bass", state.eq.bass);
+    paSetControlValue("pa-eq-mid", state.eq.mid);
+    paSetControlValue("pa-eq-treble", state.eq.treble);
+    paSetControlChecked("pa-eq-bypass", state.eq.bypass);
+  }
+  if (state.comp) {
+    paSetControlValue("pa-comp-threshold", state.comp.threshold);
+    paSetControlValue("pa-comp-ratio", state.comp.ratio);
+    paSetControlChecked("pa-comp-bypass", state.comp.bypass);
+  }
+  if (state.fx) {
+    paSetControlValue("pa-delay-time", state.fx.delayTime);
+    paSetControlValue("pa-delay-feedback", state.fx.delayFeedback);
+    paSetControlValue("pa-delay-mix", state.fx.delayMix);
+    paSetControlChecked("pa-delay-bypass", state.fx.delayBypass);
+    paSetControlValue("pa-reverb-size", state.fx.reverbSize);
+    paSetControlValue("pa-reverb-mix", state.fx.reverbMix);
+    paSetControlChecked("pa-reverb-bypass", state.fx.reverbBypass);
+  }
+  if (state.output) paSetControlValue("pa-output-level", state.output.level);
+  // Last: connects whichever mode's chain is now fully parameterized above.
+  if (state.ampMode) setAmpMode(state.ampMode);
+}
+
+// ---------------------------------------------------------------------------
+// Preset store — /api/rig_presets is a single shared {presets: {name: state}}
+// blob (like PA.namModels/irModels, fetched once and cached client-side;
+// refreshed on Play Along open).
+// ---------------------------------------------------------------------------
+let paRigPresets = {};
+
+async function paRefreshRigPresets() {
+  try {
+    const r = await Api.get("/api/rig_presets");
+    paRigPresets = r.presets || {};
+  } catch (e) {
+    paRigPresets = {};
+  }
+  const sel = document.getElementById("pa-preset-select");
+  const prev = sel.value;
+  sel.innerHTML = "";
+  const names = Object.keys(paRigPresets).sort((a, b) => a.localeCompare(b));
+  if (!names.length) {
+    const opt = document.createElement("option");
+    opt.value = ""; opt.textContent = "No saved presets yet";
+    sel.appendChild(opt);
+  }
+  for (const name of names) {
+    const opt = document.createElement("option");
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  }
+  if (names.includes(prev)) sel.value = prev;
+  paUpdateAttachCheckbox();
+}
+
+async function paSaveRigPresetsToServer() {
+  await Api.post("/api/rig_presets", { presets: paRigPresets });
+}
+
+function paUpdateAttachCheckbox() {
+  const sel = document.getElementById("pa-preset-select");
+  const attachEl = document.getElementById("pa-preset-attach");
+  attachEl.checked = !!(sel.value && State.rigPreset === sel.value);
+}
+
+// GP-02: applied once per track load, the first time Play Along opens for
+// it — not at selectTrack() time, since the PA audio graph doesn't exist
+// until ensurePAGraph runs (see openPlayAlong).
+async function paApplyAttachedRigPreset() {
+  if (!State.rigPreset || State.rigPresetApplied) return;
+  State.rigPresetApplied = true; // before the await — openPlayAlong can be called again while this is in flight
+  if (!paRigPresets[State.rigPreset]) await paRefreshRigPresets();
+  const state = paRigPresets[State.rigPreset];
+  if (state) await paApplyRigState(state);
+  paUpdateAttachCheckbox();
+}
+
+function wireRigPresets() {
+  document.getElementById("pa-preset-select").addEventListener("change", paUpdateAttachCheckbox);
+
+  document.getElementById("pa-preset-load-btn").addEventListener("click", async () => {
+    const name = document.getElementById("pa-preset-select").value;
+    const statusEl = document.getElementById("pa-preset-status");
+    if (!name) return;
+    statusEl.textContent = "Loading preset…";
+    await paApplyRigState(paRigPresets[name]);
+    statusEl.textContent = `Loaded rig preset "${name}".`;
+  });
+
+  document.getElementById("pa-preset-save-btn").addEventListener("click", async () => {
+    const nameEl = document.getElementById("pa-preset-name");
+    const name = nameEl.value.trim();
+    const statusEl = document.getElementById("pa-preset-status");
+    if (!name) { statusEl.textContent = "Name this preset before saving."; return; }
+    paRigPresets[name] = paCaptureRigState();
+    await paSaveRigPresetsToServer();
+    nameEl.value = "";
+    await paRefreshRigPresets();
+    document.getElementById("pa-preset-select").value = name;
+    statusEl.textContent = `Saved rig preset "${name}".`;
+  });
+
+  document.getElementById("pa-preset-delete-btn").addEventListener("click", async () => {
+    const name = document.getElementById("pa-preset-select").value;
+    const statusEl = document.getElementById("pa-preset-status");
+    if (!name || !(name in paRigPresets)) return;
+    delete paRigPresets[name];
+    await paSaveRigPresetsToServer();
+    if (State.rigPreset === name) { State.rigPreset = null; saveProjectDebounced(); }
+    await paRefreshRigPresets();
+    statusEl.textContent = `Deleted rig preset "${name}".`;
+  });
+
+  // Attaching a preset to the current song means loading that song again
+  // auto-applies it (paApplyAttachedRigPreset, called from openPlayAlong).
+  document.getElementById("pa-preset-attach").addEventListener("change", (e) => {
+    const name = document.getElementById("pa-preset-select").value;
+    State.rigPreset = e.target.checked ? (name || null) : null;
+    State.rigPresetApplied = true; // already matches what's live — don't re-apply on next open
+    saveProjectDebounced();
+    document.getElementById("pa-preset-status").textContent = State.rigPreset
+      ? `"${State.rigPreset}" will auto-load with this song from now on.`
+      : "No rig preset attached to this song.";
+  });
+}
+
 wirePAControls();
 wirePedalboardCollapse();
 wirePASessionTabs();
+wireRigPresets();
 document.getElementById("playalong-open-btn").addEventListener("click", paShowLatencyEstimate);

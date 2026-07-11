@@ -670,6 +670,30 @@ def svc_save_project(track: str, project: dict) -> dict:
     return {"ok": True, "path": str(path)}
 
 
+# GP-02: rig presets — unlike per-track projects, these are cross-song (a
+# preset is recallable from any song, and a song's project just carries the
+# NAME of one it wants auto-applied — see State.rigPreset/XC-01), so they
+# live in one shared file rather than PROJECTS_DIR's per-track ones. Same
+# dumb-blob-store pattern as svc_load_project/svc_save_project: the server
+# doesn't interpret a preset's shape at all, just stores whatever dict the
+# client sends.
+RIG_PRESETS_FILE = PROJECTS_DIR / "_rig_presets.json"
+
+
+def svc_load_rig_presets() -> dict:
+    if not RIG_PRESETS_FILE.exists():
+        return {"presets": {}}
+    try:
+        return json.loads(RIG_PRESETS_FILE.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ApiError(500, f"Could not read rig presets file: {exc}")
+
+
+def svc_save_rig_presets(presets: dict) -> dict:
+    RIG_PRESETS_FILE.write_text(json.dumps({"presets": presets}, indent=2))
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------
 # HTTP layer
 # ---------------------------------------------------------------------------
@@ -855,6 +879,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_file(resolve_ir_file(query.get("filename", "")), cacheable=True)
             if path == "/api/recordings":
                 return self._send_json(200, svc_recordings_list(query.get("track", "")))
+            if path == "/api/rig_presets":
+                return self._send_json(200, svc_load_rig_presets())
             if path.startswith("/api/"):
                 return self._send_json(404, {"error": f"Unknown route: {path}"})
             return self._serve_static(path)
@@ -946,6 +972,11 @@ class Handler(BaseHTTPRequestHandler):
                 body = self._read_json_body()
                 track = body.get("track", "")
                 result = svc_save_project(track, body.get("project", {}))
+                return self._send_json(200, result)
+
+            if path == "/api/rig_presets":
+                body = self._read_json_body()
+                result = svc_save_rig_presets(body.get("presets", {}))
                 return self._send_json(200, result)
 
             return self._send_json(404, {"error": f"Unknown route: {path}"})

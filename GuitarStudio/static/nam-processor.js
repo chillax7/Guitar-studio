@@ -743,7 +743,12 @@ const LIVE_CHECK_REFUSE_RT_FACTOR = 0.95; // wall-time/audio-time over this wind
 class NAMProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
-      { name: "inputGainDb", defaultValue: 0, minValue: -24, maxValue: 24 },
+      // V3-T1: widened upper bound — this is "Drive" in the Tweaker UI now
+      // (how hard you push the captured amp, like a boost pedal in front),
+      // and the whole point is pushing harder than a plain input-trim
+      // range needed to. Lower bound unchanged (taming a hot capture never
+      // needed more headroom than this).
+      { name: "inputGainDb", defaultValue: 0, minValue: -24, maxValue: 48 },
       { name: "outputGainDb", defaultValue: 0, minValue: -24, maxValue: 24 },
       { name: "bypass", defaultValue: 0, minValue: 0, maxValue: 1 },
     ];
