@@ -25,6 +25,7 @@ const PA = {
   analogNodes: null,
   namNode: null,
   namLoaded: null,
+  namLoadedPrev: null, // V3-E3: what a live-overrun rollback reverts the picker to
   ampOut: null,
   ampMode: "clean",
   convolver: null,
@@ -159,6 +160,8 @@ async function ensurePAGraph() {
     if (e.data.type === "runtime-error") {
       document.getElementById("pa-nam-status").textContent =
         `Model disabled after a processing error: ${e.data.error}`;
+    } else if (e.data.type === "live-overrun-rollback") {
+      paHandleNamLiveOverrun(e.data.rtFactor);
     }
   });
   PA.namNode.port.start();
@@ -640,6 +643,17 @@ const NAM_PROBE_SECONDS = 0.25;
 // Thresholds are on the OFFLINE measurement, which runs ~10-15% slower
 // than a performance core (normal-priority thread, likely an efficiency
 // core) — the live render thread does a bit better than these numbers.
+// That ~10-15% gap was measured on one specific dev machine and isn't
+// universal (V3-E3) — a different Mac's offline thread could sit closer to,
+// or further from, its live thread's speed. Rather than hand-tune this
+// constant per machine, nam-processor.js backstops it: whichever model
+// actually goes live gets its first ~100ms of real process() calls timed on
+// the real render thread, and rolls itself back automatically if THIS
+// machine isn't keeping up, regardless of what this offline number said —
+// see LIVE_CHECK_WINDOW_MS/_startLiveCheck in nam-processor.js and
+// paHandleNamLiveOverrun below. These thresholds still gate the offline
+// probe as a fast first-pass filter (no reason to even try an obviously
+// too-heavy capture), just no longer the last line of defense.
 const NAM_REFUSE_RT_FACTOR = 0.9; // near-certain stream death — don't load
 const NAM_WARN_RT_FACTOR = 0.7; // loads, but little headroom left for IR/effects
 
@@ -827,6 +841,10 @@ async function paLoadNamModel(filename) {
       if (probe.outputGainDb !== null) msg.outputGainDb = probe.outputGainDb;
       PA.namNode.port.postMessage(msg);
     });
+    // V3-E3: what the live-overrun rollback (paHandleNamLiveOverrun) reverts
+    // the picker's UI to if this load turns out to overrun the real render
+    // thread despite passing the offline probe above.
+    PA.namLoadedPrev = PA.namLoaded;
     PA.namLoaded = filename;
     statusEl.textContent = `Loaded: ${filename}` +
       (probe.rtFactor !== null && probe.rtFactor >= NAM_WARN_RT_FACTOR
@@ -835,6 +853,27 @@ async function paLoadNamModel(filename) {
   } catch (e) {
     statusEl.textContent = "Failed to load: " + e.message;
   }
+}
+
+// V3-E3: the offline probe in paLoadNamModel is an estimate — it runs on a
+// different thread than the one that renders live audio, so it can still be
+// wrong for a given machine. nam-processor.js backstops that estimate by
+// timing the first ~100ms of real process() calls after a model goes live
+// and rolling back on its own if this specific machine's render thread isn't
+// keeping up (see LIVE_CHECK_WINDOW_MS in nam-processor.js). This just
+// brings the picker UI and status text in line with what the audio side
+// already did.
+function paHandleNamLiveOverrun(rtFactor) {
+  const statusEl = document.getElementById("pa-nam-status");
+  const prev = PA.namLoadedPrev;
+  const pct = Math.round(rtFactor * 100);
+  PA.namLoaded = prev || null;
+  statusEl.textContent = prev
+    ? `Reverted to "${prev}": the previous capture overran this machine's real audio budget ` +
+      `(~${pct}% while actually playing) despite passing the initial speed check.`
+    : `Unloaded: this capture overran this machine's real audio budget ` +
+      `(~${pct}% while actually playing) despite passing the initial speed check.`;
+  paHighlightBrowserSelection("nam", prev || null);
 }
 
 async function paLoadIr(filename) {

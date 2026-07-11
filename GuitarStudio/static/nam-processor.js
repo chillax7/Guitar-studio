@@ -717,6 +717,20 @@ function forwardBlockAny(model, inBlock, outBlock, n) {
 // (t3k-wasm-module.cpp) around the core inference.
 // ---------------------------------------------------------------------------
 
+// V3-E3: the offline realtime-budget probe (paProbeNamModel in playalong.js)
+// is an estimate — it runs on a different thread (OfflineAudioContext,
+// normal priority) than the one that actually renders live audio (the
+// real-time AudioContext thread, typically a higher-priority/performance
+// core), so it can still be wrong for a given machine. This is the safety
+// net behind that estimate: time the first LIVE_CHECK_WINDOW_MS of actual
+// process() calls after a model goes live and, if this specific machine's
+// real render thread isn't keeping up, roll back to whatever was active
+// before it — automatically, before enough consecutive overruns pile up to
+// take down the whole audio stream (the original "picking a NAM kills all
+// audio" failure mode).
+const LIVE_CHECK_WINDOW_MS = 100;
+const LIVE_CHECK_REFUSE_RT_FACTOR = 0.95; // wall-time/audio-time over this window means it's not keeping up
+
 class NAMProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
@@ -740,6 +754,26 @@ class NAMProcessor extends AudioWorkletProcessor {
     this.wasmExports = null; // set once nam.wasm is instantiated, see "wasm-module" below
     this.wasmInstantiating = null; // Promise while instantiation is in flight
     this.port.onmessage = (e) => this._onMessage(e.data);
+    // V3-E3 live-overrun rollback (see LIVE_CHECK_WINDOW_MS above).
+    this.rollbackModel = null;
+    this.rollbackOutputGainDb = 0;
+    this.liveCheckActive = false;
+    this.liveCheckWallMs = 0;
+    this.liveCheckAudioMs = 0;
+    this._hasPerfNow = typeof performance !== "undefined" && typeof performance.now === "function";
+  }
+
+  // Called at every point a new model actually goes live (immediately for a
+  // pre-calibrated/metadata-known load, or once deferred calibration lands).
+  // prevModel/prevGainDb are whatever was active right before this swap —
+  // captured by the caller before this.model was reassigned — so a bad
+  // overrun reading can restore exactly that state.
+  _startLiveCheck(prevModel, prevGainDb) {
+    this.rollbackModel = prevModel;
+    this.rollbackOutputGainDb = prevGainDb;
+    this.liveCheckActive = this._hasPerfNow;
+    this.liveCheckWallMs = 0;
+    this.liveCheckAudioMs = 0;
   }
 
   // playalong.js compiles nam.wasm on the main thread (AudioWorkletGlobalScope
@@ -766,6 +800,10 @@ class NAMProcessor extends AudioWorkletProcessor {
     }
     if (msg.type === "load") {
       if (this.wasmInstantiating) { try { await this.wasmInstantiating; } catch (e) { /* already logged */ } }
+      // V3-E3: whatever is active right now is what a bad live-overrun
+      // reading rolls back to — capture it before any reassignment below.
+      const prevModel = this.model;
+      const prevGainDb = this.modelOutputGainDb;
       try {
         const model = buildModelAny(msg.nam, this.wasmExports);
         const cutoffHz = 10.0;
@@ -780,10 +818,12 @@ class NAMProcessor extends AudioWorkletProcessor {
           model.outputGainDb = msg.outputGainDb;
           this.model = model;
           this.modelOutputGainDb = msg.outputGainDb;
+          this._startLiveCheck(prevModel, prevGainDb);
         } else if (msg.nam.metadata && typeof msg.nam.metadata.loudness === "number") {
           // Known loudness — activate immediately, nothing to measure.
           this.model = model;
           this.modelOutputGainDb = model.outputGainDb;
+          this._startLiveCheck(prevModel, prevGainDb);
         } else {
           // No loudness metadata — measure output level incrementally in
           // process() before going live. The probe is a second disposable
@@ -796,6 +836,7 @@ class NAMProcessor extends AudioWorkletProcessor {
             pending: model,
             probe: buildModelAny(msg.nam, this.wasmExports),
             i: 0, sumSq: 0, measured: 0,
+            prevModel, prevGainDb, // V3-E3: for _startLiveCheck once calibration lands
           };
           // sync: offline-render callers (the Suggest feature) ask for
           // blocking calibration — an OfflineAudioContext's render thread
@@ -870,6 +911,7 @@ class NAMProcessor extends AudioWorkletProcessor {
           : Math.max(-24, Math.min(24, gainDb));
         this.model = c.pending;
         this.modelOutputGainDb = c.pending.outputGainDb;
+        this._startLiveCheck(c.prevModel, c.prevGainDb);
         this.calib = null;
       }
     } catch (err) {
@@ -912,6 +954,10 @@ class NAMProcessor extends AudioWorkletProcessor {
     const outGainIsKRate = paramOutGain.length === 1;
     const inLinK = inGainIsKRate ? Math.pow(10, paramInGain[0] / 20) : 0;
     const outLinK = outGainIsKRate ? Math.pow(10, (paramOutGain[0] + this.modelOutputGainDb) / 20) : 0;
+    // V3-E3: wall-clock time this call actually takes, only while a live
+    // check is running (see _startLiveCheck) — near-zero cost otherwise.
+    const checkingLive = this.liveCheckActive;
+    const t0 = checkingLive ? performance.now() : 0;
     try {
       // Render-quantum frames is 128 (== MAX_BLOCK) today; chunk defensively
       // in case a future spec revision hands us more.
@@ -948,7 +994,27 @@ class NAMProcessor extends AudioWorkletProcessor {
       this.dcPrevIn = 0;
       this.dcPrevOut = 0;
       if (inCh) outCh.set(inCh); else outCh.fill(0);
+      this.liveCheckActive = false;
       this.port.postMessage({ type: "runtime-error", error: String(err && err.message || err) });
+    }
+
+    if (checkingLive) {
+      this.liveCheckWallMs += performance.now() - t0;
+      this.liveCheckAudioMs += (frames / sampleRate) * 1000;
+      if (this.liveCheckAudioMs >= LIVE_CHECK_WINDOW_MS) {
+        const rtFactor = this.liveCheckWallMs / this.liveCheckAudioMs;
+        this.liveCheckActive = false;
+        if (rtFactor >= LIVE_CHECK_REFUSE_RT_FACTOR) {
+          // This machine's live render thread isn't keeping up with the
+          // model that just went active, for real — not the offline probe's
+          // estimate. Roll back to whatever was active before it rather than
+          // let consecutive overruns take the whole stream down.
+          this.model = this.rollbackModel;
+          this.modelOutputGainDb = this.rollbackOutputGainDb;
+          this.rollbackModel = null;
+          this.port.postMessage({ type: "live-overrun-rollback", rtFactor });
+        }
+      }
     }
     return true;
   }
