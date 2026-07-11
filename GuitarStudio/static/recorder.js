@@ -172,7 +172,7 @@ async function startRecording() {
 
     window.addEventListener("beforeunload", recBeforeUnloadGuard);
 
-    if (doPlayback) startPlaybackAt(Audio.playStartOffset); // app.js — same instant, current position
+    if (doPlayback) startPlaybackAt(currentPosition()); // app.js — current position (correct in processed mode too, unlike playStartOffset)
 
     document.getElementById("rec-result").innerHTML = "";
     updateRecUI();

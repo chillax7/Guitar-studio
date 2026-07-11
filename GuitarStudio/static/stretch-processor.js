@@ -223,7 +223,16 @@ class StretchProcessor extends AudioWorkletProcessor {
         break;
       case "params":
         if (typeof msg.speed === "number") this.speed = msg.speed;
-        if (typeof msg.pitchRatio === "number") this.pitchRatio = msg.pitchRatio;
+        if (typeof msg.pitchRatio === "number" && msg.pitchRatio !== this.pitchRatio) {
+          // readPos is in the resampled domain: the current source position
+          // is readPos * pitchRatio (see _readVirtual). Changing pitchRatio
+          // without rescaling readPos would instantly move the source
+          // position by the ratio old/new — dragging Tune mid-song would
+          // skip playback (and the playhead) forward/backward. Rescale so
+          // the source position is preserved across the pitch change.
+          this.readPos = this.readPos * this.pitchRatio / msg.pitchRatio;
+          this.pitchRatio = msg.pitchRatio;
+        }
         break;
       case "transport":
         if (msg.action === "play") this.playing = true;

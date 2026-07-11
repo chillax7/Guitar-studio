@@ -943,13 +943,22 @@ async function paSuggestNamModel() {
         // timing the WASM engine (when available), not the JS fallback —
         // await the module send before "load".
         await paSendNamWasmModule(node);
-        await new Promise((resolve) => {
-          node.port.onmessage = () => resolve();
+        const loadedOk = await new Promise((resolve) => {
+          node.port.onmessage = (e) => {
+            // Only the load ack decides this — resolving on ANY message
+            // (e.g. a "wasm-instantiate-failed" reply) would let a model
+            // that never actually loaded fall through to the render below,
+            // where a null model renders dry passthrough and its raw-noise
+            // ZCR gets scored as if it were the amp's tone.
+            if (e.data.type !== "loaded") return;
+            resolve(!!e.data.ok);
+          };
           // sync: block this offline context's render thread for the
           // output-level calibration — harmless off the real-time thread,
           // and it keeps the whole short test render post-calibration.
           node.port.postMessage({ type: "load", nam: namJson, sync: true });
         });
+        if (!loadedOk) continue; // skip a model that failed to build/load
         const srcBuf = offlineCtx.createBuffer(1, testSignal.length, Audio.ctx.sampleRate);
         srcBuf.getChannelData(0).set(testSignal);
         const src = offlineCtx.createBufferSource();
@@ -1168,8 +1177,10 @@ function wirePAControls() {
   });
 
   document.getElementById("pa-output-level").addEventListener("input", (e) => {
-    PA.outputGain.gain.value = Math.pow(10, parseFloat(e.target.value) / 20);
     document.getElementById("pa-output-val").textContent = e.target.value + " dB";
+    // While the tuner is on it has muted this output; paSetTunerEnabled
+    // re-reads this slider on tuner-off to restore, so don't un-mute here.
+    if (!PA.tunerEnabled) PA.outputGain.gain.value = Math.pow(10, parseFloat(e.target.value) / 20);
   });
 }
 

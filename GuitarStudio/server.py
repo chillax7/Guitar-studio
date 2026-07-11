@@ -398,6 +398,18 @@ def svc_mix(source_path: str, model: str, gains: dict, mute_ranges: dict,
 
     output_name = output_name or f"backing_track.{fmt}"
     out_path = engine.resolve_output_path(output_name, input_path.stem)
+    # Containment check — this is the web boundary. resolve_output_path
+    # honors a '/'-bearing or absolute output_name verbatim (intentional for
+    # the CLI), but over HTTP that's an arbitrary-file-write primitive: the
+    # server binds loopback only, yet any web page in the user's browser can
+    # POST /api/mix, so an Export "Output name" of '../../x' or '/tmp/x.wav'
+    # must not escape output/. safe_name() on the browser side isn't enough —
+    # enforce it here where the write actually happens.
+    output_root = engine.OUTPUT_DIR.resolve()
+    try:
+        out_path.resolve().relative_to(output_root)
+    except ValueError:
+        raise ApiError(400, "Output name must be a plain filename, not a path.")
     engine.write_audio(mix, samplerate, out_path)
 
     return {"output_path": str(out_path), **norm_info}

@@ -451,7 +451,17 @@ function renderTrackList() {
   }
 }
 
+let selectTrackEpoch = 0;
+
 async function selectTrack(name) {
+  // Reentrancy guard: selectTrack awaits (setSpeedTune, /api/project,
+  // stem load), and two quick library clicks would otherwise interleave —
+  // the first click's continuation resuming after the second set State,
+  // clobbering State.model/State.mix and then loading stems for a
+  // mismatched track/model pair. Each call claims an epoch; a stale call
+  // bails at the next checkpoint instead of writing over the newer one.
+  const epoch = ++selectTrackEpoch;
+
   // Picking a track from the library is a clear intent to work on the
   // mixer — if Play Along is open over it, close it rather than leaving
   // the newly-selected track loaded silently behind the overlay.
@@ -475,11 +485,13 @@ async function selectTrack(name) {
   setTransportText("speed-display", "1.00×");
   setTransportText("tune-display", "0¢");
   await setSpeedTune(1.0, 1.0);
+  if (epoch !== selectTrackEpoch) return; // a newer selectTrack superseded us
 
   let project = null;
   try {
     project = await Api.get(`/api/project?track=${encodeURIComponent(name)}`);
   } catch (e) { /* no saved project yet */ }
+  if (epoch !== selectTrackEpoch) return;
 
   State.model = (project && project.model) || State.defaultModel;
   State.mix = (project && project.mix) || { gains: {}, muted: {}, solo: null, muteRanges: {} };
@@ -880,7 +892,12 @@ function wireTransport() {
       setTransportText("play-btn", "▶");
     } else {
       if (Audio.ctx.state === "suspended") Audio.ctx.resume();
-      const offset = Audio.playStartOffset;
+      // currentPosition(), not Audio.playStartOffset: in processed (Speed/
+      // Tune) mode pausePlayback doesn't write playStartOffset, so resuming
+      // from it would jump to a stale position — currentPosition() returns
+      // Audio.processedPosition there and playStartOffset in direct mode, so
+      // it's correct for both.
+      const offset = currentPosition();
       const countInEl = transportEls("count-in-toggle")[0];
       withOptionalCountIn(!!(countInEl && countInEl.checked), () => startPlaybackAt(offset));
       setTransportText("play-btn", "⏸");
@@ -908,7 +925,13 @@ function wireVolumeSlider() {
   onTransportInput("volume-slider", (val) => {
     const pct = parseFloat(val);
     setTransportText("volume-display", pct + "%");
-    if (Audio.master) Audio.master.gain.value = pct / 100;
+    // Don't fight the tuner mute: while the tuner is on it has set master
+    // to near-silent, and paSetTunerEnabled re-reads THIS slider's value to
+    // restore the level when the tuner turns off — so a move now just needs
+    // to update the display/value, not stomp the mute back to full volume.
+    if (Audio.master && !(typeof PA !== "undefined" && PA.tunerEnabled)) {
+      Audio.master.gain.value = pct / 100;
+    }
   });
 }
 
