@@ -1,20 +1,21 @@
-# Guitar Studio — User Manual
+# Orpheus Guitar Studio — User Manual
 
-**Status:** covers the rebuilt baseline app (M0–M5 of the rebuild) — everything
-described here exists and has been tested. Nothing in this manual is
-aspirational; features still on the roadmap live in
+**Status:** covers the app as it stands after the v2.5 checkpoint (rebuilt
+baseline, M0–M5, plus every roadmap item since — BT-06/16, GP-01/05/10,
+VD-01/04/09, XC-02 — and a round of real-hardware bug fixes). Nothing in
+this manual is aspirational; anything still open lives in
 [release-v0.4-spec.md](release-v0.4-spec.md) instead.
 
 ---
 
 ## 1. What this is
 
-Guitar Studio separates a song into stems (vocals/drums/bass/guitar/piano/
-other), lets you build a custom backing track by muting/fading whichever
+Orpheus Guitar Studio separates a song into stems (vocals/drums/bass/guitar/
+piano/other), lets you build a custom backing track by muting/fading whichever
 parts you don't want, and gives you a Play Along rig (amp modeling, effects,
-cab simulation) to practice or record guitar over the result. Everything
-runs locally in your browser, talking to a small Python server on your own
-machine — nothing is uploaded anywhere.
+cab simulation, a tuner, and performance recording) to practice or record
+guitar over the result. Everything runs locally in your browser, talking to a
+small Python server on your own machine — nothing is uploaded anywhere.
 
 ## 2. Starting the app
 
@@ -38,13 +39,21 @@ then open `http://127.0.0.1:8765/` yourself. The server only listens on
 requirements.txt` run inside it, and `ffmpeg` must be installed
 (`brew install ffmpeg`). See [README.md](README.md) for the one-time setup.
 
+The top banner ("Orpheus Guitar Studio" + a version number) is just an
+identity strip — if you ever report a bug, that version number is useful to
+mention.
+
 ## 3. Library & importing songs
 
 The left sidebar lists every song under `input/`. Drag an audio file onto
-the **Drop an audio file here** box, or click it to pick a file — either
-way it's copied into `input/` and selected automatically.
+the **Drop an audio file here** box (dropping anywhere in the sidebar works,
+not just the small box itself), or click it to pick a file — either way it's
+copied into `input/` and selected automatically. Large files may take a
+moment to upload; the drop box shows "Importing…" while that's in progress.
 
-Click any song to select it. What you see next depends on its state:
+Click any song to select it. A brief **Loading…** state shows while its
+stems are being fetched; what you see once that resolves depends on the
+song's state:
 
 - **Not separated yet:** you'll see a model picker and a **Separate**
   button (§4).
@@ -55,17 +64,20 @@ Click any song to select it. What you see next depends on its state:
 
 ## 4. Separating into stems
 
-Pick a model, then **Separate**. This runs entirely on your Mac (no
+Pick a model, then **Separate** (styled the same blue as Export — it's the
+main action once you've picked a model). This runs entirely on your Mac (no
 internet needed after the model weights are cached) and typically takes
-somewhere around a quarter to a fifth of the song's length.
+somewhere around a quarter to a fifth of the song's length. A progress bar
+shows separation is actively progressing — it isn't a countdown/time
+estimate, just a heartbeat that something is happening.
 
 | Model | Stems | Notes |
 |---|---|---|
-| `htdemucs` | vocals, drums, bass, other | Default — fastest |
+| `bs_roformer_sw` | vocals, drums, bass, guitar, piano, other | **Default.** Notably better guitar-stem quality than the Demucs models — see [guitar-separation-upgrade-spec.md](guitar-separation-upgrade-spec.md) |
+| `htdemucs` | vocals, drums, bass, other | Fast, no guitar stem |
 | `htdemucs_ft` | same | Slower, slightly cleaner |
-| `htdemucs_6s` | + guitar, piano | Needed for the guitar split feature |
+| `htdemucs_6s` | + guitar, piano | Also guitar-capable, if you want to A/B against `bs_roformer_sw` |
 | `mdx` / `mdx_extra` | vocals, drums, bass, other | Alternative engine |
-| `bs_roformer_sw` | vocals, drums, bass, guitar, piano, other | Newer model, notably better guitar-stem quality — see [guitar-separation-upgrade-spec.md](guitar-separation-upgrade-spec.md) |
 
 You can **A/B two models on the same song**: click the model badge in the
 toolbar to switch — if that model hasn't been run yet, you'll be prompted
@@ -79,22 +91,28 @@ separation engine's quality ceiling, not a bug in your mix.
 
 Each stem is a lane: name, **M**(ute)/**S**(olo) buttons, a gain fader, and
 its waveform. Solo is a *monitoring* convenience only — it never affects
-what gets exported (§8). The transport bar has Play/Pause/Stop, a loop
-toggle, and the current position.
+what gets exported (§8). The transport bar has:
 
-**Speed** (0.5×–2×) changes playback rate while keeping pitch the same.
-**Tune** (±100 cents) shifts pitch independently, at the same speed. Both
-reset to neutral whenever you switch tracks — a leftover half-speed
-setting silently carrying over to a new song would be a trap, not a
-feature. The BPM readout (once a track's been separated) scales live with
-the Speed slider.
+- **Play / Pause / Stop**, current position, and a **Loop** toggle.
+- **Count-in** — a checkbox; when on, playback (and recording — §10) starts
+  after 2 bars of click, synced to the track's detected BPM.
+- **BPM** — the detected tempo, rounded to the nearest whole number, scaling
+  live with the Speed slider.
+- **Speed** (0.5×–2×) — changes playback rate while keeping pitch the same.
+- **Tune** (±100 cents) — shifts pitch independently, at the same speed.
+- **Volume** — an overall listening-level slider for the backing track.
+
+Speed and Tune reset to neutral whenever you switch tracks — a leftover
+half-speed setting silently carrying over to a new song would be a trap,
+not a feature. **Volume does not reset** on track switch — it's your
+listening level, not something that belongs to any one song.
 
 ## 6. Timeline mode & looping
 
-Switch to **Timeline** (top toolbar) for tall waveforms and a paintable
-mute lane under each stem — click-drag to mute just a section (e.g. a
-guitar solo), click an existing region to remove it. This uses exactly the
-same `(stem, start, end)` data the export engine does, so what you paint is
+Tall waveforms with a paintable mute lane under each stem sit directly below
+the transport — click-drag to mute just a section (e.g. a guitar solo),
+click an existing region to remove it. This uses exactly the same
+`(stem, start, end)` data the export engine does, so what you paint is
 exactly what gets exported.
 
 **A/B loop:** drag the two handles on the ruler above the lanes to set a
@@ -105,8 +123,9 @@ on the ruler (not on a handle) to seek.
 ## 7. Guitar split (experimental)
 
 Only available once a stem literally named `guitar` exists (i.e. you
-separated with a 6-stem-capable model). Opens from the guitar lane or the
-**Split guitar** toolbar button.
+separated with a 6-stem-capable model). Opens from the **Guitar - Lead /
+Rhythm Split** section in the right-hand inspector once a guitar stem is
+loaded.
 
 This is a **stereo-panning heuristic**, not a real lead/rhythm separation
 model — no such model exists anywhere as an open weight (see
@@ -119,10 +138,13 @@ not reliably predict whether the split will sound good.
 
 ## 8. Export
 
+The **Export** section is always visible in the right-hand inspector once a
+track's stems are loaded — no separate button to click to reveal it.
 **Export bounces exactly what you hear** (except solo, which is
 monitoring-only). Options:
 
 - **Format:** WAV or MP3.
+- **Output name.**
 - **Target LUFS** (default −14).
 - **Normalize loudness** — on by default; turn off to skip loudness
   correction entirely.
@@ -134,7 +156,8 @@ monitoring-only). Options:
   it only fires as a last resort if normalization would otherwise clip.
 
 Exported files land in `output/<song name>/`, alongside a model-prefixed
-copy of every stem you've separated for that song.
+copy of every stem you've separated for that song. After a successful
+export you get a **Reveal in Finder** shortcut straight to it.
 
 ## 9. Play Along
 
@@ -144,27 +167,47 @@ session) — so backing-track playback and your live guitar mix together
 naturally, with no added round-trip latency from the recording or mixing
 side.
 
+### 9.0 Backing Track (top of the panel)
+The full transport from the main mixer — Play/Stop, Loop, Count-in, BPM,
+Speed, Tune, Volume — is mirrored here too, so you never need to leave Play
+Along to control the backing track while you're actually playing. It's the
+exact same state as the main transport; adjusting either one updates both.
+
 ### 9.1 Input
 Pick your audio interface/microphone and click **Enable input** — the
-browser will ask for microphone permission once. The meter shows input
-level.
+browser will ask for microphone permission once. Switching the device
+dropdown while already enabled re-enables input on the new device
+automatically. The meter shows input level with too-cold/good/too-hot
+zones; a **clip** light latches on if a transient clips (it doesn't
+self-clear — click **Clear**, or start a new input session, once you've
+noted it and fixed your gain staging). **Calibrate (play your loudest
+chord)** listens for 3 seconds and suggests an output trim so your loudest
+playing lands safely below clipping.
 
-### 9.2 Noise Gate
-A standard threshold gate (attack/release smoothed, so it doesn't click).
-Bypass it if you'd rather always hear full signal.
+### 9.2 Tuner
+Click **Tuner: Off** to switch it on — the button label and the panel
+update to show note name, cents off, and a needle (green when within 5
+cents of true). **Turning the tuner on mutes the backing track and your
+processed guitar tone** (both restore to whatever level they were actually
+at once you turn it back off) — the same convention as a hardware tuner
+pedal muting its through signal, since tuning by ear against either fights
+the point of a tuner. The tuner needs a single, sustained note — chords
+won't read cleanly.
 
 ### 9.3 Amp — three modes
 - **Clean:** dry signal, no coloration — just gate → EQ → comp → delay/reverb.
 - **Analog:** a drive stage (soft-clip waveshaper) plus a 3-band tone
   stack (bass/mid/treble).
 - **Neural (NAM):** loads a `.nam` neural amp capture and runs real-time
-  inference — see §9.6 for where to get models.
+  inference — see §9.6 for where to get models, and §9.9 for a note on
+  which captures can and can't run live.
 
 ### 9.4 Cab IR
 Loads a cabinet impulse response (`.wav`) via convolution. Simple on/off —
 if your NAM capture already includes cabinet coloration (many do), leave
 this off to avoid doubling up; it's there for the Analog/Clean paths or if
-you want to experiment.
+you want to experiment. Picking an IR automatically turns bypass off, so
+you actually hear it.
 
 ### 9.5 EQ, Compressor, Delay/Reverb, Output
 A standard post-amp chain: 3-band EQ, a compressor (threshold/ratio),
@@ -173,21 +216,27 @@ bypassable — then a final output level with a meter.
 
 ### 9.6 Adding amp models & cab IRs
 Drop `.nam` files into `GuitarStudio/models/nam/` and `.wav` impulse
-responses into `GuitarStudio/models/ir/` — they show up in the pickers
-after reopening the panel (or clicking into the dropdown again), no
-restart needed. Two small starter NAM captures ship with the app so
-there's something to try immediately. [TONE3000](https://www.tone3000.com)
-hosts a large free library of community `.nam` captures if you want more.
+responses into `GuitarStudio/models/ir/` — subfolders are fine (a large
+library organized into pack folders is scanned recursively) and they show
+up in the pickers after reopening the panel, no restart needed. Both
+pickers are a searchable, folder-navigable browser rather than a flat
+list — type in the search box to filter across the whole library
+regardless of folder, or click through folders to browse. Two small
+starter NAM captures ship with the app so there's something to try
+immediately. [TONE3000](https://www.tone3000.com) hosts a large free
+library of community `.nam` captures if you want more.
 
 ### 9.7 Suggest a tone
-If the loaded song has a guitar stem, a **Suggest** button appears next to
-the Amp section. It compares that isolated guitar stem against your
+If the loaded song has a guitar stem, a **Suggest from this track's
+guitar stem** button appears — only in Neural (NAM) mode, just below the
+Output trim slider. It compares that isolated guitar stem against your
 available NAM models (or, in Analog mode, nudges the tone-stack sliders)
 using a brightness heuristic and picks the closest. **This is a rough
 starting point, not a guaranteed match** — always finish by ear. See
 [backing-track-tone-match-spec.md](backing-track-tone-match-spec.md) for
 why an exact "make my rig sound like the record" match isn't a solved
-problem anywhere, not just here.
+problem anywhere, not just here. Suggest automatically skips any capture
+too heavy to run live (§9.9).
 
 ### 9.8 Latency
 The panel shows an estimated round-trip latency figure. It's **read from
@@ -196,20 +245,44 @@ it as a rough indicator, not a lab result. If playing feels laggy, try a
 smaller audio-interface buffer size in your interface's own control panel
 software.
 
+### 9.9 NAM performance — why some captures won't load
+Real-time neural amp inference is genuinely demanding, and not every
+`.nam` capture in a large community library can run live on every Mac.
+Before a model goes live, it's benchmarked automatically; if it can't keep
+up in real time, you'll see a plain message instead of it silently
+breaking your audio:
+
+> Not loaded: this capture needs ~97% of this machine's audio budget — it
+> can't run live and would cut ALL sound. Look for a "Lite" or "Feather"
+> version of the same amp instead.
+
+Most amp packs that publish a "Standard" capture also publish "Lite" or
+"Feather" variants of the same tone — those are built to be lighter to run
+and are usually the better choice for live playing anyway. The engine
+itself runs on WebAssembly with SIMD where your browser supports it (about
+10× faster than the pure-JavaScript fallback it silently drops back to
+otherwise) — if a capture is refused, it's genuinely too heavy for this
+machine right now, not a bug to work around.
+
 ## 10. Recording a performance
 
-Below the Input card, the **Record performance** card lets you record
+Below the Tuner card, the **Record performance** card lets you record
 yourself playing along, camera + the exact audio mix you're hearing
 (backing track + your processed guitar), saved as a video file.
 
 1. **Enable camera** — pick a camera and quality (720p or 1080p), grant
-   camera permission once.
+   camera permission once. **Show framing guides** overlays a rule-of-
+   thirds-style grid plus a dashed band where a horizontally-held guitar
+   neck typically falls for a seated player — toggle it off if it's in
+   your way.
 2. Optionally check **Start backing track with recording** to have
-   playback begin the moment you hit record.
+   playback begin the moment you hit record, and/or **Start with
+   count-in** for a 2-bar click before both start together.
 3. **● Record** / **■ Stop.** A red **● REC** pill appears in the main
    toolbar while recording, so you can switch back to the mixer mid-take
    without losing track that you're rolling — closing the tab is guarded
-   too.
+   too. **Stop also stops the backing track**, so a take doesn't end with
+   the mix still playing on regardless.
 4. When you stop, the take uploads and is losslessly remuxed
    (fixes container quirks MediaRecorder is known to leave behind — no
    quality loss). You'll get **Reveal in Finder** and **Discard** options.
@@ -226,55 +299,102 @@ capture of your speakers.
 ### 10.1 A/V sync calibration
 Consumer webcams have a real pipeline delay (commonly 50–200ms) — video
 arrives late relative to audio, which is captured essentially instantly.
-If takes look out of sync: **record a 5-second take clapping once in
-front of the camera**, then open the file in QuickTime (or similar), find
-the video frame where your hands meet and the audio spike of the clap,
-and enter the difference (in milliseconds) into the **A/V offset** field
-in the Record card. This delays the audio by that amount at finalize time
-to match the late video — it's a one-time calibration per camera, and it
-persists across sessions.
+Two ways to fix it:
+
+- **Auto-calibrate (clap once, ~5s)** — records a short burst, finds the
+  clap in both the audio and the video automatically, and fills in the
+  A/V offset field for you. Quick, but not infallible — check the result.
+- **Manual:** record a 5-second take clapping once in front of the camera,
+  open the file in QuickTime (or similar), find the video frame where your
+  hands meet and the audio spike of the clap, and enter the difference (in
+  milliseconds) into the **A/V offset** field yourself.
+
+Either way, this delays the audio by that amount at finalize time to match
+the late video — it's a one-time calibration per camera, and it persists
+across sessions.
+
+### 10.2 Takes
+Every take for the currently-loaded song is listed under **Takes**, each
+with:
+
+- **★ / ☆** — star a take to flag a keeper.
+- **Play** — loads it into a small player below the list.
+- **Rename** — rename in place.
+- **Reveal** — show it in Finder.
+- **Delete** — permanent, asks to confirm first.
+
+With a take loaded in the player, **Trim start/end** sliders plus **Trim
+(lossless copy, new file)** cut the top/tail off losslessly (stream copy,
+no re-encode) and save the result as a new file — your original is never
+touched.
 
 ## 11. Projects (autosave)
 
 Whatever you set up for a song — model, mix, mute regions, loop, view
 mode — saves automatically a moment after you change it, and restores the
-next time you select that song. There's no explicit "Save" button; it's
-continuous.
+next time you select that song from the Library. There's no explicit
+"Save" button and no separate "Projects" screen to browse — the Library
+sidebar itself *is* the project list; clicking a song is opening its
+project. This is keyed to the song's filename, so if you rename a source
+file outside the app (e.g. in Finder), its saved mix won't follow the
+rename automatically.
 
-## 12. Troubleshooting
+## 12. Keyboard shortcuts
+
+Press **?** anywhere in the mixer to bring up the full legend on-screen.
+For reference:
+
+| Key | Action |
+|---|---|
+| `Space` | Play / Pause |
+| `L` | Toggle loop |
+| `[` / `]` | Set loop start / end to the current playhead |
+| `M` / `S` | Mute / solo the lane under the mouse |
+| `R` | Start / stop recording |
+| `←` / `→` | Nudge playhead (hold Shift for 5-second steps) |
+| `?` | Toggle the shortcuts legend |
+
+Shortcuts don't fire while a text field has focus.
+
+## 13. Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
 | "Separation failed" | Check the server's terminal/log for the actual error — usually a corrupt input file or a model download that got interrupted (needs network the first time a model is used). |
 | MP3 export fails | `ffmpeg` isn't installed — `brew install ffmpeg`. |
 | No sound in Play Along | Check the input device is actually enabled (not just selected), and that the gate threshold isn't cutting off a quiet signal. |
+| A NAM model won't load / shows a "not loaded" message | It's too demanding to run live on this machine (§9.9) — try a "Lite" or "Feather" version of the same amp. |
+| Tuner works but I can't hear anything | Expected — the tuner mutes the backing track and your amp tone while it's on (§9.2); turn the tuner off to hear audio again. |
 | Camera/mic permission denied | System Settings → Privacy & Security → Camera / Microphone → enable for your browser. |
 | Guitar Studio.app won't open | Right-click → Open once, to get past Gatekeeper (it's unsigned). If that's not it, run the server by hand (§2) to see the actual error. |
 | Recording didn't finalize / "not remuxed" note | `ffmpeg` isn't installed, or the remux itself failed — the raw take is still saved either way, just not container-fixed. |
+| Trimming a take fails with "file not found" | Only possible if you renamed the take in another app while it was loaded in the player — reload the take from the Takes list and trim again. |
 
-## 13. Known limitations (by design, not oversights)
+## 14. Known limitations (by design, not oversights)
 
 - Separation has an inherent quality ceiling — a mild "processed" texture
   is normal, not a bug.
 - Guitar split is a panning guess, never a guaranteed lead/rhythm
   separation.
 - NAM inference here is a from-scratch reimplementation of the standard
-  architecture, not the official reference runtime — see
-  [engine-spec.md](engine-spec.md) and the commit history for what that
-  means in practice; quality is good but this isn't a certified bit-exact
-  match to official NAM plugins.
+  WaveNet architecture (with an optional WebAssembly/SIMD fast path), not
+  the official reference runtime — quality is good but this isn't a
+  certified bit-exact match to official NAM plugins, and heavier captures
+  may be refused on slower machines rather than glitch your audio (§9.9).
 - The tone-suggestion feature is a cheap heuristic, explicitly not a
   guaranteed match — always finish tone-matching by ear.
 - The latency figure in Play Along is an estimate, not a measurement.
+- Projects are identified by filename, not content — renaming a source
+  song outside the app orphans its saved mix state.
 
-## 14. File locations reference
+## 15. File locations reference
 
 ```
 input/                          source songs you've imported
 separated/<model>/<hash>/       cached stems (content-hash keyed)
 output/<song>/                  exported mixes + a copy of every stem
 output/<song>/recordings/       performance video takes
-GuitarStudio/models/nam/        .nam amp captures
-GuitarStudio/models/ir/         cabinet impulse responses
+GuitarStudio/models/nam/        .nam amp captures (subfolders OK)
+GuitarStudio/models/ir/         cabinet impulse responses (subfolders OK)
 GuitarStudio/projects/          autosaved per-song mix state
 ```
