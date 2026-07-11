@@ -442,6 +442,21 @@ def analyze_track(out_dir: Path) -> dict:
             bpm = float(np.asarray(tempo).reshape(-1)[0])
             if bpm > 0:
                 result["bpm"] = round(bpm, 1)
+
+            # BT-02: the beat grid — individual beat timestamps, not just a
+            # single averaged BPM figure. Reuses the same onset envelope/
+            # prior as the BPM estimate above (same half-tempo failure mode
+            # this start_bpm already corrects for) so the two stay
+            # consistent with each other. Powers the click stem and any
+            # future beat-aligned UI; a separate try so a beat-tracking
+            # failure doesn't cost the BPM reading that already succeeded.
+            try:
+                _, beat_frames = librosa.beat.beat_track(onset_envelope=onset_env, sr=sr, start_bpm=140)
+                beat_times = librosa.frames_to_time(beat_frames, sr=sr)
+                if len(beat_times):
+                    result["beats"] = [round(float(t), 3) for t in beat_times]
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -533,6 +548,8 @@ def print_analysis(analysis: dict) -> None:
         key = analysis["key"]
         print(f"Detected key: {key['key']} {key['mode']} (confidence {key['confidence']:.2f} — "
               f"a heuristic starting point, not guaranteed; check by ear).")
+    if "beats" in analysis:
+        print(f"Beat grid: {len(analysis['beats'])} beats detected — powers the click stem in the browser UI.")
 
 
 def cmd_list(args: argparse.Namespace) -> None:

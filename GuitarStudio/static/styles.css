@@ -355,6 +355,21 @@ button.primary:hover { filter: brightness(1.1); }
   border-radius: 3px;
   cursor: pointer;
 }
+/* BT-02: beat grid overlay — purely decorative (detected beat positions,
+   not click targets), so pointer-events:none keeps the ruler's own
+   click-to-seek and the loop handles' drag fully working underneath it. */
+#beat-grid {
+  position: absolute;
+  top: 0; bottom: 0; left: 0; right: 0;
+  pointer-events: none;
+}
+.beat-tick {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.beat-tick.downbeat { background: rgba(255, 255, 255, 0.3); }
 #loop-region {
   position: absolute;
   top: 0; bottom: 0;

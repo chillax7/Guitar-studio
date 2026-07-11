@@ -304,6 +304,7 @@ function stopPlayback() {
     Audio.playStartOffset = 0;
   }
   Audio.playing = false;
+  resyncClickPointer(0); // BT-02 — position just jumped to 0 outside seekTo()
 }
 
 function seekTo(sec) {
@@ -320,6 +321,7 @@ function seekTo(sec) {
     Audio.playStartOffset = clamped;
     if (wasPlaying) startPlaybackAt(clamped);
   }
+  resyncClickPointer(clamped); // BT-02 — a jump must resync which beat fires next, or a forward seek would burst-fire every skipped beat in one tick()
 }
 
 // Switches the active playback mode, preserving position/play-state across
@@ -612,6 +614,8 @@ async function onStemsLoaded(result) {
   updateStaleBanner();
   updateLoopVisual();
   renderMarkers();
+  renderBeatGrid();
+  resyncClickPointer(currentPosition());
   renderPlayhead(currentPosition());
   renderTimeDisplay(currentPosition());
 }
@@ -896,6 +900,72 @@ function addMarkerAtPlayhead() {
 }
 
 // ---------------------------------------------------------------------------
+// BT-02: beat grid + click stem. State.analysis.beats (from backing_track.py's
+// librosa.beat.beat_track) is real detected beat timestamps, not just a
+// manual-BPM assumption like the count-in click. The click stem is driven
+// from tick() (rAF, ~16ms resolution) rather than pre-scheduled AudioParam
+// automation — an honest tradeoff (some jitter vs. a hardware click) for
+// working uniformly across both playback modes and any Speed, since it
+// just watches currentPosition(), which already accounts for both.
+// ---------------------------------------------------------------------------
+
+function renderBeatGrid() {
+  const row = document.getElementById("beat-grid");
+  row.innerHTML = "";
+  const beats = (State.analysis || {}).beats;
+  if (!beats || !Audio.duration) return;
+  const frag = document.createDocumentFragment();
+  beats.forEach((t, i) => {
+    const tick = document.createElement("div");
+    tick.className = "beat-tick" + (i % 4 === 0 ? " downbeat" : "");
+    tick.style.left = (t / Audio.duration * 100) + "%";
+    frag.appendChild(tick);
+  });
+  row.appendChild(frag);
+}
+
+// Which beat index tick() should fire next — must be resynced on every
+// position jump (seekTo, stopPlayback) or a forward seek would burst-fire
+// every beat skipped over in a single animation frame.
+let clickBeatIndex = 0;
+
+function resyncClickPointer(pos) {
+  const beats = (State.analysis || {}).beats || [];
+  let i = 0;
+  while (i < beats.length && beats[i] < pos) i++;
+  clickBeatIndex = i;
+}
+
+function playClickBlip(ctxTime, accented) {
+  if (!Audio.clickBus) {
+    Audio.clickBus = Audio.ctx.createGain();
+    Audio.clickBus.gain.value = 0.5;
+    Audio.clickBus.connect(Audio.ctx.destination);
+  }
+  const osc = Audio.ctx.createOscillator();
+  osc.frequency.value = accented ? 1500 : 1000; // accent every 4th (downbeat) — same convention as scheduleCountIn's pre-roll click
+  const g = Audio.ctx.createGain();
+  g.gain.setValueAtTime(0.001, ctxTime);
+  g.gain.exponentialRampToValueAtTime(0.6, ctxTime + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.001, ctxTime + 0.05);
+  osc.connect(g).connect(Audio.clickBus);
+  osc.start(ctxTime);
+  osc.stop(ctxTime + 0.06);
+}
+
+function updateClickStem(pos) {
+  const clickEl = document.getElementById("click-toggle");
+  if (!clickEl || !clickEl.checked || !Audio.playing) return;
+  const beats = (State.analysis || {}).beats;
+  if (!beats) return;
+  const now = Audio.ctx.currentTime;
+  while (clickBeatIndex < beats.length && beats[clickBeatIndex] <= pos) {
+    playClickBlip(now, clickBeatIndex % 4 === 0);
+    clickBeatIndex++;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Transport + rAF tick (playhead position, loop wrap, live mute-region gain)
 // ---------------------------------------------------------------------------
 
@@ -945,6 +1015,7 @@ function tick() {
     applyLiveMuteRanges(pos);
     renderPlayhead(pos);
     renderTimeDisplay(pos);
+    updateClickStem(pos); // BT-02
   }
   requestAnimationFrame(tick);
 }

@@ -108,6 +108,14 @@ what gets exported (§8). The transport bar has:
   key that transposition actually lands you in (e.g. "Transposed +2
   semitones → A major").
 - **Volume** — an overall listening-level slider for the backing track.
+- **Click** (V3, BT-02) — a metronome click synced to the actual detected
+  beat grid (not just an assumed manual BPM, like the count-in). Every
+  4th beat is accented as a downbeat (an assumed 4/4 — there's no time-
+  signature detection). Driven from the same per-frame position poll the
+  playhead uses rather than pre-scheduled, so it tracks Speed and Tune
+  automatically, at the honest cost of a few ms of animation-frame jitter
+  versus a real hardware click. A faint beat grid also appears on the
+  ruler itself (brighter tick = downbeat) for precise loop/marker placement.
 
 Speed and Tune reset to neutral whenever you switch tracks — a leftover
 half-speed setting silently carrying over to a new song would be a trap,
