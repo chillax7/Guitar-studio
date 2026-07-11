@@ -36,11 +36,11 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.5.1</string>
+    <string>3.0</string>
     <key>CFBundleVersion</key>
-    <string>2.5.1</string>
+    <string>3.0</string>
     <key>CFBundleGetInfoString</key>
-    <string>Guitar Studio 2.5.1 "Orpheus"</string>
+    <string>Guitar Studio 3.0 "Orpheus"</string>
     <key>CFBundleIconFile</key>
     <string>GuitarStudio</string>
     <key>LSMinimumSystemVersion</key>
