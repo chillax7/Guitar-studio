@@ -97,6 +97,11 @@ async function recStartCamera(deviceId, quality) {
     const videoEl = document.getElementById("rec-preview");
     videoEl.srcObject = stream;
     await videoEl.play();
+    // V3-U1: the preview wrap starts display:none — a permanently visible
+    // black box with no camera enabled was one of the review complaints
+    // about the old Play Along layout. Only reveal it once a stream is
+    // actually live.
+    document.getElementById("rec-preview-wrap").style.display = "";
     hintEl.textContent = "Camera enabled.";
     await recRefreshCameraDevices();
   } catch (e) {

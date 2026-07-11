@@ -390,11 +390,8 @@ button.primary:hover { filter: brightness(1.1); }
 #playalong-header h2 { margin: 0; font-size: 16px; }
 
 #playalong-body {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 14px;
   padding: 16px 20px;
-  max-width: 1100px;
+  max-width: 1400px;
 }
 
 .pa-card {
@@ -413,6 +410,67 @@ button.primary:hover { filter: brightness(1.1); }
 
 .pa-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
 .pa-tabs button { flex: 1; font-size: 11px; }
+
+/* V3-U1: top strip — Backing Track / Tuner / Input, always visible. Three
+   roughly-equal columns on desktop width, stacking on anything narrower. */
+#pa-top-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.pa-top-card { min-width: 0; }
+
+/* V3-U1: the rig, left-to-right in signal-chain order. Amp gets the most
+   width (pa-card-wide) since it's the tab surface (Clean/Analog/Neural)
+   players touch most; the others share the remaining columns evenly. */
+#pa-pedalboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+  align-items: start;
+}
+.pa-card-wide { grid-column: span 2; }
+@media (max-width: 900px) { .pa-card-wide { grid-column: span 1; } }
+
+.pa-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.pa-card-head h3 { margin: 0; }
+.pa-collapse-btn {
+  background: none; border: none; color: var(--text-dim);
+  font-size: 11px; padding: 2px 4px; line-height: 1; cursor: pointer;
+}
+.pa-collapse-btn:hover { color: var(--text); }
+/* Collapsed: content hidden, header stays so the card is still a landmark
+   (and still shows its own bypass state via the browser's own summary if
+   ever added) rather than the whole card vanishing. */
+.pa-rig-card.collapsed .pa-card-content { display: none; }
+.pa-rig-card.collapsed .pa-collapse-btn { transform: rotate(-90deg); }
+
+/* V3-U1: setup-once controls (device pick/calibrate on the Input strip,
+   camera/quality/sync in Record) fold into a plain <details> disclosure —
+   closed by default look, but paEnableInput/paSetTunerEnabled etc. don't
+   need to know about it; only the open/close state matters. */
+.pa-card details { margin-top: 8px; }
+.pa-card summary {
+  cursor: pointer; font-size: 11px; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 4px 0;
+}
+.pa-card summary:hover { color: var(--text); }
+.pa-card details[open] summary { margin-bottom: 6px; }
+
+/* V3-U1: Record/Takes are a session-mode tab now, not permanent cards under
+   the rig — #pa-session-record only exists in the layout while "Record" is
+   the active tab (see wirePASessionTabs). */
+.pa-session-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
 
 /* Folder-navigable NAM/IR picker — a flat <select> stopped being usable
    once real libraries ran to hundreds/thousands of files across nested

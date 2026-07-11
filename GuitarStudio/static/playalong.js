@@ -296,6 +296,11 @@ async function paEnableInput() {
     hintEl.textContent = "Input enabled.";
     await paRefreshDevices(); // device labels only populate after permission is granted
     paStartMeters();
+    // V3-U1: device pick + Calibrate are setup-once — fold the disclosure
+    // closed after the first successful enable so they stop competing with
+    // the meter/clip light for space; still one click away for later.
+    const setupEl = document.getElementById("pa-input-setup");
+    if (setupEl) setupEl.open = false;
   } catch (e) {
     hintEl.textContent = `Could not access input: ${e.message}. Check System Settings > Privacy & Security > Microphone.`;
   }
@@ -1212,5 +1217,58 @@ function paShowLatencyEstimate() {
     : "Latency estimate unavailable in this browser.";
 }
 
+// ---------------------------------------------------------------------------
+// V3-U1: pedalboard card collapse — every rig card (#pa-pedalboard .pa-card)
+// can fold itself down to its header. Collapse state persists in
+// localStorage per card-id today; it'll move into the project file (as UI
+// state) once XC-01 (project format v2) lands, at which point this becomes
+// the load/save path instead of the whole story.
+// ---------------------------------------------------------------------------
+const PA_COLLAPSE_STORAGE_KEY = "gs_pa_collapsed_cards";
+
+function paLoadCollapsedCards() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(PA_COLLAPSE_STORAGE_KEY) || "[]"));
+  } catch (e) {
+    return new Set(); // corrupt/foreign value — just start fresh, not fatal
+  }
+}
+
+function paSaveCollapsedCards(collapsed) {
+  localStorage.setItem(PA_COLLAPSE_STORAGE_KEY, JSON.stringify([...collapsed]));
+}
+
+function wirePedalboardCollapse() {
+  const collapsed = paLoadCollapsedCards();
+  document.querySelectorAll("#pa-pedalboard .pa-rig-card").forEach((card) => {
+    const id = card.dataset.cardId;
+    const btn = card.querySelector(".pa-collapse-btn");
+    const applyState = () => card.classList.toggle("collapsed", collapsed.has(id));
+    applyState();
+    btn.addEventListener("click", () => {
+      if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
+      applyState();
+      paSaveCollapsedCards(collapsed);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// V3-U1: Perform/Record session tabs — Record + Takes are no longer
+// permanent cards under the rig, just a tab that reveals them.
+// ---------------------------------------------------------------------------
+function wirePASessionTabs() {
+  const buttons = document.querySelectorAll("#pa-session-tabs button");
+  const recordPanel = document.getElementById("pa-session-record");
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      buttons.forEach((b) => b.classList.toggle("active", b === btn));
+      recordPanel.style.display = btn.dataset.paSession === "record" ? "" : "none";
+    });
+  });
+}
+
 wirePAControls();
+wirePedalboardCollapse();
+wirePASessionTabs();
 document.getElementById("playalong-open-btn").addEventListener("click", paShowLatencyEstimate);

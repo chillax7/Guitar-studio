@@ -167,24 +167,39 @@ session) — so backing-track playback and your live guitar mix together
 naturally, with no added round-trip latency from the recording or mixing
 side.
 
-### 9.0 Backing Track (top of the panel)
+**Layout (V3):** a top strip (Backing Track / Tuner / Input) stays visible
+at all times — the "am I in tune, am I clipping, where's the song" glance
+row. Below it, the rig itself runs left-to-right in actual signal-chain
+order: Input/Gate → Amp → Cab IR → EQ → Compressor → Delay/Reverb → Output.
+Every rig card has a collapse arrow (▾) in its header if you want to hide
+one you're not touching this session — collapse state is remembered
+between visits. Recording and Takes moved out of the main layout into a
+**Perform / Record** tab below the rig, so they're not spending space or
+attention until you actually switch to Record mode.
+
+### 9.0 Backing Track (top strip)
 The full transport from the main mixer — Play/Stop, Loop, Count-in, BPM,
 Speed, Tune, Volume — is mirrored here too, so you never need to leave Play
 Along to control the backing track while you're actually playing. It's the
 exact same state as the main transport; adjusting either one updates both.
 
-### 9.1 Input
-Pick your audio interface/microphone and click **Enable input** — the
-browser will ask for microphone permission once. Switching the device
-dropdown while already enabled re-enables input on the new device
-automatically. The meter shows input level with too-cold/good/too-hot
-zones; a **clip** light latches on if a transient clips (it doesn't
-self-clear — click **Clear**, or start a new input session, once you've
-noted it and fixed your gain staging). **Calibrate (play your loudest
-chord)** listens for 3 seconds and suggests an output trim so your loudest
-playing lands safely below clipping.
+### 9.1 Input (top strip)
+The input meter, clip light, and a **Setup: device & calibration**
+disclosure sit in the top strip. Expand **Setup**, pick your audio
+interface/microphone, and click **Enable input** — the browser will ask
+for microphone permission once. Switching the device dropdown while
+already enabled re-enables input on the new device automatically. Once
+input is enabled the first time, the Setup disclosure folds itself closed
+automatically (it's a setup-once step, not something you touch every
+session) — expand it again any time to re-calibrate or switch devices. The
+meter shows input level with too-cold/good/too-hot zones; a **clip** light
+latches on if a transient clips (it doesn't self-clear — click **Clear**,
+or start a new input session, once you've noted it and fixed your gain
+staging). **Calibrate (play your loudest chord)**, inside Setup, listens
+for 3 seconds and suggests an output trim so your loudest playing lands
+safely below clipping.
 
-### 9.2 Tuner
+### 9.2 Tuner (top strip)
 Click **Tuner: Off** to switch it on — the button label and the panel
 update to show note name, cents off, and a needle (green when within 5
 cents of true). **Turning the tuner on mutes the backing track and your
@@ -266,15 +281,18 @@ machine right now, not a bug to work around.
 
 ## 10. Recording a performance
 
-Below the Tuner card, the **Record performance** card lets you record
+Switch to the **Record** tab below the rig (Play Along opens on **Perform**
+by default). The **Record performance** card there lets you record
 yourself playing along, camera + the exact audio mix you're hearing
-(backing track + your processed guitar), saved as a video file.
+(backing track + your processed guitar), saved as a video file. The camera
+preview only appears once a camera is actually enabled — no permanent
+black box taking up space before you've turned one on.
 
-1. **Enable camera** — pick a camera and quality (720p or 1080p), grant
-   camera permission once. **Show framing guides** overlays a rule-of-
-   thirds-style grid plus a dashed band where a horizontally-held guitar
-   neck typically falls for a seated player — toggle it off if it's in
-   your way.
+1. Expand **Setup: camera, quality & sync** and click **Enable camera** —
+   pick a camera and quality (720p or 1080p), grant camera permission
+   once. **Show framing guides** overlays a rule-of-thirds-style grid plus
+   a dashed band where a horizontally-held guitar neck typically falls for
+   a seated player — toggle it off if it's in your way.
 2. Optionally check **Start backing track with recording** to have
    playback begin the moment you hit record, and/or **Start with
    count-in** for a 2-bar click before both start together.

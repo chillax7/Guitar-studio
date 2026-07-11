@@ -140,207 +140,280 @@
       </div>
       <div id="playalong-body">
 
-        <section class="pa-card">
-          <h3>Backing Track</h3>
-          <div class="row">
-            <button id="pa-bt-play-btn" data-transport="play-btn" class="primary">▶</button>
-            <button id="pa-bt-stop-btn" data-transport="stop-btn">■</button>
-            <span id="pa-bt-time-display" data-transport="time-display">0:00 / 0:00</span>
-          </div>
-          <div class="row">
-            <button id="pa-bt-loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
-            <label style="margin:0"><input type="checkbox" id="pa-bt-count-in-toggle" data-transport="count-in-toggle"> Count-in</label>
-          </div>
-          <label>BPM <span id="pa-bt-bpm-display" data-transport="bpm-display">—</span></label>
-          <label>Speed <span id="pa-bt-speed-display" data-transport="speed-display">1.00×</span></label>
-          <input type="range" id="pa-bt-speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
-          <label>Tune <span id="pa-bt-tune-display" data-transport="tune-display">0¢</span></label>
-          <input type="range" id="pa-bt-tune-slider" data-transport="tune-slider" min="-100" max="100" step="1" value="0">
-          <label>Volume <span id="pa-bt-volume-display" data-transport="volume-display">100%</span></label>
-          <input type="range" id="pa-bt-volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
-        </section>
-
-        <section class="pa-card">
-          <h3>Input</h3>
-          <div class="row">
-            <select id="pa-device-select"></select>
-            <button id="pa-enable-btn" class="primary">Enable input</button>
-          </div>
-          <div class="pa-meter"><div id="pa-input-meter-fill"></div></div>
-          <div class="row">
-            <span class="hint">Too cold / good / too hot zones — clip light latches until cleared</span>
-          </div>
-          <div class="row">
-            <span id="pa-clip-indicator">clip</span>
-            <button id="pa-clip-clear-btn">Clear</button>
-          </div>
-          <p class="hint" id="pa-input-hint"></p>
-          <button id="pa-calibrate-btn">Calibrate (play your loudest chord)</button>
-          <p class="hint" id="pa-calibrate-result"></p>
-        </section>
-
-        <section class="pa-card">
-          <div class="row"><h3 style="margin:0">Tuner</h3><button id="pa-tuner-toggle">Tuner: Off</button></div>
-          <div id="pa-tuner-note">—</div>
-          <div class="pa-tuner-meter"><div id="pa-tuner-needle"></div><div class="pa-tuner-center-tick"></div></div>
-          <p class="hint" id="pa-tuner-cents">Enable input and play a single note.</p>
-        </section>
-
-        <section class="pa-card" id="rec-card">
-          <h3>Record performance</h3>
-          <div id="rec-preview-wrap">
-            <video id="rec-preview" muted playsinline></video>
-            <canvas id="rec-framing-overlay"></canvas>
-          </div>
-          <div class="row">
-            <label style="margin:0">Show framing guides</label>
-            <input type="checkbox" id="rec-framing-toggle" checked>
-          </div>
-          <div class="row">
-            <select id="rec-camera-select"></select>
-            <button id="rec-camera-enable-btn">Enable camera</button>
-          </div>
-          <div class="row">
-            <label style="margin:0">Quality</label>
-            <select id="rec-quality-select">
-              <option value="720p" selected>720p · 30fps</option>
-              <option value="1080p">1080p · 30fps</option>
-            </select>
-          </div>
-          <p class="hint" id="rec-camera-hint"></p>
-          <div class="row">
-            <button id="rec-toggle-btn" class="primary">● Record</button>
-            <span id="rec-elapsed">0:00</span>
-          </div>
-          <div class="row">
-            <label style="margin:0">Start backing track with recording</label>
-            <input type="checkbox" id="rec-start-with-playback" checked>
-          </div>
-          <div class="row">
-            <label style="margin:0">Start with count-in</label>
-            <input type="checkbox" id="rec-count-in">
-          </div>
-          <label>A/V offset (ms) <span class="hint">delays audio to match a late camera — see manual</span></label>
-          <input type="number" id="rec-av-offset" value="0" step="10">
-          <button id="rec-auto-calibrate-btn">Auto-calibrate (clap once, ~5s)</button>
-          <p class="hint" id="rec-calibrate-result"></p>
-          <div id="rec-result" class="hint"></div>
-        </section>
-
-        <section class="pa-card" id="takes-card">
-          <h3>Takes</h3>
-          <div id="takes-list"></div>
-          <div id="takes-player-wrap" style="display:none">
-            <video id="takes-player" controls></video>
-            <label>Trim start <span id="takes-trim-start-val">0:00</span></label>
-            <input type="range" id="takes-trim-start" min="0" max="100" step="0.1" value="0">
-            <label>Trim end <span id="takes-trim-end-val">0:00</span></label>
-            <input type="range" id="takes-trim-end" min="0" max="100" step="0.1" value="100">
-            <button id="takes-trim-btn" class="primary">Trim (lossless copy, new file)</button>
-            <p class="hint" id="takes-trim-result"></p>
-          </div>
-        </section>
-
-        <section class="pa-card">
-          <h3>Noise Gate</h3>
-          <div class="row"><label>Bypass</label><input type="checkbox" id="pa-gate-bypass"></div>
-          <label>Threshold <span id="pa-gate-threshold-val">-50 dB</span></label>
-          <input type="range" id="pa-gate-threshold" min="-80" max="0" step="1" value="-50">
-        </section>
-
-        <section class="pa-card">
-          <h3>Amp</h3>
-          <div id="pa-amp-modes" class="pa-tabs">
-            <button data-mode="clean" class="active">Clean</button>
-            <button data-mode="analog">Analog</button>
-            <button data-mode="neural">Neural (NAM)</button>
-          </div>
-
-          <div id="pa-amp-clean" class="pa-mode-panel">
-            <p class="hint">Dry signal, no amp modeling — just gate → EQ → comp → delay/reverb.</p>
-          </div>
-
-          <div id="pa-amp-analog" class="pa-mode-panel" style="display:none">
-            <label>Drive <span id="pa-drive-val">30%</span></label>
-            <input type="range" id="pa-drive" min="0" max="100" step="1" value="30">
-            <label>Bass <span id="pa-bass-val">0 dB</span></label>
-            <input type="range" id="pa-bass" min="-12" max="12" step="1" value="0">
-            <label>Mid <span id="pa-mid-val">0 dB</span></label>
-            <input type="range" id="pa-mid" min="-12" max="12" step="1" value="0">
-            <label>Treble <span id="pa-treble-val">0 dB</span></label>
-            <input type="range" id="pa-treble" min="-12" max="12" step="1" value="0">
-          </div>
-
-          <div id="pa-amp-neural" class="pa-mode-panel" style="display:none">
-            <div class="model-browser" id="pa-nam-browser">
-              <input type="text" class="model-browser-search" id="pa-nam-search" placeholder="Search all models…">
-              <div class="model-browser-breadcrumb" id="pa-nam-breadcrumb"></div>
-              <div class="model-browser-list" id="pa-nam-list"></div>
+        <!-- V3-U1: top strip, always visible — the "am I in tune, am I
+             clipping, where's the song" glance row. Backing Track mirrors
+             the mixer transport (same data-transport IDs); Tuner is an
+             inline readout, not a card, since it mutes anyway and doesn't
+             need one; Input surfaces the meter/clip light up front and
+             folds its setup-once controls (device pick, Calibrate) into a
+             disclosure that closes itself after the first successful
+             enable (see paEnableInput). -->
+        <div id="pa-top-strip">
+          <section class="pa-card pa-top-card">
+            <h3>Backing Track</h3>
+            <div class="row">
+              <button id="pa-bt-play-btn" data-transport="play-btn" class="primary">▶</button>
+              <button id="pa-bt-stop-btn" data-transport="stop-btn">■</button>
+              <span id="pa-bt-time-display" data-transport="time-display">0:00 / 0:00</span>
             </div>
-            <p class="hint" id="pa-nam-status"></p>
-            <label>Input trim <span id="pa-nam-in-val">0 dB</span></label>
-            <input type="range" id="pa-nam-in" min="-24" max="24" step="1" value="0">
-            <label>Output trim <span id="pa-nam-out-val">0 dB</span></label>
-            <input type="range" id="pa-nam-out" min="-24" max="24" step="1" value="0">
-            <button id="pa-suggest-btn" class="primary" style="display:none">Suggest from this track's guitar stem</button>
-            <p class="hint" id="pa-suggest-result"></p>
-          </div>
-        </section>
+            <div class="row">
+              <button id="pa-bt-loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
+              <label style="margin:0"><input type="checkbox" id="pa-bt-count-in-toggle" data-transport="count-in-toggle"> Count-in</label>
+            </div>
+            <label>BPM <span id="pa-bt-bpm-display" data-transport="bpm-display">—</span></label>
+            <label>Speed <span id="pa-bt-speed-display" data-transport="speed-display">1.00×</span></label>
+            <input type="range" id="pa-bt-speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
+            <label>Tune <span id="pa-bt-tune-display" data-transport="tune-display">0¢</span></label>
+            <input type="range" id="pa-bt-tune-slider" data-transport="tune-slider" min="-100" max="100" step="1" value="0">
+            <label>Volume <span id="pa-bt-volume-display" data-transport="volume-display">100%</span></label>
+            <input type="range" id="pa-bt-volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
+          </section>
 
-        <section class="pa-card">
-          <h3>Cab IR</h3>
-          <div class="row"><label>Bypass</label><input type="checkbox" id="pa-ir-bypass" checked></div>
-          <div class="model-browser" id="pa-ir-browser">
-            <input type="text" class="model-browser-search" id="pa-ir-search" placeholder="Search all IRs…">
-            <div class="model-browser-breadcrumb" id="pa-ir-breadcrumb"></div>
-            <div class="model-browser-list" id="pa-ir-list"></div>
-          </div>
-          <p class="hint" id="pa-ir-status"></p>
-        </section>
+          <section class="pa-card pa-top-card">
+            <div class="row"><h3 style="margin:0">Tuner</h3><button id="pa-tuner-toggle">Tuner: Off</button></div>
+            <div id="pa-tuner-note">—</div>
+            <div class="pa-tuner-meter"><div id="pa-tuner-needle"></div><div class="pa-tuner-center-tick"></div></div>
+            <p class="hint" id="pa-tuner-cents">Enable input and play a single note.</p>
+          </section>
 
-        <section class="pa-card">
-          <h3>EQ</h3>
-          <div class="row"><label>Bypass</label><input type="checkbox" id="pa-eq-bypass"></div>
-          <label>Bass <span id="pa-eq-bass-val">0 dB</span></label>
-          <input type="range" id="pa-eq-bass" min="-12" max="12" step="1" value="0">
-          <label>Mid <span id="pa-eq-mid-val">0 dB</span></label>
-          <input type="range" id="pa-eq-mid" min="-12" max="12" step="1" value="0">
-          <label>Treble <span id="pa-eq-treble-val">0 dB</span></label>
-          <input type="range" id="pa-eq-treble" min="-12" max="12" step="1" value="0">
-        </section>
+          <section class="pa-card pa-top-card">
+            <h3>Input</h3>
+            <div class="pa-meter"><div id="pa-input-meter-fill"></div></div>
+            <div class="row">
+              <span id="pa-clip-indicator">clip</span>
+              <button id="pa-clip-clear-btn">Clear</button>
+            </div>
+            <p class="hint" id="pa-input-hint"></p>
+            <details id="pa-input-setup" open>
+              <summary>Setup: device &amp; calibration</summary>
+              <div class="row">
+                <select id="pa-device-select"></select>
+                <button id="pa-enable-btn" class="primary">Enable input</button>
+              </div>
+              <p class="hint">Too cold / good / too hot zones — clip light latches until cleared</p>
+              <button id="pa-calibrate-btn">Calibrate (play your loudest chord)</button>
+              <p class="hint" id="pa-calibrate-result"></p>
+            </details>
+          </section>
+        </div>
 
-        <section class="pa-card">
-          <h3>Compressor</h3>
-          <div class="row"><label>Bypass</label><input type="checkbox" id="pa-comp-bypass" checked></div>
-          <label>Threshold <span id="pa-comp-threshold-val">-24 dB</span></label>
-          <input type="range" id="pa-comp-threshold" min="-60" max="0" step="1" value="-24">
-          <label>Ratio <span id="pa-comp-ratio-val">4:1</span></label>
-          <input type="range" id="pa-comp-ratio" min="1" max="20" step="1" value="4">
-        </section>
+        <!-- V3-U1: the rig, pedalboard order left-to-right — Input/Gate ->
+             Amp -> Cab IR -> EQ -> Comp -> Delay/Reverb -> Output. Every
+             card is collapsible (wirePedalboardCollapse in playalong.js);
+             collapse state persists in localStorage today and will move
+             into the project file once XC-01 (project format v2) lands. -->
+        <div id="pa-pedalboard">
+          <section class="pa-card pa-rig-card" data-card-id="gate">
+            <div class="pa-card-head">
+              <h3>Noise Gate</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Noise Gate" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-gate-bypass"></div>
+              <label>Threshold <span id="pa-gate-threshold-val">-50 dB</span></label>
+              <input type="range" id="pa-gate-threshold" min="-80" max="0" step="1" value="-50">
+            </div>
+          </section>
 
-        <section class="pa-card">
-          <h3>Delay / Reverb</h3>
-          <div class="row"><label>Delay bypass</label><input type="checkbox" id="pa-delay-bypass" checked></div>
-          <label>Time <span id="pa-delay-time-val">300 ms</span></label>
-          <input type="range" id="pa-delay-time" min="10" max="1000" step="10" value="300">
-          <label>Feedback <span id="pa-delay-feedback-val">30%</span></label>
-          <input type="range" id="pa-delay-feedback" min="0" max="90" step="1" value="30">
-          <label>Delay mix <span id="pa-delay-mix-val">20%</span></label>
-          <input type="range" id="pa-delay-mix" min="0" max="100" step="1" value="20">
-          <div class="row"><label>Reverb bypass</label><input type="checkbox" id="pa-reverb-bypass" checked></div>
-          <label>Reverb size <span id="pa-reverb-size-val">1.5 s</span></label>
-          <input type="range" id="pa-reverb-size" min="0.2" max="5" step="0.1" value="1.5">
-          <label>Reverb mix <span id="pa-reverb-mix-val">15%</span></label>
-          <input type="range" id="pa-reverb-mix" min="0" max="100" step="1" value="15">
-        </section>
+          <section class="pa-card pa-rig-card pa-card-wide" data-card-id="amp">
+            <div class="pa-card-head">
+              <h3>Amp</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Amp" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div id="pa-amp-modes" class="pa-tabs">
+                <button data-mode="clean" class="active">Clean</button>
+                <button data-mode="analog">Analog</button>
+                <button data-mode="neural">Neural (NAM)</button>
+              </div>
 
-        <section class="pa-card">
-          <h3>Output</h3>
-          <label>Level <span id="pa-output-val">0 dB</span></label>
-          <input type="range" id="pa-output-level" min="-24" max="12" step="1" value="0">
-          <div class="pa-meter"><div id="pa-output-meter-fill"></div></div>
-          <p class="hint" id="pa-latency-hint"></p>
-        </section>
+              <div id="pa-amp-clean" class="pa-mode-panel">
+                <p class="hint">Dry signal, no amp modeling — just gate → EQ → comp → delay/reverb.</p>
+              </div>
+
+              <div id="pa-amp-analog" class="pa-mode-panel" style="display:none">
+                <label>Drive <span id="pa-drive-val">30%</span></label>
+                <input type="range" id="pa-drive" min="0" max="100" step="1" value="30">
+                <label>Bass <span id="pa-bass-val">0 dB</span></label>
+                <input type="range" id="pa-bass" min="-12" max="12" step="1" value="0">
+                <label>Mid <span id="pa-mid-val">0 dB</span></label>
+                <input type="range" id="pa-mid" min="-12" max="12" step="1" value="0">
+                <label>Treble <span id="pa-treble-val">0 dB</span></label>
+                <input type="range" id="pa-treble" min="-12" max="12" step="1" value="0">
+              </div>
+
+              <div id="pa-amp-neural" class="pa-mode-panel" style="display:none">
+                <div class="model-browser" id="pa-nam-browser">
+                  <input type="text" class="model-browser-search" id="pa-nam-search" placeholder="Search all models…">
+                  <div class="model-browser-breadcrumb" id="pa-nam-breadcrumb"></div>
+                  <div class="model-browser-list" id="pa-nam-list"></div>
+                </div>
+                <p class="hint" id="pa-nam-status"></p>
+                <label>Input trim <span id="pa-nam-in-val">0 dB</span></label>
+                <input type="range" id="pa-nam-in" min="-24" max="24" step="1" value="0">
+                <label>Output trim <span id="pa-nam-out-val">0 dB</span></label>
+                <input type="range" id="pa-nam-out" min="-24" max="24" step="1" value="0">
+                <button id="pa-suggest-btn" class="primary" style="display:none">Suggest from this track's guitar stem</button>
+                <p class="hint" id="pa-suggest-result"></p>
+              </div>
+            </div>
+          </section>
+
+          <section class="pa-card pa-rig-card" data-card-id="ir">
+            <div class="pa-card-head">
+              <h3>Cab IR</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Cab IR" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-ir-bypass" checked></div>
+              <div class="model-browser" id="pa-ir-browser">
+                <input type="text" class="model-browser-search" id="pa-ir-search" placeholder="Search all IRs…">
+                <div class="model-browser-breadcrumb" id="pa-ir-breadcrumb"></div>
+                <div class="model-browser-list" id="pa-ir-list"></div>
+              </div>
+              <p class="hint" id="pa-ir-status"></p>
+            </div>
+          </section>
+
+          <section class="pa-card pa-rig-card" data-card-id="eq">
+            <div class="pa-card-head">
+              <h3>EQ</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse EQ" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-eq-bypass"></div>
+              <label>Bass <span id="pa-eq-bass-val">0 dB</span></label>
+              <input type="range" id="pa-eq-bass" min="-12" max="12" step="1" value="0">
+              <label>Mid <span id="pa-eq-mid-val">0 dB</span></label>
+              <input type="range" id="pa-eq-mid" min="-12" max="12" step="1" value="0">
+              <label>Treble <span id="pa-eq-treble-val">0 dB</span></label>
+              <input type="range" id="pa-eq-treble" min="-12" max="12" step="1" value="0">
+            </div>
+          </section>
+
+          <section class="pa-card pa-rig-card" data-card-id="comp">
+            <div class="pa-card-head">
+              <h3>Compressor</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Compressor" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-comp-bypass" checked></div>
+              <label>Threshold <span id="pa-comp-threshold-val">-24 dB</span></label>
+              <input type="range" id="pa-comp-threshold" min="-60" max="0" step="1" value="-24">
+              <label>Ratio <span id="pa-comp-ratio-val">4:1</span></label>
+              <input type="range" id="pa-comp-ratio" min="1" max="20" step="1" value="4">
+            </div>
+          </section>
+
+          <section class="pa-card pa-rig-card" data-card-id="fx">
+            <div class="pa-card-head">
+              <h3>Delay / Reverb</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Delay / Reverb" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div class="row"><label>Delay bypass</label><input type="checkbox" id="pa-delay-bypass" checked></div>
+              <label>Time <span id="pa-delay-time-val">300 ms</span></label>
+              <input type="range" id="pa-delay-time" min="10" max="1000" step="10" value="300">
+              <label>Feedback <span id="pa-delay-feedback-val">30%</span></label>
+              <input type="range" id="pa-delay-feedback" min="0" max="90" step="1" value="30">
+              <label>Delay mix <span id="pa-delay-mix-val">20%</span></label>
+              <input type="range" id="pa-delay-mix" min="0" max="100" step="1" value="20">
+              <div class="row"><label>Reverb bypass</label><input type="checkbox" id="pa-reverb-bypass" checked></div>
+              <label>Reverb size <span id="pa-reverb-size-val">1.5 s</span></label>
+              <input type="range" id="pa-reverb-size" min="0.2" max="5" step="0.1" value="1.5">
+              <label>Reverb mix <span id="pa-reverb-mix-val">15%</span></label>
+              <input type="range" id="pa-reverb-mix" min="0" max="100" step="1" value="15">
+            </div>
+          </section>
+
+          <section class="pa-card pa-rig-card" data-card-id="output">
+            <div class="pa-card-head">
+              <h3>Output</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Output" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <label>Level <span id="pa-output-val">0 dB</span></label>
+              <input type="range" id="pa-output-level" min="-24" max="12" step="1" value="0">
+              <div class="pa-meter"><div id="pa-output-meter-fill"></div></div>
+              <p class="hint" id="pa-latency-hint"></p>
+            </div>
+          </section>
+        </div>
+
+        <!-- V3-U1: Record + Takes stop being permanent cards under the rig
+             and become a mode tab instead — camera preview only renders
+             once a camera is actually enabled (was a permanently visible
+             black box, see recStartCamera/#rec-preview-wrap), and every
+             setup-once control (camera pick, quality, A/V offset,
+             auto-calibrate) folds into a "Setup" disclosure so the
+             every-session controls (Record button, takes list) aren't
+             competing with them for space. The toolbar's REC pill already
+             covers "recording while elsewhere". -->
+        <div id="pa-session-tabs" class="pa-tabs">
+          <button data-pa-session="perform" class="active">Perform</button>
+          <button data-pa-session="record">Record</button>
+        </div>
+
+        <div id="pa-session-record" class="pa-session-panel" style="display:none">
+          <section class="pa-card" id="rec-card">
+            <h3>Record performance</h3>
+            <div id="rec-preview-wrap" style="display:none">
+              <video id="rec-preview" muted playsinline></video>
+              <canvas id="rec-framing-overlay"></canvas>
+            </div>
+            <div class="row">
+              <button id="rec-toggle-btn" class="primary">● Record</button>
+              <span id="rec-elapsed">0:00</span>
+            </div>
+            <div class="row">
+              <label style="margin:0">Start backing track with recording</label>
+              <input type="checkbox" id="rec-start-with-playback" checked>
+            </div>
+            <div class="row">
+              <label style="margin:0">Start with count-in</label>
+              <input type="checkbox" id="rec-count-in">
+            </div>
+            <div id="rec-result" class="hint"></div>
+
+            <details id="rec-setup">
+              <summary>Setup: camera, quality &amp; sync</summary>
+              <div class="row">
+                <label style="margin:0">Show framing guides</label>
+                <input type="checkbox" id="rec-framing-toggle" checked>
+              </div>
+              <div class="row">
+                <select id="rec-camera-select"></select>
+                <button id="rec-camera-enable-btn">Enable camera</button>
+              </div>
+              <div class="row">
+                <label style="margin:0">Quality</label>
+                <select id="rec-quality-select">
+                  <option value="720p" selected>720p · 30fps</option>
+                  <option value="1080p">1080p · 30fps</option>
+                </select>
+              </div>
+              <p class="hint" id="rec-camera-hint"></p>
+              <label>A/V offset (ms) <span class="hint">delays audio to match a late camera — see manual</span></label>
+              <input type="number" id="rec-av-offset" value="0" step="10">
+              <button id="rec-auto-calibrate-btn">Auto-calibrate (clap once, ~5s)</button>
+              <p class="hint" id="rec-calibrate-result"></p>
+            </details>
+          </section>
+
+          <section class="pa-card" id="takes-card">
+            <h3>Takes</h3>
+            <div id="takes-list"></div>
+            <div id="takes-player-wrap" style="display:none">
+              <video id="takes-player" controls></video>
+              <label>Trim start <span id="takes-trim-start-val">0:00</span></label>
+              <input type="range" id="takes-trim-start" min="0" max="100" step="0.1" value="0">
+              <label>Trim end <span id="takes-trim-end-val">0:00</span></label>
+              <input type="range" id="takes-trim-end" min="0" max="100" step="0.1" value="100">
+              <button id="takes-trim-btn" class="primary">Trim (lossless copy, new file)</button>
+              <p class="hint" id="takes-trim-result"></p>
+            </div>
+          </section>
+        </div>
 
       </div>
     </div>
