@@ -381,13 +381,23 @@ function paSetTunerEnabled(enabled) {
   // hardware tuner pedal muting its through signal. Restores to whatever
   // level each was actually set to (not just back to 1.0/unity) by
   // re-reading their own controls, since either could differ from default.
+  //
+  // Muted to -90dB, NOT literal 0: driving every path to ctx.destination to
+  // true silence is exactly the condition that put Chrome's AudioContext
+  // auto-suspend heuristic in play for the earlier NAM audio-cutout bug —
+  // and unlike that case, PA.inAnal (the tuner's OWN input tap) doesn't run
+  // through either of these gain nodes at all, so a context-wide suspend
+  // triggered by this mute would freeze the tuner's pitch reading too even
+  // though nothing in its own signal path changed. -90dB is inaudible but
+  // keeps the destination technically non-silent.
+  const INAUDIBLE_GAIN = Math.pow(10, -90 / 20);
   if (PA.outputGain) {
     const outEl = document.getElementById("pa-output-level");
-    PA.outputGain.gain.value = enabled ? 0 : Math.pow(10, parseFloat((outEl && outEl.value) || "0") / 20);
+    PA.outputGain.gain.value = enabled ? INAUDIBLE_GAIN : Math.pow(10, parseFloat((outEl && outEl.value) || "0") / 20);
   }
   if (Audio.master) {
     const volEl = transportEls("volume-slider")[0];
-    Audio.master.gain.value = enabled ? 0 : parseFloat((volEl && volEl.value) || "100") / 100;
+    Audio.master.gain.value = enabled ? INAUDIBLE_GAIN : parseFloat((volEl && volEl.value) || "100") / 100;
   }
 }
 
@@ -409,6 +419,12 @@ function paStartMeters() {
   const outData = new Float32Array(PA.outAnal.fftSize);
   let tunerFrameCount = 0;
   function tick() {
+    // Belt-and-braces alongside app.js's own tick() resume check: this loop
+    // runs continuously while Play Along is open (independent of the main
+    // transport's rAF loop), so it's an extra, faster-firing chance to pull
+    // the context back out of an auto-suspend — most relevant right after
+    // paSetTunerEnabled() drives both outputs near-silent above.
+    if (Audio.ctx && Audio.ctx.state === "suspended") Audio.ctx.resume();
     PA.inAnal.getFloatTimeDomainData(inData);
     PA.outAnal.getFloatTimeDomainData(outData);
     let inMax = 0, outMax = 0;
