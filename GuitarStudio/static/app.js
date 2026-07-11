@@ -80,6 +80,25 @@ function escapeHtml(s) {
 
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
+// V3-E6: shared dB<->linear-gain conversions — playalong.js had two
+// independent Math.pow(10, db/20) call sites (the clip threshold constant
+// and the output-level slider) that had started drifting apart in spelling
+// even though they're the same formula.
+function dbToLin(db) { return Math.pow(10, db / 20); }
+function linToDb(lin) { return 20 * Math.log10(lin); }
+
+// V3-E6: was defined inline inside playalong.js's gsDiag() as a local
+// const, the only place it was used — pulled out next to the other shared
+// main-thread utilities above so it isn't tied to that one diagnostic.
+function rmsOf(analyser) {
+  if (!analyser) return null;
+  const d = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(d);
+  let s = 0;
+  for (const v of d) s += v * v;
+  return +Math.sqrt(s / d.length).toFixed(5);
+}
+
 function fmtTime(s) {
   if (!isFinite(s) || s < 0) s = 0;
   const m = Math.floor(s / 60), sec = Math.floor(s % 60);

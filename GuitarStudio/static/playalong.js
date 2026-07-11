@@ -406,7 +406,7 @@ function paSetTunerEnabled(enabled) {
 // point is to catch a transient clip you'd otherwise miss between glances
 // at the meter, so once lit it stays lit until "Clear" or a new input
 // session (see paEnableInput()).
-const CLIP_THRESHOLD_LINEAR = Math.pow(10, -1 / 20);
+const CLIP_THRESHOLD_LINEAR = dbToLin(-1);
 
 function updateClipIndicator() {
   const el = document.getElementById("pa-clip-indicator");
@@ -467,7 +467,7 @@ async function paCalibrate() {
     resultEl.textContent = "Didn't hear anything — check the input is enabled and try again.";
     return;
   }
-  const peakDb = 20 * Math.log10(peak);
+  const peakDb = linToDb(peak);
   // Target: loudest transient should land around -6dBFS of headroom below
   // the ceiling; suggest an output trim that would have achieved that,
   // clamped to the slider's own range.
@@ -657,12 +657,39 @@ const NAM_PROBE_SECONDS = 0.25;
 const NAM_REFUSE_RT_FACTOR = 0.9; // near-certain stream death — don't load
 const NAM_WARN_RT_FACTOR = 0.7; // loads, but little headroom left for IR/effects
 
-async function paProbeNamModel(namJson) {
+// V3-E6: the one place that posts a "load" message to a nam-processor node
+// and waits for its one-shot "loaded" ack — paProbeNamModel, paLoadNamModel,
+// and the Suggest loop each used to carry their own copy of this promise,
+// and they'd drifted (the Suggest copy resolved `!!e.data.ok` instead of
+// rejecting on failure like the other two, silently changing what "the load
+// failed" meant to its caller). Resolves with the raw ack payload — callers
+// decide what a failed load means to them, explicitly, instead of that
+// decision living inside three near-identical promise bodies.
+function awaitNamLoad(node, msg) {
+  return new Promise((resolve) => {
+    node.port.onmessage = (e) => {
+      if (e.data.type !== "loaded") return;
+      resolve(e.data);
+    };
+    node.port.postMessage(msg);
+  });
+}
+
+// V3-E6: parameterized so the Suggest loop (paSuggestNamModel below) calls
+// this instead of re-implementing the same offline-probe-plus-guardrail
+// dance with its own OfflineAudioContext/node/wasm-module setup. opts.
+// testSignal lets a caller supply its own render input (Suggest needs noise
+// to score zero-crossing rate, not this probe's default sine) — the
+// duration then comes from the signal itself rather than NAM_PROBE_SECONDS.
+// opts.returnAudio hands back the rendered samples for that same scoring;
+// the plain load-speed-check callers (paLoadNamModel) don't need them.
+async function paProbeNamModel(namJson, opts = {}) {
   try {
     // Audio.ctx always exists by the time Play Along's load paths run, but
     // don't let a null ctx silently disable the probe.
     const sr = (typeof Audio !== "undefined" && Audio.ctx && Audio.ctx.sampleRate) || 48000;
-    const len = Math.floor(sr * NAM_PROBE_SECONDS);
+    const len = opts.testSignal ? opts.testSignal.length : Math.floor(sr * NAM_PROBE_SECONDS);
+    const durationSec = len / sr;
     const offlineCtx = new OfflineAudioContext(1, len, sr);
     await offlineCtx.audioWorklet.addModule("nam-processor.js");
     const node = new AudioWorkletNode(offlineCtx, "nam-processor", {
@@ -673,29 +700,33 @@ async function paProbeNamModel(namJson) {
     // capture clears NAM_REFUSE_RT_FACTOR — so wait for the module send
     // before posting "load", not fire-and-forget like the live node above.
     await paSendNamWasmModule(node);
-    const gain = await new Promise((resolve, reject) => {
-      node.port.onmessage = (e) => {
-        if (e.data.type !== "loaded") return;
-        e.data.ok ? resolve(e.data.outputGainDb) : reject(new Error(e.data.error));
-      };
-      node.port.postMessage({ type: "load", nam: namJson, sync: true });
-    });
+    const ack = await awaitNamLoad(node, { type: "load", nam: namJson, sync: true });
+    if (!ack.ok) throw new Error(ack.error);
+    const gain = ack.outputGainDb;
     // Speed: time a real render through the loaded model. Calibration (if
     // any) already ran synchronously inside the load handler above, so
     // this times pure inference.
     const buf = offlineCtx.createBuffer(1, len, sr);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = 0.3 * Math.sin((2 * Math.PI * 220 * i) / sr);
+    if (opts.testSignal) {
+      buf.getChannelData(0).set(opts.testSignal);
+    } else {
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = 0.3 * Math.sin((2 * Math.PI * 220 * i) / sr);
+    }
     const src = offlineCtx.createBufferSource();
     src.buffer = buf;
     src.connect(node).connect(offlineCtx.destination);
     src.start();
     const t0 = performance.now();
-    await offlineCtx.startRendering();
-    const rtFactor = (performance.now() - t0) / (NAM_PROBE_SECONDS * 1000);
-    return { outputGainDb: Number.isFinite(gain) ? gain : null, rtFactor };
+    const rendered = await offlineCtx.startRendering();
+    const rtFactor = (performance.now() - t0) / (durationSec * 1000);
+    return {
+      outputGainDb: Number.isFinite(gain) ? gain : null,
+      rtFactor,
+      audio: opts.returnAudio ? rendered.getChannelData(0) : null,
+    };
   } catch (e) {
-    return { outputGainDb: null, rtFactor: null };
+    return { outputGainDb: null, rtFactor: null, audio: null };
   }
 }
 
@@ -708,6 +739,22 @@ async function paProbeNamModel(namJson) {
 //   - pong + modelActive + silent output taps  → routing or math bug (NaN etc.)
 // ---------------------------------------------------------------------------
 
+// V3-E6: single ping helper for gsDiag — was two copies differing only in
+// their timeout fallback value and whether they called port.start() first.
+function gsDiagPingNam(timeoutMs, timeoutValue) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(timeoutValue), timeoutMs);
+    const onMsg = (e) => {
+      if (e.data.type !== "pong") return;
+      clearTimeout(timer);
+      PA.namNode.port.removeEventListener("message", onMsg);
+      resolve(e.data);
+    };
+    PA.namNode.port.addEventListener("message", onMsg);
+    PA.namNode.port.postMessage({ type: "ping" });
+  });
+}
+
 async function gsDiag() {
   const out = { when: new Date().toISOString() };
   const ctx = (typeof Audio !== "undefined") && Audio.ctx;
@@ -719,46 +766,20 @@ async function gsDiag() {
   out.currentTimeAdvanced = +(ctx.currentTime - t0).toFixed(3); // ~0.6 expected; 0 = stream dead
 
   if (PA.namNode) {
-    out.namPong = await new Promise((resolve) => {
-      const timer = setTimeout(() => resolve("NO PONG within 1s — node/render thread not responding"), 1000);
-      const onMsg = (e) => {
-        if (e.data.type !== "pong") return;
-        clearTimeout(timer);
-        PA.namNode.port.removeEventListener("message", onMsg);
-        resolve(e.data);
-      };
-      PA.namNode.port.addEventListener("message", onMsg);
-      PA.namNode.port.start();
-      PA.namNode.port.postMessage({ type: "ping" });
-    });
+    PA.namNode.port.start();
+    out.namPong = await gsDiagPingNam(1000, "NO PONG within 1s — node/render thread not responding");
     // Second ping after a beat: framesProcessed should be HIGHER if the
     // node is actually being pulled by the render loop.
     if (out.namPong && out.namPong.framesProcessed !== undefined) {
       await new Promise((r) => setTimeout(r, 300));
-      const again = await new Promise((resolve) => {
-        const timer = setTimeout(() => resolve(null), 1000);
-        const onMsg = (e) => {
-          if (e.data.type !== "pong") return;
-          clearTimeout(timer);
-          PA.namNode.port.removeEventListener("message", onMsg);
-          resolve(e.data);
-        };
-        PA.namNode.port.addEventListener("message", onMsg);
-        PA.namNode.port.postMessage({ type: "ping" });
-      });
+      const again = await gsDiagPingNam(1000, null);
       out.namBeingPulled = again ? (again.framesProcessed > out.namPong.framesProcessed) : "no second pong";
     }
   } else {
     out.namPong = "PA.namNode is null — Play Along graph not built";
   }
 
-  const rmsOf = (analyser) => {
-    if (!analyser) return null;
-    const d = new Float32Array(analyser.fftSize);
-    analyser.getFloatTimeDomainData(d);
-    let s = 0; for (const v of d) s += v * v;
-    return +Math.sqrt(s / d.length).toFixed(5);
-  };
+  // rmsOf is app.js's shared helper (V3-E6) — this used to be a local copy.
   // A single instantaneous reading can't distinguish "user wasn't playing"
   // from "signal not flowing" — watch all three taps for 5 seconds (the
   // user should be strumming, ideally with the backing track playing) and
@@ -832,15 +853,10 @@ async function paLoadNamModel(filename) {
         `Look for a "Lite" or "Feather" version of the same amp instead.`;
       return;
     }
-    await new Promise((resolve, reject) => {
-      PA.namNode.port.onmessage = (e) => {
-        if (e.data.type !== "loaded") return;
-        e.data.ok ? resolve() : reject(new Error(e.data.error));
-      };
-      const msg = { type: "load", nam: namJson };
-      if (probe.outputGainDb !== null) msg.outputGainDb = probe.outputGainDb;
-      PA.namNode.port.postMessage(msg);
-    });
+    const msg = { type: "load", nam: namJson };
+    if (probe.outputGainDb !== null) msg.outputGainDb = probe.outputGainDb;
+    const ack = await awaitNamLoad(PA.namNode, msg);
+    if (!ack.ok) throw new Error(ack.error);
     // V3-E3: what the live-overrun rollback (paHandleNamLiveOverrun) reverts
     // the picker's UI to if this load turns out to overrun the real render
     // thread despite passing the offline probe above.
@@ -964,45 +980,17 @@ async function paSuggestNamModel() {
       resultEl.textContent = `Analyzing… (${ci + 1}/${candidates.length})`;
       try {
         const namJson = await (await fetch(`/api/nam_model_file?filename=${encodeURIComponent(m.filename)}`)).json();
-        const offlineCtx = new OfflineAudioContext(1, testSignal.length, Audio.ctx.sampleRate);
-        await offlineCtx.audioWorklet.addModule("nam-processor.js");
-        const node = new AudioWorkletNode(offlineCtx, "nam-processor", {
-          numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
-        });
-        // Same reasoning as paProbeNamModel: this render's timing feeds the
-        // same NAM_REFUSE_RT_FACTOR check just below, so it needs to be
-        // timing the WASM engine (when available), not the JS fallback —
-        // await the module send before "load".
-        await paSendNamWasmModule(node);
-        const loadedOk = await new Promise((resolve) => {
-          node.port.onmessage = (e) => {
-            // Only the load ack decides this — resolving on ANY message
-            // (e.g. a "wasm-instantiate-failed" reply) would let a model
-            // that never actually loaded fall through to the render below,
-            // where a null model renders dry passthrough and its raw-noise
-            // ZCR gets scored as if it were the amp's tone.
-            if (e.data.type !== "loaded") return;
-            resolve(!!e.data.ok);
-          };
-          // sync: block this offline context's render thread for the
-          // output-level calibration — harmless off the real-time thread,
-          // and it keeps the whole short test render post-calibration.
-          node.port.postMessage({ type: "load", nam: namJson, sync: true });
-        });
-        if (!loadedOk) continue; // skip a model that failed to build/load
-        const srcBuf = offlineCtx.createBuffer(1, testSignal.length, Audio.ctx.sampleRate);
-        srcBuf.getChannelData(0).set(testSignal);
-        const src = offlineCtx.createBufferSource();
-        src.buffer = srcBuf;
-        src.connect(node).connect(offlineCtx.destination);
-        src.start();
-        const t0 = performance.now();
-        const rendered = await offlineCtx.startRendering();
+        // V3-E6: was its own from-scratch OfflineAudioContext/node/wasm-
+        // module/load dance, duplicating paProbeNamModel's — reuse it with
+        // this loop's own noise test signal (paProbeNamModel's default is a
+        // sine, no good for a zero-crossing-rate brightness proxy) and ask
+        // for the rendered audio back to score.
+        const probe = await paProbeNamModel(namJson, { testSignal, returnAudio: true });
+        if (probe.rtFactor === null) continue; // failed to build/load/render
         // Same speed guardrail as paLoadNamModel: never suggest a capture
         // that can't run live — it would be refused at load anyway.
-        const rtFactor = (performance.now() - t0) / (SUGGEST_TEST_SECONDS * 1000);
-        if (rtFactor >= NAM_REFUSE_RT_FACTOR) { tooHeavy++; continue; }
-        const modelZcr = zeroCrossingRate(rendered.getChannelData(0));
+        if (probe.rtFactor >= NAM_REFUSE_RT_FACTOR) { tooHeavy++; continue; }
+        const modelZcr = zeroCrossingRate(probe.audio);
         scored.push({ name: m.name, filename: m.filename, distance: Math.abs(modelZcr - targetZcr) });
       } catch (e) { /* skip a model that fails to load/render offline */ }
     }
@@ -1211,7 +1199,7 @@ function wirePAControls() {
     document.getElementById("pa-output-val").textContent = e.target.value + " dB";
     // V3-E2: mute lives on PA.outputMute now, so this slider owns
     // PA.outputGain.gain outright regardless of tuner state.
-    PA.outputGain.gain.value = Math.pow(10, parseFloat(e.target.value) / 20);
+    PA.outputGain.gain.value = dbToLin(parseFloat(e.target.value));
   });
 }
 
