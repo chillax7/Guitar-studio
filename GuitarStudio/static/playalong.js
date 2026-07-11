@@ -40,6 +40,7 @@ const PA = {
   reverbConvolver: null,
   reverbWet: null,
   outputGain: null,
+  outputMute: null,
   outAnal: null,
   meterRaf: null,
   namModels: [],
@@ -212,9 +213,12 @@ async function ensurePAGraph() {
   PA.reverbWet.connect(reverbMerge);
 
   PA.outputGain = Audio.ctx.createGain();
+  // V3-E2: dedicated mute node, separate from PA.outputGain (the level
+  // slider owns that one outright now — see paSetTunerEnabled).
+  PA.outputMute = Audio.ctx.createGain();
   PA.outAnal = Audio.ctx.createAnalyser();
   PA.outAnal.fftSize = 1024;
-  reverbMerge.connect(PA.outputGain).connect(PA.outAnal).connect(Audio.ctx.destination);
+  reverbMerge.connect(PA.outputGain).connect(PA.outputMute).connect(PA.outAnal).connect(Audio.ctx.destination);
 
   setAmpMode("clean");
   PA.built = true;
@@ -378,27 +382,21 @@ function paSetTunerEnabled(enabled) {
 
   // Tuning by ear against a live amp tone (or the backing track) fights the
   // whole point of a tuner — mute both while it's on, same convention as a
-  // hardware tuner pedal muting its through signal. Restores to whatever
-  // level each was actually set to (not just back to 1.0/unity) by
-  // re-reading their own controls, since either could differ from default.
+  // hardware tuner pedal muting its through signal.
   //
-  // Muted to -90dB, NOT literal 0: driving every path to ctx.destination to
-  // true silence is exactly the condition that put Chrome's AudioContext
-  // auto-suspend heuristic in play for the earlier NAM audio-cutout bug —
-  // and unlike that case, PA.inAnal (the tuner's OWN input tap) doesn't run
-  // through either of these gain nodes at all, so a context-wide suspend
-  // triggered by this mute would freeze the tuner's pitch reading too even
-  // though nothing in its own signal path changed. -90dB is inaudible but
-  // keeps the destination technically non-silent.
-  const INAUDIBLE_GAIN = Math.pow(10, -90 / 20);
-  if (PA.outputGain) {
-    const outEl = document.getElementById("pa-output-level");
-    PA.outputGain.gain.value = enabled ? INAUDIBLE_GAIN : Math.pow(10, parseFloat((outEl && outEl.value) || "0") / 20);
-  }
-  if (Audio.master) {
-    const volEl = transportEls("volume-slider")[0];
-    Audio.master.gain.value = enabled ? INAUDIBLE_GAIN : parseFloat((volEl && volEl.value) || "100") / 100;
-  }
+  // V3-E2: this only touches the dedicated mute nodes (Audio.masterMute,
+  // PA.outputMute) now, never the level nodes (Audio.master, PA.outputGain)
+  // that the volume/output-level sliders own — so moving a slider while
+  // tuning can no longer silently un-mute.
+  //
+  // True 0 gain, not -90dB: the -90dB workaround existed only to dodge
+  // Chrome's AudioContext auto-suspend heuristic (full silence to
+  // destination could trigger it, freezing PA.inAnal — the tuner's own
+  // input tap — along with everything else). V3-E1's statechange listener
+  // now resumes the context event-driven whenever that happens, so real
+  // silence is safe.
+  if (PA.outputMute) PA.outputMute.gain.value = enabled ? 0 : 1;
+  if (Audio.masterMute) Audio.masterMute.gain.value = enabled ? 0 : 1;
 }
 
 // GP-10: fixed -1dBFS clip threshold, deliberately NOT self-clearing — the
@@ -419,12 +417,6 @@ function paStartMeters() {
   const outData = new Float32Array(PA.outAnal.fftSize);
   let tunerFrameCount = 0;
   function tick() {
-    // Belt-and-braces alongside app.js's own tick() resume check: this loop
-    // runs continuously while Play Along is open (independent of the main
-    // transport's rAF loop), so it's an extra, faster-firing chance to pull
-    // the context back out of an auto-suspend — most relevant right after
-    // paSetTunerEnabled() drives both outputs near-silent above.
-    if (Audio.ctx && Audio.ctx.state === "suspended") Audio.ctx.resume();
     PA.inAnal.getFloatTimeDomainData(inData);
     PA.outAnal.getFloatTimeDomainData(outData);
     let inMax = 0, outMax = 0;
@@ -1178,9 +1170,9 @@ function wirePAControls() {
 
   document.getElementById("pa-output-level").addEventListener("input", (e) => {
     document.getElementById("pa-output-val").textContent = e.target.value + " dB";
-    // While the tuner is on it has muted this output; paSetTunerEnabled
-    // re-reads this slider on tuner-off to restore, so don't un-mute here.
-    if (!PA.tunerEnabled) PA.outputGain.gain.value = Math.pow(10, parseFloat(e.target.value) / 20);
+    // V3-E2: mute lives on PA.outputMute now, so this slider owns
+    // PA.outputGain.gain outright regardless of tuner state.
+    PA.outputGain.gain.value = Math.pow(10, parseFloat(e.target.value) / 20);
   });
 }
 

@@ -9,10 +9,12 @@
 //
 // Audio recorded = the backing-track mix (Audio.analyser — the node that
 // always carries the final signal regardless of playback mode, see app.js)
-// + the guitar rig's output (PA.outputGain, once Play Along has been opened
-// at least once). Camera audio is never touched — getUserMedia for video is
-// always requested with audio:false, so there's no mic-bleed/feedback risk
-// and no ambiguity between the camera mic and the USB interface.
+// + the guitar rig's output (PA.outputMute, once Play Along has been opened
+// at least once — tapped post-mute, same node the tuner mutes, so a take
+// started while tuning records silence there rather than raw guitar).
+// Camera audio is never touched — getUserMedia for video is always
+// requested with audio:false, so there's no mic-bleed/feedback risk and no
+// ambiguity between the camera mic and the USB interface.
 
 const Recorder = {
   camStream: null,
@@ -50,7 +52,7 @@ function ensureRecordBus() {
   ensureCtx();
   if (!Recorder.recordBus) Recorder.recordBus = Audio.ctx.createGain();
   Audio.analyser.connect(Recorder.recordBus);
-  if (typeof PA !== "undefined" && PA.outputGain) PA.outputGain.connect(Recorder.recordBus);
+  if (typeof PA !== "undefined" && PA.outputMute) PA.outputMute.connect(Recorder.recordBus);
 }
 
 function ensureRecordDest() {

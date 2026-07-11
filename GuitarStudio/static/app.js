@@ -106,6 +106,7 @@ function fmtTime(s) {
 const Audio = {
   ctx: null,
   master: null,
+  masterMute: null,
   analyser: null,
   buffers: {},
   gains: {},
@@ -134,9 +135,23 @@ function ensureCtx() {
   if (!Audio.ctx) {
     Audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
     Audio.master = Audio.ctx.createGain();
+    // V3-E2: mute lives on its own node so the tuner's mute and the volume
+    // slider's level never fight over the same gain param (the pre-v3 bug:
+    // moving the slider while tuning silently un-muted).
+    Audio.masterMute = Audio.ctx.createGain();
     Audio.analyser = Audio.ctx.createAnalyser();
-    Audio.master.connect(Audio.analyser);
+    Audio.master.connect(Audio.masterMute);
+    Audio.masterMute.connect(Audio.analyser);
     Audio.analyser.connect(Audio.ctx.destination);
+    // V3-E1: single owner of "keep the context alive". Browsers can
+    // auto-suspend an AudioContext they judge idle (e.g. a brief silence gap
+    // during a Play Along amp-model switch, or the tuner muting both mixer
+    // and PA output); nothing else resumes it, so it would otherwise stay
+    // silent until a full page reload. Event-driven so it also fires for
+    // backgrounded tabs, which rAF polling never sees.
+    Audio.ctx.addEventListener("statechange", () => {
+      if (Audio.ctx.state === "suspended") Audio.ctx.resume();
+    });
   }
   return Audio.ctx;
 }
@@ -770,16 +785,6 @@ function renderTimeDisplay(pos) {
 
 function tick() {
   if (Audio.ctx) {
-    // Chrome (and others) can auto-suspend an AudioContext it judges idle
-    // as a power-saving measure — e.g. a brief silence gap is plausible
-    // during a Play Along amp-model switch. Nothing else in the app
-    // resumes it outside of clicking the mixer's own Play button, so a
-    // context suspended while Play Along is in use (mixer not necessarily
-    // playing) would otherwise stay silent — both the guitar signal and
-    // the mixer, since they share this one context — until a full page
-    // reload created a fresh one. Checked every frame regardless of
-    // mixer playback state, since Play Along works without it.
-    if (Audio.ctx.state === "suspended") Audio.ctx.resume();
     const pos = currentPosition();
     if (Audio.playing) {
       if (State.ui.loopEnabled && State.ui.loop && pos >= State.ui.loop.end) {
@@ -925,13 +930,9 @@ function wireVolumeSlider() {
   onTransportInput("volume-slider", (val) => {
     const pct = parseFloat(val);
     setTransportText("volume-display", pct + "%");
-    // Don't fight the tuner mute: while the tuner is on it has set master
-    // to near-silent, and paSetTunerEnabled re-reads THIS slider's value to
-    // restore the level when the tuner turns off — so a move now just needs
-    // to update the display/value, not stomp the mute back to full volume.
-    if (Audio.master && !(typeof PA !== "undefined" && PA.tunerEnabled)) {
-      Audio.master.gain.value = pct / 100;
-    }
+    // V3-E2: mute lives on Audio.masterMute now, so this slider owns
+    // Audio.master.gain outright — no need to check tuner state here.
+    if (Audio.master) Audio.master.gain.value = pct / 100;
   });
 }
 
