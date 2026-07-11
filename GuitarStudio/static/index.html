@@ -45,6 +45,7 @@
       <button id="stop-btn" data-transport="stop-btn">■</button>
       <span id="time-display" data-transport="time-display">0:00 / 0:00</span>
       <button id="loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
+      <button id="add-marker-btn" title="Add a section marker at the current position">+ Marker</button>
       <label class="transport-label"><input type="checkbox" id="count-in-toggle" data-transport="count-in-toggle"> Count-in</label>
       <span class="transport-label">BPM</span>
       <span id="bpm-display" data-transport="bpm-display">—</span>
@@ -81,6 +82,7 @@
     </div>
 
     <div id="workspace">
+      <div id="markers-row"></div>
       <div id="ruler"><div id="loop-region"><div class="loop-handle" id="loop-handle-a" style="left:0"></div><div class="loop-handle" id="loop-handle-b" style="left:0"></div></div></div>
       <div id="lanes"></div>
     </div>

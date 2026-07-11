@@ -611,6 +611,7 @@ async function onStemsLoaded(result) {
   renderInspector();
   updateStaleBanner();
   updateLoopVisual();
+  renderMarkers();
   renderPlayhead(currentPosition());
   renderTimeDisplay(currentPosition());
 }
@@ -838,6 +839,63 @@ function updateLoopVisual() {
 }
 
 // ---------------------------------------------------------------------------
+// BT-08: section markers — named points on the timeline. Click jumps there;
+// double-click loops from that marker to the next one (or the end, if it's
+// the last), matching the M4 gate scenario directly ("mark the solo, loop
+// it"). Persisted via XC-01 (State.markers, project format v2).
+// ---------------------------------------------------------------------------
+
+function sortedMarkers() {
+  return [...(State.markers || [])].sort((a, b) => a.time - b.time);
+}
+
+function renderMarkers() {
+  const row = document.getElementById("markers-row");
+  row.innerHTML = "";
+  if (!Audio.duration) return;
+  const markers = sortedMarkers();
+  markers.forEach((m, i) => {
+    const el = document.createElement("div");
+    el.className = "marker-flag";
+    el.style.left = (m.time / Audio.duration * 100) + "%";
+    el.title = `${m.label} (${fmtTime(m.time)}) — click to jump, double-click to loop this section`;
+    el.textContent = m.label;
+
+    const del = document.createElement("span");
+    del.className = "marker-delete";
+    del.textContent = "×";
+    del.title = "Delete marker";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation(); // don't also trigger the marker's own seek-on-click
+      State.markers = (State.markers || []).filter((mm) => mm !== m);
+      renderMarkers();
+      saveProjectDebounced();
+    });
+    el.appendChild(del);
+
+    el.addEventListener("click", () => seekTo(m.time));
+    el.addEventListener("dblclick", () => {
+      const next = markers[i + 1];
+      State.ui.loop = { start: m.time, end: next ? next.time : Audio.duration };
+      State.ui.loopEnabled = true;
+      toggleTransportClass("loop-toggle-btn", "active", true);
+      updateLoopVisual();
+      saveProjectDebounced();
+    });
+    row.appendChild(el);
+  });
+}
+
+function addMarkerAtPlayhead() {
+  if (!Audio.duration) return;
+  const label = prompt("Marker name:", `Marker ${(State.markers || []).length + 1}`);
+  if (label === null) return; // cancelled
+  State.markers = [...(State.markers || []), { time: currentPosition(), label: label.trim() || "Marker" }];
+  renderMarkers();
+  saveProjectDebounced();
+}
+
+// ---------------------------------------------------------------------------
 // Transport + rAF tick (playhead position, loop wrap, live mute-region gain)
 // ---------------------------------------------------------------------------
 
@@ -1014,6 +1072,10 @@ function wireTransport() {
     saveProjectDebounced();
   });
   onTransportChange("count-in-toggle", () => {}); // no behavior of its own — just keeps both checkboxes in sync
+  // BT-08: mixer-only (the ruler/timeline it marks up doesn't exist in
+  // Play Along), so a plain click handler rather than onTransportClick's
+  // mixer/Play-Along mirroring.
+  document.getElementById("add-marker-btn").addEventListener("click", addMarkerAtPlayhead);
 }
 
 function wireVolumeSlider() {

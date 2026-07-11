@@ -127,6 +127,19 @@ loop region; the **Loop** button in the transport toggles it on/off
 (defaults to the whole track the first time you enable it). Click anywhere
 on the ruler (not on a handle) to seek.
 
+**Section markers (V3):** click **+ Marker** in the transport to drop a
+named marker at the current playhead position (you'll be asked to name
+it — "Solo", "Chorus 2", whatever helps). Markers appear as small tags in
+a strip above the ruler:
+- **Click** a marker to jump the playhead there.
+- **Double-click** a marker to loop from it to the *next* marker (or the
+  end of the track, if it's the last one) — turns Loop on automatically.
+  This is the fast way to isolate a solo: drop a marker where it starts,
+  another where it ends, double-click the first.
+- Hover a marker to reveal a small **×** to delete it.
+
+Markers are saved per-song, same as everything else in §6.
+
 ## 7. Guitar split (experimental)
 
 Only available once a stem literally named `guitar` exists (i.e. you

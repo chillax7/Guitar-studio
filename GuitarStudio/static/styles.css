@@ -307,6 +307,46 @@ button.primary:hover { filter: brightness(1.1); }
   border-radius: 2px;
 }
 
+/* BT-08: section markers row, above the ruler — separate strip so a
+   marker's label never overlaps the loop handles/playhead beneath it. */
+#markers-row {
+  position: relative;
+  height: 16px;
+  margin: 0 0 2px 158px;
+}
+.marker-flag {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--warn);
+  color: #1b1d22;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 0 4px;
+  border-radius: 2px 4px 4px 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 2;
+}
+.marker-delete {
+  display: none;
+  flex: none;
+  width: 11px; height: 11px;
+  line-height: 11px;
+  text-align: center;
+  font-size: 9px;
+  background: var(--danger);
+  color: #fff;
+  border-radius: 50%;
+}
+.marker-flag:hover .marker-delete { display: inline-block; }
+
 #ruler {
   position: relative;
   height: 22px;
