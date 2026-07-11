@@ -323,6 +323,15 @@ A standard post-amp chain: 3-band EQ, a compressor (threshold/ratio),
 delay (time/feedback/mix), and reverb (size/mix) — each independently
 bypassable — then a final output level with a meter.
 
+**Drag-to-reorder (V3, GP-03):** Cab IR, EQ, Compressor, and Delay/Reverb
+can be rearranged into any order — drag a card by the **⠿** handle in its
+header and drop it where you want it. Compression before the cab IR
+instead of after, EQ before compression, whatever your ears want. Gate and
+Amp stay fixed at the front of the chain and Output stays fixed at the
+end; the four effects between them are the reorderable part. Order
+persists across reloads and is captured/recalled as part of a rig preset
+(§9.3b) — save your whole rig, pedal order included.
+
 ### 9.6 Adding amp models & cab IRs
 Drop `.nam` files into `GuitarStudio/models/nam/` and `.wav` impulse
 responses into `GuitarStudio/models/ir/` — subfolders are fine (a large

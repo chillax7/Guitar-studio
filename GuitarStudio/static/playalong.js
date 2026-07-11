@@ -188,52 +188,60 @@ async function ensurePAGraph() {
   PA.ampOut = Audio.ctx.createGain();
   PA.namTonePresence.connect(PA.ampOut);
 
+  // GP-03: expanded pedalboard — IR/EQ/Comp/FX are reorderable, so unlike
+  // before, ampOut->IR->EQ->Comp->FX->output is no longer a hardwired
+  // sequence of .connect() calls. Each stage still wires its OWN internal
+  // nodes fixed (e.g. eqBass->eqMid->eqTreble, or IR's dry/wet split into
+  // its own merge) — only the boundary BETWEEN stages is dynamic, torn down
+  // and rebuilt by rewirePedalChain() according to PA.pedalOrder. Gate and
+  // Amp stay fixed at the front of the chain (see rewirePedalChain) — this
+  // is deliberately scoped to the four post-amp effects, since making Gate/
+  // Amp mode-switching itself reorderable would need new dedicated input
+  // taps decoupled from the live NAM/analog signal paths for comparatively
+  // little real benefit (gate-after-distortion is a rare want).
+
   // Cab IR (bypass = plain on/off, dry/wet gain pair)
   PA.convolver = Audio.ctx.createConvolver();
   PA.irDryGain = Audio.ctx.createGain(); PA.irDryGain.gain.value = 1;
   PA.irWetGain = Audio.ctx.createGain(); PA.irWetGain.gain.value = 0;
-  PA.ampOut.connect(PA.irDryGain);
-  PA.ampOut.connect(PA.convolver).connect(PA.irWetGain);
-  const irMerge = Audio.ctx.createGain();
-  PA.irDryGain.connect(irMerge);
-  PA.irWetGain.connect(irMerge);
+  PA.convolver.connect(PA.irWetGain);
+  PA.irMerge = Audio.ctx.createGain();
+  PA.irDryGain.connect(PA.irMerge);
+  PA.irWetGain.connect(PA.irMerge);
 
   // Post-amp EQ — bypass sets shelf/peak gains to 0dB (transparent), no merge needed
   const eqBass = Audio.ctx.createBiquadFilter(); eqBass.type = "lowshelf"; eqBass.frequency.value = 150;
   const eqMid = Audio.ctx.createBiquadFilter(); eqMid.type = "peaking"; eqMid.frequency.value = 800; eqMid.Q.value = 0.7;
   const eqTreble = Audio.ctx.createBiquadFilter(); eqTreble.type = "highshelf"; eqTreble.frequency.value = 3000;
-  irMerge.connect(eqBass).connect(eqMid).connect(eqTreble);
+  eqBass.connect(eqMid).connect(eqTreble);
   PA.eqNodes = { bass: eqBass, mid: eqMid, treble: eqTreble };
 
   // Compressor (bypass = dry/wet pair, since there's no clean "neutral" compressor setting)
   PA.compressor = Audio.ctx.createDynamicsCompressor();
   PA.compBypassDry = Audio.ctx.createGain(); PA.compBypassDry.gain.value = 1;
   PA.compBypassWet = Audio.ctx.createGain(); PA.compBypassWet.gain.value = 0;
-  eqTreble.connect(PA.compBypassDry);
-  eqTreble.connect(PA.compressor).connect(PA.compBypassWet);
-  const compMerge = Audio.ctx.createGain();
-  PA.compBypassDry.connect(compMerge);
-  PA.compBypassWet.connect(compMerge);
+  PA.compressor.connect(PA.compBypassWet);
+  PA.compMerge = Audio.ctx.createGain();
+  PA.compBypassDry.connect(PA.compMerge);
+  PA.compBypassWet.connect(PA.compMerge);
 
   // Delay (dry always flows; wet gain doubles as the mix/bypass control)
   PA.delayNode = Audio.ctx.createDelay(2.0); PA.delayNode.delayTime.value = 0.3;
   PA.delayFeedback = Audio.ctx.createGain(); PA.delayFeedback.gain.value = 0.3;
   PA.delayWet = Audio.ctx.createGain(); PA.delayWet.gain.value = 0;
-  compMerge.connect(PA.delayNode);
   PA.delayNode.connect(PA.delayFeedback).connect(PA.delayNode);
   PA.delayNode.connect(PA.delayWet);
-  const delayMerge = Audio.ctx.createGain();
-  compMerge.connect(delayMerge);
-  PA.delayWet.connect(delayMerge);
+  PA.delayMerge = Audio.ctx.createGain();
+  PA.delayWet.connect(PA.delayMerge);
 
   // Reverb (same mix-gain-as-bypass pattern)
   PA.reverbConvolver = Audio.ctx.createConvolver();
   PA.reverbConvolver.buffer = paMakeReverbImpulse(Audio.ctx, 1.5, 2.5);
   PA.reverbWet = Audio.ctx.createGain(); PA.reverbWet.gain.value = 0;
-  delayMerge.connect(PA.reverbConvolver).connect(PA.reverbWet);
-  const reverbMerge = Audio.ctx.createGain();
-  delayMerge.connect(reverbMerge);
-  PA.reverbWet.connect(reverbMerge);
+  PA.delayMerge.connect(PA.reverbConvolver).connect(PA.reverbWet);
+  PA.reverbMerge = Audio.ctx.createGain();
+  PA.delayMerge.connect(PA.reverbMerge);
+  PA.reverbWet.connect(PA.reverbMerge);
 
   PA.outputGain = Audio.ctx.createGain();
   // V3-E2: dedicated mute node, separate from PA.outputGain (the level
@@ -241,10 +249,79 @@ async function ensurePAGraph() {
   PA.outputMute = Audio.ctx.createGain();
   PA.outAnal = Audio.ctx.createAnalyser();
   PA.outAnal.fftSize = 1024;
-  reverbMerge.connect(PA.outputGain).connect(PA.outputMute).connect(PA.outAnal).connect(Audio.ctx.destination);
+  PA.outputGain.connect(PA.outputMute).connect(PA.outAnal).connect(Audio.ctx.destination);
+
+  // GP-03: each stage's fan-in nodes (what the PREVIOUS stage's output must
+  // connect to) and its single fan-out node (what feeds the NEXT stage).
+  PA.pedalStages = {
+    ir: { inputs: [PA.irDryGain, PA.convolver], output: PA.irMerge },
+    eq: { inputs: [eqBass], output: eqTreble },
+    comp: { inputs: [PA.compBypassDry, PA.compressor], output: PA.compMerge },
+    fx: { inputs: [PA.delayNode, PA.delayMerge], output: PA.reverbMerge },
+  };
+  PA.pedalOrder = paLoadPedalOrder();
+  rewirePedalChain();
 
   setAmpMode("clean");
   PA.built = true;
+}
+
+// ---------------------------------------------------------------------------
+// GP-03: expanded pedalboard — IR/EQ/Comp/FX in any order, drag-to-reorder
+// (wirePedalDragReorder). PA.pedalOrder is the current sequence of those
+// four stage IDs; ampOut always feeds the first one and the last one always
+// feeds outputGain. Persisted in localStorage for continuity across
+// reloads and captured/applied by V3-T2's rig presets (paCaptureRigState/
+// paApplyRigState) for the "save the whole rig" case.
+// ---------------------------------------------------------------------------
+const PA_PEDAL_ORDER_KEY = "gs_pa_pedal_order";
+const PA_DEFAULT_PEDAL_ORDER = ["ir", "eq", "comp", "fx"];
+
+function paLoadPedalOrder() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PA_PEDAL_ORDER_KEY) || "null");
+    // Defensive: only trust a stored order if it's exactly a permutation of
+    // the four known stages — a stale/foreign value falls back to default
+    // rather than dropping a stage's audio out of the chain entirely.
+    if (Array.isArray(stored) && stored.length === PA_DEFAULT_PEDAL_ORDER.length &&
+        PA_DEFAULT_PEDAL_ORDER.every((id) => stored.includes(id))) {
+      return stored;
+    }
+  } catch (e) { /* fall through to default */ }
+  return [...PA_DEFAULT_PEDAL_ORDER];
+}
+
+function paSavePedalOrder() {
+  localStorage.setItem(PA_PEDAL_ORDER_KEY, JSON.stringify(PA.pedalOrder));
+}
+
+// Disconnects the chain implied by PA._wiredPedalOrder (whatever's actually
+// live right now — undefined/empty the first time this runs, in which case
+// there's nothing to tear down) and connects the chain implied by
+// PA.pedalOrder. ampOut and outputGain are the fixed endpoints; everything
+// between them is exactly PA.pedalOrder, stage by stage.
+function rewirePedalChain() {
+  const stageOutput = (id) => (id === "amp" ? PA.ampOut : PA.pedalStages[id].output);
+
+  const prevChain = ["amp", ...(PA.wiredPedalOrder || [])];
+  for (let i = 0; i < prevChain.length - 1; i++) {
+    const out = stageOutput(prevChain[i]);
+    for (const inp of PA.pedalStages[prevChain[i + 1]].inputs) {
+      try { out.disconnect(inp); } catch (e) { /* wasn't connected */ }
+    }
+  }
+  if (PA.wiredPedalOrder) {
+    try { stageOutput(prevChain[prevChain.length - 1]).disconnect(PA.outputGain); } catch (e) { /* wasn't connected */ }
+  }
+
+  const chain = ["amp", ...PA.pedalOrder];
+  for (let i = 0; i < chain.length - 1; i++) {
+    const out = stageOutput(chain[i]);
+    for (const inp of PA.pedalStages[chain[i + 1]].inputs) out.connect(inp);
+  }
+  stageOutput(chain[chain.length - 1]).connect(PA.outputGain);
+
+  PA.wiredPedalOrder = [...PA.pedalOrder];
 }
 
 // ---------------------------------------------------------------------------
@@ -1357,6 +1434,58 @@ function wirePedalboardCollapse() {
   });
 }
 
+// GP-03: rebuilds PA.pedalOrder from the DOM's current left-to-right order
+// of draggable cards, then persists and re-wires the live audio graph to
+// match — the DOM order IS the source of truth once a drag completes.
+function paSyncPedalOrderFromDom() {
+  PA.pedalOrder = Array.from(document.querySelectorAll("#pa-pedalboard .pa-pedal-draggable"))
+    .map((el) => el.dataset.cardId);
+  paSavePedalOrder();
+  rewirePedalChain();
+}
+
+// GP-03: HTML5 drag-and-drop reorder for the four post-amp effect cards
+// (IR/EQ/Comp/FX). Only the small grip handle in each card's header is
+// draggable=true — not the whole card — so dragging a slider or typing in
+// a model-browser search box elsewhere in the card is never mistaken for a
+// reorder gesture. setDragImage still shows the whole card being dragged.
+function wirePedalDragReorder() {
+  const pedalboard = document.getElementById("pa-pedalboard");
+  let draggingCard = null;
+
+  pedalboard.querySelectorAll(".pa-pedal-draggable").forEach((card) => {
+    const handle = card.querySelector(".pa-drag-handle");
+    handle.addEventListener("dragstart", (e) => {
+      draggingCard = card;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", card.dataset.cardId);
+      e.dataTransfer.setDragImage(card, 20, 20);
+      requestAnimationFrame(() => card.classList.add("dragging"));
+    });
+    handle.addEventListener("dragend", () => {
+      card.classList.remove("dragging");
+      pedalboard.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
+      draggingCard = null;
+    });
+
+    card.addEventListener("dragover", (e) => {
+      if (!draggingCard || draggingCard === card) return;
+      e.preventDefault(); // required for drop to fire at all
+      card.classList.add("drag-over");
+    });
+    card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
+    card.addEventListener("drop", (e) => {
+      e.preventDefault();
+      card.classList.remove("drag-over");
+      if (!draggingCard || draggingCard === card) return;
+      const rect = card.getBoundingClientRect();
+      const before = e.clientX < rect.left + rect.width / 2;
+      card.parentNode.insertBefore(draggingCard, before ? card : card.nextSibling);
+      paSyncPedalOrderFromDom();
+    });
+  });
+}
+
 // ---------------------------------------------------------------------------
 // V3-U1: Perform/Record session tabs — Record + Takes are no longer
 // permanent cards under the rig, just a tab that reveals them.
@@ -1406,6 +1535,7 @@ function paCaptureRigState() {
       reverbBypass: c("pa-reverb-bypass"), reverbSize: v("pa-reverb-size"), reverbMix: v("pa-reverb-mix"),
     },
     output: { level: v("pa-output-level") },
+    pedalOrder: [...PA.pedalOrder], // GP-03
   };
 }
 
@@ -1481,8 +1611,33 @@ async function paApplyRigState(state) {
     paSetControlChecked("pa-reverb-bypass", state.fx.reverbBypass);
   }
   if (state.output) paSetControlValue("pa-output-level", state.output.level);
+  // GP-03: reorder the actual DOM to match (not just PA.pedalOrder +
+  // rewirePedalChain) — the drag-reorder handler treats DOM order as the
+  // source of truth, so leaving it stale here would make the next drag
+  // silently revert to whatever order was on screen before this preset
+  // loaded, discarding the very order the preset just asked for.
+  if (state.pedalOrder) paApplyPedalOrderToDom(state.pedalOrder);
   // Last: connects whichever mode's chain is now fully parameterized above.
   if (state.ampMode) setAmpMode(state.ampMode);
+}
+
+// GP-03: reorders the pedalboard's draggable card elements in the DOM to
+// match `order`, then syncs PA.pedalOrder/localStorage/the live audio
+// graph from that new DOM order — same call paSyncPedalOrderFromDom makes
+// after a manual drag, just driven by a preset instead of a mouse gesture.
+function paApplyPedalOrderToDom(order) {
+  const pedalboard = document.getElementById("pa-pedalboard");
+  // Gate/Amp/Output aren't draggable and must stay in their fixed slots —
+  // insert each reordered card right before Output (the fixed last card)
+  // rather than appendChild-ing to the container's end, which would push
+  // them past it.
+  const outputCard = pedalboard.querySelector('[data-card-id="output"]');
+  const byId = {};
+  pedalboard.querySelectorAll(".pa-pedal-draggable").forEach((el) => { byId[el.dataset.cardId] = el; });
+  for (const id of order) {
+    if (byId[id]) pedalboard.insertBefore(byId[id], outputCard);
+  }
+  paSyncPedalOrderFromDom();
 }
 
 // ---------------------------------------------------------------------------
@@ -1687,6 +1842,7 @@ function wireRiffCapture() {
 
 wirePAControls();
 wirePedalboardCollapse();
+wirePedalDragReorder();
 wirePASessionTabs();
 wireRigPresets();
 wireRiffCapture();

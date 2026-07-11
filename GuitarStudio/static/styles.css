@@ -526,10 +526,10 @@ button.primary:hover { filter: brightness(1.1); }
 @media (max-width: 900px) { .pa-card-wide { grid-column: span 1; } }
 
 .pa-card-head {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; gap: 6px;
   margin-bottom: 10px;
 }
-.pa-card-head h3 { margin: 0; }
+.pa-card-head h3 { margin: 0; flex: 1; }
 .pa-collapse-btn {
   background: none; border: none; color: var(--text-dim);
   font-size: 11px; padding: 2px 4px; line-height: 1; cursor: pointer;
@@ -540,6 +540,22 @@ button.primary:hover { filter: brightness(1.1); }
    ever added) rather than the whole card vanishing. */
 .pa-rig-card.collapsed .pa-card-content { display: none; }
 .pa-rig-card.collapsed .pa-collapse-btn { transform: rotate(-90deg); }
+
+/* GP-03: drag-to-reorder for the four post-amp effect cards. Only the
+   handle itself is draggable=true (not the whole card) so dragging a
+   slider/search box elsewhere in the card is never mistaken for a
+   reorder gesture; the drag preview still shows the whole card via
+   dataTransfer.setDragImage in wirePedalDragReorder. */
+.pa-drag-handle {
+  cursor: grab;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+  flex: none;
+}
+.pa-drag-handle:hover { color: var(--text); }
+.pa-pedal-draggable.dragging { opacity: 0.4; }
+.pa-pedal-draggable.drag-over { outline: 2px dashed var(--accent); outline-offset: 2px; }
 
 /* V3-U1: setup-once controls (device pick/calibrate on the Input strip,
    camera/quality/sync in Record) fold into a plain <details> disclosure —
