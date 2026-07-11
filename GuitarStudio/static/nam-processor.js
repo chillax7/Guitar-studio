@@ -677,19 +677,28 @@ function buildModelWasm(namJson, exports) {
   return {
     isWasm: true, exports, headerPtr, headScale, outputGainDb, condPtr, outPtr,
     _in1: new Float32Array(1), _out1: new Float32Array(1),
+    _wasmF32: null, // V3-E5: cached memory view, see forwardBlockWasm
   };
 }
 
 // n <= MAX_BLOCK. Mirrors forwardBlock()'s signature/semantics exactly.
 function forwardBlockWasm(model, inBlock, outBlock, n) {
   const exports = model.exports;
-  const f32in = new Float32Array(exports.memory.buffer);
-  f32in.set(n === inBlock.length ? inBlock : inBlock.subarray(0, n), model.condPtr / 4);
+  // V3-E5: WASM memory only grows during buildModelWasm's arena allocation
+  // (model-construction time, off the render thread) — forward() itself
+  // never allocates, so the buffer never detaches during live playback.
+  // Cache the view per model instead of `new Float32Array(...)` twice every
+  // single quantum; only rebuild it if the buffer ever turns out to have
+  // changed underneath us (defensive — not expected to actually trigger).
+  let f32 = model._wasmF32;
+  if (!f32 || f32.buffer !== exports.memory.buffer) {
+    f32 = model._wasmF32 = new Float32Array(exports.memory.buffer);
+  }
+  f32.set(n === inBlock.length ? inBlock : inBlock.subarray(0, n), model.condPtr / 4);
   exports.forward(model.headerPtr, model.condPtr, model.outPtr, n);
-  const f32out = new Float32Array(exports.memory.buffer);
   const headScale = model.headScale;
   const base = model.outPtr / 4;
-  for (let i = 0; i < n; i++) outBlock[i] = headScale * f32out[base + i];
+  for (let i = 0; i < n; i++) outBlock[i] = headScale * f32[base + i];
 }
 
 function forwardSampleWasm(model, rawInputSample) {

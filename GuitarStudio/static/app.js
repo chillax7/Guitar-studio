@@ -568,6 +568,7 @@ function updateStaleBanner() {
 function renderLanes() {
   const container = document.getElementById("lanes");
   container.innerHTML = "";
+  const playheads = [];
 
   for (const stem of orderedStems()) {
     const name = stem.name;
@@ -598,6 +599,7 @@ function renderLanes() {
     const playhead = document.createElement("div");
     playhead.className = "playhead";
     body.appendChild(playhead);
+    playheads.push(playhead);
 
     const muteLane = document.createElement("div");
     muteLane.className = "mute-lane";
@@ -625,6 +627,13 @@ function renderLanes() {
     const buf = Audio.buffers[name];
     if (buf) requestAnimationFrame(() => drawWaveform(canvas, computePeaks(buf, 400)));
   }
+
+  // V3-E5: renderPlayhead() reads this instead of re-querying the DOM every
+  // animation frame. Force a re-render next tick — the lane DOM (and thus
+  // which elements .style.left needs to hit) just changed, but the actual
+  // playhead position may not have, which would otherwise skip it.
+  cachedPlayheadEls = playheads;
+  lastPlayheadPct = null;
 }
 
 function toggleMute(name) {
@@ -772,31 +781,52 @@ function updateLoopVisual() {
 // Transport + rAF tick (playhead position, loop wrap, live mute-region gain)
 // ---------------------------------------------------------------------------
 
+// V3-E5: cachedPlayheadEls is populated by renderLanes() whenever the lane
+// DOM is (re)built — renderPlayhead() used to re-run a
+// querySelectorAll(".lane-body .playhead") every single animation frame to
+// find the exact same elements. lastPlayheadPct skips the actual style
+// writes on frames where the on-screen position hasn't moved (e.g. paused).
+let cachedPlayheadEls = [];
+let lastPlayheadPct = null;
+let lastTimeDisplayText = null;
+
 function renderPlayhead(pos) {
   const pct = Audio.duration ? (pos / Audio.duration * 100) : 0;
-  document.querySelectorAll(".lane-body .playhead").forEach((el) => el.style.left = pct + "%");
+  if (pct === lastPlayheadPct) return;
+  lastPlayheadPct = pct;
+  const pctStr = pct + "%";
+  for (const el of cachedPlayheadEls) el.style.left = pctStr;
   const rulerPh = document.getElementById("ruler-playhead");
-  if (rulerPh) rulerPh.style.left = pct + "%";
+  if (rulerPh) rulerPh.style.left = pctStr;
 }
 
 function renderTimeDisplay(pos) {
-  setTransportText("time-display", `${fmtTime(pos)} / ${fmtTime(Audio.duration)}`);
+  const text = `${fmtTime(pos)} / ${fmtTime(Audio.duration)}`;
+  if (text === lastTimeDisplayText) return;
+  lastTimeDisplayText = text;
+  setTransportText("time-display", text);
 }
 
 function tick() {
   if (Audio.ctx) {
-    const pos = currentPosition();
+    // V3-E5: was called 4x/frame (once here, once more inside each of the
+    // three calls below) — currentPosition() does real work (a subtraction
+    // against Audio.ctx.currentTime, or reading Audio.processedPosition),
+    // not just a field read, so compute it once and pass it down.
+    let pos = currentPosition();
     if (Audio.playing) {
       if (State.ui.loopEnabled && State.ui.loop && pos >= State.ui.loop.end) {
         seekTo(State.ui.loop.start);
+        pos = currentPosition(); // seekTo() moves the position synchronously
       } else if (pos >= Audio.duration && Audio.duration > 0) {
         stopPlayback();
+        pos = currentPosition(); // stopPlayback() resets position synchronously
         setTransportText("play-btn", "▶");
       }
     }
-    applyLiveMuteRanges(currentPosition());
-    renderPlayhead(currentPosition());
-    renderTimeDisplay(currentPosition());
+    applyLiveMuteRanges(pos);
+    renderPlayhead(pos);
+    renderTimeDisplay(pos);
   }
   requestAnimationFrame(tick);
 }

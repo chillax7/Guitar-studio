@@ -19,6 +19,10 @@ class GateProcessor extends AudioWorkletProcessor {
     super();
     this.envelope = 0; // smoothed |signal|, 0..~1
     this.gain = 0;
+    // V3-E5: sampleRate is fixed for this processor's whole lifetime, so
+    // this envelope-follower time constant (5ms) is truly constant — it was
+    // an exp() call recomputed on every single sample before.
+    this.envCoeff = Math.exp(-1 / (0.005 * sampleRate));
   }
 
   process(inputs, outputs, parameters) {
@@ -33,21 +37,32 @@ class GateProcessor extends AudioWorkletProcessor {
     const thresholdDbArr = parameters.thresholdDb;
     const attackMsArr = parameters.attackMs;
     const releaseMsArr = parameters.releaseMs;
+    const envCoeff = this.envCoeff;
+
+    // V3-E5: these AudioParams are k-rate in practice (no scheduled
+    // automation, length 1) — hoist their Math.pow/Math.exp conversions out
+    // of the per-sample loop instead of recomputing an identical value 128
+    // times per quantum, same pattern as nam-processor.js's gain hoisting.
+    const thresholdIsKRate = thresholdDbArr.length === 1;
+    const attackIsKRate = attackMsArr.length === 1;
+    const releaseIsKRate = releaseMsArr.length === 1;
+    const thresholdLinearK = thresholdIsKRate ? Math.pow(10, thresholdDbArr[0] / 20) : 0;
+    const attackCoeffK = attackIsKRate
+      ? Math.exp(-1 / (Math.max(0.1, attackMsArr[0]) / 1000 * sampleRate)) : 0;
+    const releaseCoeffK = releaseIsKRate
+      ? Math.exp(-1 / (Math.max(0.1, releaseMsArr[0]) / 1000 * sampleRate)) : 0;
 
     for (let i = 0; i < input.length; i++) {
-      const thresholdDb = thresholdDbArr.length > 1 ? thresholdDbArr[i] : thresholdDbArr[0];
-      const attackMs = attackMsArr.length > 1 ? attackMsArr[i] : attackMsArr[0];
-      const releaseMs = releaseMsArr.length > 1 ? releaseMsArr[i] : releaseMsArr[0];
-      const thresholdLinear = Math.pow(10, thresholdDb / 20);
+      const thresholdLinear = thresholdIsKRate ? thresholdLinearK : Math.pow(10, thresholdDbArr[i] / 20);
 
       const x = Math.abs(input[i]);
-      // Envelope follower: fast-ish rectified level tracking (5ms time constant)
-      const envCoeff = Math.exp(-1 / (0.005 * sampleRate));
       this.envelope = Math.max(x, this.envelope * envCoeff);
 
       const targetGain = this.envelope >= thresholdLinear ? 1 : 0;
-      const timeConstantMs = targetGain > this.gain ? attackMs : releaseMs;
-      const coeff = Math.exp(-1 / (Math.max(0.1, timeConstantMs) / 1000 * sampleRate));
+      const rising = targetGain > this.gain;
+      const coeff = rising
+        ? (attackIsKRate ? attackCoeffK : Math.exp(-1 / (Math.max(0.1, attackMsArr[i]) / 1000 * sampleRate)))
+        : (releaseIsKRate ? releaseCoeffK : Math.exp(-1 / (Math.max(0.1, releaseMsArr[i]) / 1000 * sampleRate)));
       this.gain = targetGain + (this.gain - targetGain) * coeff;
 
       output[i] = input[i] * this.gain;

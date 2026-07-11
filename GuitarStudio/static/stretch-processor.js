@@ -116,6 +116,12 @@ class PVChannel {
     this.haveState = false;
     this.re = new Float32Array(FFT_SIZE);
     this.im = new Float32Array(FFT_SIZE);
+    // V3-E5: preallocated once instead of `new Float32Array` on every
+    // synthesize() call (~93.75 hops/sec per channel at 48kHz/512-sample
+    // hops — 2 of these per hop per channel, ~3,400 allocations/sec of GC
+    // pressure across 6 simultaneous stems before this).
+    this.outRe = new Float32Array(FFT_SIZE);
+    this.outIm = new Float32Array(FFT_SIZE);
   }
 
   reset() {
@@ -133,8 +139,12 @@ class PVChannel {
     this.im.fill(0);
     this.fft.forward(this.re, this.im);
 
-    const outRe = new Float32Array(n);
-    const outIm = new Float32Array(n);
+    // Reused scratch, not zeroed: the loop below writes every index of
+    // outRe/outIm exactly once (direct writes for k in [0, n/2], mirror
+    // writes for k in [n/2+1, n-1]) — no stale data from the previous call
+    // can survive.
+    const outRe = this.outRe;
+    const outIm = this.outIm;
 
     for (let k = 0; k < bins; k++) {
       const mag = Math.hypot(this.re[k], this.im[k]);
@@ -203,6 +213,10 @@ class StretchProcessor extends AudioWorkletProcessor {
     // a periodic amplitude dip, audible as "volume cutting in and out",
     // at every block boundary — roughly every 170ms at 48kHz).
     this.extended = [new Float32Array(BLOCK_SIZE + FFT_SIZE), new Float32Array(BLOCK_SIZE + FFT_SIZE)];
+    // V3-E5: preallocated once instead of `new Float32Array(FFT_SIZE)` per
+    // (channel, hop) inside _regenerateBlock's loop — see PVChannel's
+    // outRe/outIm comment for the allocation-rate math this was part of.
+    this.frameScratch = [new Float32Array(FFT_SIZE), new Float32Array(FFT_SIZE)];
     this.blockPos = BLOCK_SIZE; // force regeneration on first process()
     this.ended = false;
     this.samplesSinceReport = 0;
@@ -290,7 +304,7 @@ class StretchProcessor extends AudioWorkletProcessor {
       if (this.readPos >= this._virtualLength()) { this.ended = true; break; }
 
       for (let ch = 0; ch < 2; ch++) {
-        const frame = new Float32Array(FFT_SIZE);
+        const frame = this.frameScratch[ch];
         for (let j = 0; j < FFT_SIZE; j++) {
           frame[j] = this._readVirtual(ch, this.readPos + j) * this.window[j];
         }
