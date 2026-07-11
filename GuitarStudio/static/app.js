@@ -44,8 +44,10 @@ const State = {
   analysis: {},
   stale: false,
   // mix is the live recipe AND the export recipe (minus solo — solo is
-  // monitoring-only, per ui-spec.md §5.4).
-  mix: { gains: {}, muted: {}, solo: null, muteRanges: {} },
+  // monitoring-only, per ui-spec.md §5.4). eq/pan (BT-11) are additive to
+  // the existing project.mix shape, not a version bump — see selectTrack's
+  // backfill for projects saved before they existed.
+  mix: { gains: {}, muted: {}, solo: null, muteRanges: {}, eq: {}, pan: {} },
   ui: { loop: null, loopEnabled: false },
   // XC-01 (project format v2)
   markers: [], // BT-08 (M4) — not populated until that lands
@@ -161,6 +163,7 @@ const Audio = {
   analyser: null,
   buffers: {},
   gains: {},
+  stemFx: {}, // BT-11 — per-stem { bass, mid, treble, panner } nodes, keyed by stem name
   sources: {},
   playing: false,
   playStartCtxTime: 0,
@@ -258,13 +261,26 @@ async function loadStemBuffers(stems) {
   }));
   Audio.buffers = {};
   Audio.gains = {};
+  Audio.stemFx = {};
   Audio.duration = 0;
   for (const [name, buf] of entries) {
     Audio.buffers[name] = buf;
     Audio.duration = Math.max(Audio.duration, buf.duration);
     const g = Audio.ctx.createGain();
-    g.connect(Audio.master);
+    // BT-11: per-stem 3-band EQ + pan, applied after the mute/solo gain,
+    // before the shared master bus — "carving space" without touching the
+    // post-mix EQ/pan Play Along's rig has (that's for the guitar signal,
+    // this is for the backing stems).
+    const eqBass = Audio.ctx.createBiquadFilter(); eqBass.type = "lowshelf"; eqBass.frequency.value = 150;
+    const eqMid = Audio.ctx.createBiquadFilter(); eqMid.type = "peaking"; eqMid.frequency.value = 800; eqMid.Q.value = 0.7;
+    const eqTreble = Audio.ctx.createBiquadFilter(); eqTreble.type = "highshelf"; eqTreble.frequency.value = 3000;
+    const panner = Audio.ctx.createStereoPanner();
+    const eq = State.mix.eq[name] || { bass: 0, mid: 0, treble: 0 };
+    eqBass.gain.value = eq.bass; eqMid.gain.value = eq.mid; eqTreble.gain.value = eq.treble;
+    panner.pan.value = State.mix.pan[name] ?? 0;
+    g.connect(eqBass).connect(eqMid).connect(eqTreble).connect(panner).connect(Audio.master);
     Audio.gains[name] = g;
+    Audio.stemFx[name] = { bass: eqBass, mid: eqMid, treble: eqTreble, panner };
   }
   applyMixToGains();
   if (Audio.mode === "processed") await ensureStretchNodes();
@@ -503,7 +519,7 @@ function migrateProjectV2(raw) {
   return {
     version: PROJECT_VERSION,
     model: raw.model,
-    mix: raw.mix || { gains: {}, muted: {}, solo: null, muteRanges: {} },
+    mix: raw.mix || { gains: {}, muted: {}, solo: null, muteRanges: {}, eq: {}, pan: {} },
     ui: raw.ui || { loop: null, loopEnabled: false },
     markers: [], // BT-08 (M4) — empty until that lands
     rigPreset: null, // GP-02 (M3) — no preset attached to a v1 project
@@ -608,7 +624,12 @@ async function selectTrack(name) {
   if (epoch !== selectTrackEpoch) return;
 
   State.model = (project && project.model) || State.defaultModel;
-  State.mix = (project && project.mix) || { gains: {}, muted: {}, solo: null, muteRanges: {} };
+  State.mix = (project && project.mix) || { gains: {}, muted: {}, solo: null, muteRanges: {}, eq: {}, pan: {} };
+  // BT-11: eq/pan are additive to project.mix, not a version bump — a v2
+  // project saved before they existed still has a mix object, just without
+  // these two keys, so backfill rather than assume they're always present.
+  State.mix.eq = State.mix.eq || {};
+  State.mix.pan = State.mix.pan || {};
   State.ui = (project && project.ui) || { loop: null, loopEnabled: false };
   State.markers = (project && project.markers) || [];
   // GP-02: a rig preset attached to this song — applied once Play Along is
@@ -685,6 +706,12 @@ function renderLanes() {
       (State.mix.muted[name] ? " muted" : "") +
       (State.mix.solo === name ? " solo-active" : "");
 
+    // BT-11: per-stem pan + a 3-band EQ, "carving space" to play along
+    // (e.g. pan drums off-center, cut some bass mud) — pan is a fader-
+    // adjacent control since it's touched often; EQ is behind a small
+    // disclosure toggle since it's more of a set-once-per-song tweak.
+    const pan = State.mix.pan[name] ?? 0;
+    const eq = State.mix.eq[name] || { bass: 0, mid: 0, treble: 0 };
     const header = document.createElement("div");
     header.className = "lane-header";
     header.innerHTML = `
@@ -695,8 +722,18 @@ function renderLanes() {
         <button class="solo-btn ${State.mix.solo === name ? "on" : ""}">S</button>
       </div>
       <div class="lane-fader">
-        <input type="range" min="0" max="1.5" step="0.01" value="${State.mix.gains[name] ?? 1.0}">
-        <span>${Math.round((State.mix.gains[name] ?? 1.0) * 100)}%</span>
+        <input type="range" class="lane-gain-input" min="0" max="1.5" step="0.01" value="${State.mix.gains[name] ?? 1.0}">
+        <span class="lane-gain-val">${Math.round((State.mix.gains[name] ?? 1.0) * 100)}%</span>
+      </div>
+      <div class="lane-pan-row">
+        <input type="range" class="lane-pan-input" min="-1" max="1" step="0.01" value="${pan}">
+        <span class="lane-pan-val">${panLabel(pan)}</span>
+        <button class="lane-eq-toggle-btn">EQ</button>
+      </div>
+      <div class="lane-eq-row" style="display:none">
+        <label>B<input type="range" class="lane-eq-input" data-band="bass" min="-12" max="12" step="1" value="${eq.bass}"></label>
+        <label>M<input type="range" class="lane-eq-input" data-band="mid" min="-12" max="12" step="1" value="${eq.mid}"></label>
+        <label>T<input type="range" class="lane-eq-input" data-band="treble" min="-12" max="12" step="1" value="${eq.treble}"></label>
       </div>`;
     lane.appendChild(header);
 
@@ -724,12 +761,32 @@ function renderLanes() {
 
     header.querySelector(".mute-btn").addEventListener("click", () => toggleMute(name));
     header.querySelector(".solo-btn").addEventListener("click", () => toggleSolo(name));
-    const fader = header.querySelector("input[type=range]");
+    const fader = header.querySelector(".lane-gain-input");
     fader.addEventListener("input", (e) => {
       const v = parseFloat(e.target.value);
       setGain(name, v);
-      header.querySelector(".lane-fader span").textContent = Math.round(v * 100) + "%";
+      header.querySelector(".lane-gain-val").textContent = Math.round(v * 100) + "%";
     });
+
+    // BT-11: pan + 3-band EQ per stem.
+    const panInput = header.querySelector(".lane-pan-input");
+    panInput.addEventListener("input", (e) => {
+      const v = parseFloat(e.target.value);
+      setPan(name, v);
+      header.querySelector(".lane-pan-val").textContent = panLabel(v);
+    });
+    header.querySelector(".lane-eq-toggle-btn").addEventListener("click", (e) => {
+      const row = header.querySelector(".lane-eq-row");
+      const open = row.style.display !== "none";
+      row.style.display = open ? "none" : "flex";
+      e.target.classList.toggle("active", !open);
+    });
+    header.querySelectorAll(".lane-eq-input").forEach((input) => {
+      input.addEventListener("input", (e) => {
+        setStemEq(name, e.target.dataset.band, parseFloat(e.target.value));
+      });
+    });
+
     canvas.addEventListener("click", (e) => seekFromElement(canvas, e));
 
     const buf = Audio.buffers[name];
@@ -767,6 +824,28 @@ function toggleSolo(name) {
 function setGain(name, value) {
   State.mix.gains[name] = value;
   applyMixToGains();
+  saveProjectDebounced();
+}
+
+// BT-11: per-stem pan + 3-band EQ. Unlike gain (which also interacts with
+// mute/solo through applyMixToGains), pan and EQ each own one AudioParam
+// directly — no per-stem state machine to reapply, just set it and go.
+function panLabel(v) {
+  if (Math.abs(v) < 0.01) return "C";
+  const pct = Math.round(Math.abs(v) * 100);
+  return (v < 0 ? "L" : "R") + pct;
+}
+
+function setPan(name, value) {
+  State.mix.pan[name] = value;
+  if (Audio.stemFx[name]) Audio.stemFx[name].panner.pan.value = value;
+  saveProjectDebounced();
+}
+
+function setStemEq(name, band, valueDb) {
+  if (!State.mix.eq[name]) State.mix.eq[name] = { bass: 0, mid: 0, treble: 0 };
+  State.mix.eq[name][band] = valueDb;
+  if (Audio.stemFx[name]) Audio.stemFx[name][band].gain.value = valueDb;
   saveProjectDebounced();
 }
 
@@ -1467,7 +1546,7 @@ async function switchModel(model) {
   document.getElementById("model-menu").classList.remove("open");
   if (model === State.model) return;
   State.model = model;
-  State.mix = { gains: {}, muted: {}, solo: null, muteRanges: {} };
+  State.mix = { gains: {}, muted: {}, solo: null, muteRanges: {}, eq: {}, pan: {} };
   updateModelBadge();
   await refreshStemsForCurrentModelAndTrack();
   saveProjectDebounced();

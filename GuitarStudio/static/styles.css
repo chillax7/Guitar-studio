@@ -285,6 +285,23 @@ button.primary:hover { filter: brightness(1.1); }
 .lane-fader input { width: 100%; }
 .lane-fader span { font-size: 10px; color: var(--text-dim); width: 32px; }
 
+/* BT-11: per-stem pan + EQ — pan sits right under the fader (touched
+   often); EQ is a small disclosure row since it's more of a set-once tweak. */
+.lane-pan-row { display: flex; align-items: center; gap: 4px; }
+.lane-pan-row input { width: 100%; }
+.lane-pan-val { font-size: 10px; color: var(--text-dim); width: 22px; }
+.lane-eq-toggle-btn {
+  width: 22px; height: 18px; padding: 0; font-size: 9px; font-weight: 600;
+  flex: none;
+}
+.lane-eq-toggle-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.lane-eq-row { display: none; flex-direction: column; gap: 2px; }
+.lane-eq-row label {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 9px; color: var(--text-dim);
+}
+.lane-eq-row input { width: 100%; }
+
 .lane.muted { opacity: 0.45; }
 .lane.solo-active { background: rgba(224, 195, 74, 0.06); }
 

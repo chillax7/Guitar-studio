@@ -89,9 +89,13 @@ separation engine's quality ceiling, not a bug in your mix.
 
 ## 5. The Mixer
 
-Each stem is a lane: name, **M**(ute)/**S**(olo) buttons, a gain fader, and
-its waveform. Solo is a *monitoring* convenience only — it never affects
-what gets exported (§8). The transport bar has:
+Each stem is a lane: name, **M**(ute)/**S**(olo) buttons, a gain fader, a
+**Pan** slider, an **EQ** disclosure (3-band: bass/mid/treble, ±12dB), and
+its waveform. **Solo, Pan, and EQ are all *monitoring* conveniences only —
+none of them affect what gets exported (§8)**; they're there to help you
+carve space to play along (pan the drums off-center, cut some bass mud
+while you practice), not to change the mix your export produces. The
+transport bar has:
 
 - **Play / Pause / Stop**, current position, and a **Loop** toggle.
 - **Count-in** — a checkbox; when on, playback (and recording — §10) starts
