@@ -413,7 +413,18 @@ there's no ambiguity with your interface input and no feedback risk. What
 you hear is what gets recorded, from the same graph, not a room-mic
 capture of your speakers.
 
-### 10.1 A/V sync calibration
+### 10.1 Riff capture — "Save that!" (V3, GP-07)
+The **Riff Capture** card in the top strip is always quietly rolling
+whenever Play Along is open — no button to start it, nothing to forget.
+It keeps the last ~20 seconds of the same live mix a real take captures
+(backing track + your processed guitar) in memory. Play something you
+didn't plan to keep, realize afterward it was good, click **🎸 Save
+that!** within that window and it's saved as a WAV file alongside your
+regular takes (numbered separately, "riff 01", "riff 02", …) — no need to
+have hit Record in advance. Saving doesn't interrupt the rolling capture;
+it keeps going right after.
+
+### 10.2 A/V sync calibration
 Consumer webcams have a real pipeline delay (commonly 50–200ms) — video
 arrives late relative to audio, which is captured essentially instantly.
 Two ways to fix it:
@@ -430,7 +441,7 @@ Either way, this delays the audio by that amount at finalize time to match
 the late video — it's a one-time calibration per camera, and it persists
 across sessions.
 
-### 10.2 Takes
+### 10.3 Takes
 Every take for the currently-loaded song is listed under **Takes**, each
 with:
 

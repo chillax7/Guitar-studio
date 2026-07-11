@@ -1149,6 +1149,7 @@ async function openPlayAlong() {
   paUpdateSuggestVisibility();
   await paRefreshRigPresets();
   await paApplyAttachedRigPreset(); // GP-02 — no-op if this track has none, or it's already been applied
+  await ensureRiffCapture(); // GP-07 — starts rolling as soon as the rig exists; no-op if already running
 }
 
 function closePlayAlong() {
@@ -1587,8 +1588,106 @@ function wireRigPresets() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// GP-07: riff capture rolling buffer — "Save that!" for an idea you only
+// realize was worth keeping after you've already played it. Continuously
+// captures the same live mix a real take does (recorder.js's
+// ensureRecordBus — backing track + processed guitar) into a fixed-length
+// PCM ring buffer (riff-capture-processor.js); nothing gets encoded to a
+// file until Save that! actually asks for a dump. See that file's header
+// for why this is a PCM ring buffer and not just a MediaRecorder with a
+// sliding window of chunks (the short version: a container's header lives
+// in its first chunk, so you can't drop old chunks off the front of a
+// recording and keep a valid file).
+// ---------------------------------------------------------------------------
+const RIFF_CAPTURE_SECONDS = 20;
+let riffCaptureNode = null;
+
+async function ensureRiffCapture() {
+  if (riffCaptureNode) return;
+  ensureCtx();
+  if (typeof ensureRecordBus === "function") ensureRecordBus(); // recorder.js — backing + guitar mix
+  else return; // recorder.js not loaded (shouldn't happen — it's always on the page)
+  await Audio.ctx.audioWorklet.addModule("riff-capture-processor.js");
+  riffCaptureNode = new AudioWorkletNode(Audio.ctx, "riff-capture-processor", {
+    numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+    processorOptions: { seconds: RIFF_CAPTURE_SECONDS },
+  });
+  Recorder.recordBus.connect(riffCaptureNode);
+  // Never audible — this tap exists purely to keep the worklet in the
+  // render graph's pull chain (an AudioWorkletNode with no path to
+  // destination isn't guaranteed to have process() called).
+  const sink = Audio.ctx.createGain();
+  sink.gain.value = 0;
+  riffCaptureNode.connect(sink).connect(Audio.ctx.destination);
+}
+
+// Minimal 16-bit PCM WAV encoder — riff captures don't go through
+// MediaRecorder at all (see above), so this is the one place in the app
+// that builds an audio file from raw samples by hand.
+function wavEncode(left, right, sampleRate) {
+  const numFrames = left.length;
+  const numChannels = 2;
+  const bytesPerSample = 2;
+  const blockAlign = numChannels * bytesPerSample;
+  const dataSize = numFrames * blockAlign;
+  const buf = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buf);
+  const writeStr = (offset, s) => { for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i)); };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true); // fmt chunk size
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true); // byte rate
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bytesPerSample * 8, true); // bits per sample
+  writeStr(36, "data");
+  view.setUint32(40, dataSize, true);
+  let off = 44;
+  for (let i = 0; i < numFrames; i++) {
+    const l = Math.max(-1, Math.min(1, left[i]));
+    const r = Math.max(-1, Math.min(1, right[i]));
+    view.setInt16(off, l < 0 ? l * 0x8000 : l * 0x7fff, true); off += 2;
+    view.setInt16(off, r < 0 ? r * 0x8000 : r * 0x7fff, true); off += 2;
+  }
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+async function saveRiff() {
+  const statusEl = document.getElementById("riff-status");
+  if (!riffCaptureNode) { statusEl.textContent = "Riff capture isn't running yet — open Play Along first."; return; }
+  statusEl.textContent = "Saving…";
+  try {
+    const dump = await new Promise((resolve) => {
+      riffCaptureNode.port.onmessage = (e) => { if (e.data.type === "dumped") resolve(e.data); };
+      riffCaptureNode.port.postMessage({ type: "dump" });
+    });
+    if (!dump.left.length) { statusEl.textContent = "Nothing captured yet — keep playing for a few seconds first."; return; }
+    const blob = wavEncode(dump.left, dump.right, dump.sampleRate);
+    const track = State.track || "";
+    const saveResp = await fetch(`/api/recording/save?track=${encodeURIComponent(track)}&ext=wav&prefix=riff`, {
+      method: "POST", body: blob,
+    });
+    const saveJson = await saveResp.json();
+    if (!saveResp.ok) throw new Error(saveJson.error || `HTTP ${saveResp.status}`);
+    statusEl.textContent = `Saved: ${saveJson.filename} (last ${RIFF_CAPTURE_SECONDS}s)`;
+    if (typeof refreshTakesList === "function") refreshTakesList();
+  } catch (e) {
+    statusEl.textContent = "Failed to save: " + e.message;
+  }
+}
+
+function wireRiffCapture() {
+  document.getElementById("riff-save-btn").addEventListener("click", saveRiff);
+}
+
 wirePAControls();
 wirePedalboardCollapse();
 wirePASessionTabs();
 wireRigPresets();
+wireRiffCapture();
 document.getElementById("playalong-open-btn").addEventListener("click", paShowLatencyEstimate);

@@ -463,21 +463,42 @@ def next_take_number(rec_dir: Path) -> int:
     return max_take + 1
 
 
-def svc_recording_save(track: str, ext: str, data: bytes) -> dict:
-    # GP-08: "m4a" is an audio-only take (recorder.js's REC_AUDIO_MIME_CANDIDATES) —
-    # same MPEG-4 container as mp4, different extension so it reads as what it is.
-    if ext not in ("mp4", "webm", "m4a"):
-        raise ApiError(400, f"Unsupported extension '{ext}' — use mp4, webm, or m4a")
+# GP-07: riff captures share the recordings directory with regular takes but
+# get their own "riff NN" numbering, so a rolling-buffer save never collides
+# with or perturbs regular take numbers (TAKE_RE above only ever matches
+# "take (\d+)" — a riff file just doesn't match it at all).
+RIFF_RE = re.compile(r"riff (\d+)", re.IGNORECASE)
+
+
+def next_riff_number(rec_dir: Path) -> int:
+    max_riff = 0
+    if rec_dir.exists():
+        for f in rec_dir.iterdir():
+            m = RIFF_RE.search(f.stem)
+            if m:
+                max_riff = max(max_riff, int(m.group(1)))
+    return max_riff + 1
+
+
+def svc_recording_save(track: str, ext: str, data: bytes, prefix: str = "take") -> dict:
+    # GP-08: "m4a" is an audio-only take (recorder.js's REC_AUDIO_MIME_CANDIDATES)
+    # — same MPEG-4 container as mp4, different extension so it reads as what
+    # it is. GP-07: "wav" is a riff capture (playalong.js's own WAV encoder —
+    # riffs never go through MediaRecorder at all, see riff-capture-processor.js).
+    if ext not in ("mp4", "webm", "m4a", "wav"):
+        raise ApiError(400, f"Unsupported extension '{ext}' — use mp4, webm, m4a, or wav")
+    if prefix not in ("take", "riff"):
+        raise ApiError(400, f"Unsupported prefix '{prefix}' — use take or riff")
     if not data:
         raise ApiError(400, "Empty upload")
     track_name = safe_name(track) if track else "_untracked"
     rec_dir = recordings_dir_for(track)
     rec_dir.mkdir(parents=True, exist_ok=True)
-    take = next_take_number(rec_dir)
-    filename = f"{track_name} - take {take:02d}.{ext}"
+    n = next_riff_number(rec_dir) if prefix == "riff" else next_take_number(rec_dir)
+    filename = f"{track_name} - {prefix} {n:02d}.{ext}"
     path = rec_dir / filename
     path.write_bytes(data)
-    return {"path": str(path), "filename": filename, "take": take}
+    return {"path": str(path), "filename": filename, "take": n}
 
 
 STARRED_FILE = ".starred.json"
@@ -938,7 +959,8 @@ class Handler(BaseHTTPRequestHandler):
 
             if path == "/api/recording/save":
                 _, query = self._query()
-                result = svc_recording_save(query.get("track", ""), query.get("ext", "webm"), self._read_body())
+                result = svc_recording_save(query.get("track", ""), query.get("ext", "webm"),
+                                             self._read_body(), query.get("prefix", "take"))
                 return self._send_json(200, result)
 
             if path == "/api/recording/finalize":
