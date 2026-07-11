@@ -25,6 +25,7 @@ const Recorder = {
   state: "idle", // idle | recording | saving
   startedAt: 0,
   mimeType: null,
+  audioOnly: false, // GP-08 — whether the take in progress/just finished has no video track
   quality: "720p",
   avOffsetMs: 0,
   tickInterval: null,
@@ -38,8 +39,21 @@ const REC_MIME_CANDIDATES = [
   "video/webm",
 ];
 
+// GP-08: audio-only takes — trivial off the existing video path per the
+// backlog's own framing. Same MediaRecorder machinery, just handed a
+// MediaStream with no video track and a container that doesn't need one.
+const REC_AUDIO_MIME_CANDIDATES = [
+  "audio/mp4;codecs=mp4a.40.2", // AAC-LC, same codec as the video path's audio track
+  "audio/mp4",
+  "audio/webm;codecs=opus",
+  "audio/webm",
+];
+
 function recPickMimeType() {
   return REC_MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m)) || "";
+}
+function recPickAudioMimeType() {
+  return REC_AUDIO_MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m)) || "";
 }
 
 // ---------------------------------------------------------------------------
@@ -104,6 +118,7 @@ async function recStartCamera(deviceId, quality) {
     document.getElementById("rec-preview-wrap").style.display = "";
     hintEl.textContent = "Camera enabled.";
     await recRefreshCameraDevices();
+    updateRecUI(); // GP-08 — refreshes the audio-only/video mode hint
   } catch (e) {
     if (e.name === "OverconstrainedError" && deviceId) {
       return recStartCamera(null, quality); // fall back to default device
@@ -134,15 +149,17 @@ async function toggleRecording() {
 }
 
 async function startRecording() {
-  if (!Recorder.camStream) {
-    document.getElementById("rec-camera-hint").textContent = "Enable the camera first.";
-    return;
-  }
+  // GP-08: no camera enabled is no longer a hard stop — record audio-only
+  // instead of blocking the take entirely. Camera enabled = video+audio,
+  // same as before.
+  const audioOnly = !Recorder.camStream;
   ensureRecordDest();
 
-  const mimeType = recPickMimeType();
+  const mimeType = audioOnly ? recPickAudioMimeType() : recPickMimeType();
   if (!mimeType) {
-    document.getElementById("rec-result").textContent = "This browser can't record video (no supported MediaRecorder format).";
+    document.getElementById("rec-result").textContent = audioOnly
+      ? "This browser can't record audio (no supported MediaRecorder format)."
+      : "This browser can't record video (no supported MediaRecorder format).";
     return;
   }
 
@@ -156,14 +173,16 @@ async function startRecording() {
 
   function beginTake() {
     const audioTrack = Recorder.recDest.stream.getAudioTracks()[0];
-    const videoTrack = Recorder.camStream.getVideoTracks()[0];
-    const combined = new MediaStream([videoTrack, audioTrack]);
+    const combined = audioOnly
+      ? new MediaStream([audioTrack])
+      : new MediaStream([Recorder.camStream.getVideoTracks()[0], audioTrack]);
 
     Recorder.chunks = [];
     Recorder.mimeType = mimeType;
-    const recorder = new MediaRecorder(combined, {
-      mimeType, videoBitsPerSecond: 5_000_000, audioBitsPerSecond: 192_000,
-    });
+    Recorder.audioOnly = audioOnly;
+    const recorder = new MediaRecorder(combined, audioOnly
+      ? { mimeType, audioBitsPerSecond: 192_000 }
+      : { mimeType, videoBitsPerSecond: 5_000_000, audioBitsPerSecond: 192_000 });
     recorder.ondataavailable = (e) => { if (e.data && e.data.size) Recorder.chunks.push(e.data); };
     recorder.onerror = (e) => {
       console.error("MediaRecorder error", e.error);
@@ -219,7 +238,12 @@ function recTick() {
 
 async function finalizeAndUpload() {
   const blob = new Blob(Recorder.chunks, { type: Recorder.mimeType });
-  const ext = Recorder.mimeType.includes("mp4") ? "mp4" : "webm";
+  // GP-08: audio-only containers get their own extension — ".m4a" rather
+  // than ".mp4" so a take without video reads as what it is, even though
+  // both are technically the same MPEG-4 container.
+  const ext = Recorder.audioOnly
+    ? (Recorder.mimeType.includes("mp4") ? "m4a" : "webm")
+    : (Recorder.mimeType.includes("mp4") ? "mp4" : "webm");
   const track = State.track || "";
   const resultEl = document.getElementById("rec-result");
   resultEl.textContent = "Saving take…";
@@ -233,7 +257,8 @@ async function finalizeAndUpload() {
 
     const finalizeResp = await fetch("/api/recording/finalize", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: saveJson.path, av_offset_ms: Recorder.avOffsetMs }),
+      // A/V offset only means anything with a video track to sync against.
+      body: JSON.stringify({ path: saveJson.path, av_offset_ms: Recorder.audioOnly ? 0 : Recorder.avOffsetMs }),
     });
     const finalizeJson = await finalizeResp.json();
     showTakeResult(saveJson, finalizeJson);
@@ -278,6 +303,14 @@ function updateRecUI() {
   btn.classList.toggle("recording", recording);
   btn.disabled = Recorder.state === "saving";
   pill.style.display = recording ? "inline-block" : "none";
+  // GP-08: no camera enabled no longer blocks recording — say so up front
+  // rather than the user finding out only after pressing Record.
+  const modeEl = document.getElementById("rec-mode-hint");
+  if (modeEl && !recording) {
+    modeEl.textContent = Recorder.camStream
+      ? "Camera enabled — this take will include video."
+      : "No camera enabled — this take will be audio-only.";
+  }
   if (Recorder.tickInterval && !recording) {
     clearInterval(Recorder.tickInterval);
     Recorder.tickInterval = null;
@@ -544,6 +577,7 @@ function wireRecorderControls() {
   loadAvOffset();
   recRefreshCameraDevices();
   refreshTakesList();
+  updateRecUI(); // GP-08 — shows the audio-only/video mode hint before Record is ever clicked
 }
 
 wireRecorderControls();

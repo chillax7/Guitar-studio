@@ -464,8 +464,10 @@ def next_take_number(rec_dir: Path) -> int:
 
 
 def svc_recording_save(track: str, ext: str, data: bytes) -> dict:
-    if ext not in ("mp4", "webm"):
-        raise ApiError(400, f"Unsupported extension '{ext}' — use mp4 or webm")
+    # GP-08: "m4a" is an audio-only take (recorder.js's REC_AUDIO_MIME_CANDIDATES) —
+    # same MPEG-4 container as mp4, different extension so it reads as what it is.
+    if ext not in ("mp4", "webm", "m4a"):
+        raise ApiError(400, f"Unsupported extension '{ext}' — use mp4, webm, or m4a")
     if not data:
         raise ApiError(400, "Empty upload")
     track_name = safe_name(track) if track else "_untracked"
@@ -615,10 +617,13 @@ def svc_recording_finalize(path: str, av_offset_ms: float) -> dict:
     offset_sec = (av_offset_ms or 0) / 1000.0
 
     cmd = [ffmpeg, "-y", "-i", str(target)]
+    # GP-08: an A/V offset only means anything with a video stream to sync
+    # against — recorder.js already always sends 0 for an audio-only take,
+    # but "-map 0:v" would fail outright on one if it ever didn't.
     if abs(offset_sec) > 1e-6:
         cmd += ["-itsoffset", f"{offset_sec:.3f}", "-i", str(target), "-map", "0:v", "-map", "1:a"]
     cmd += ["-c", "copy"]
-    if ext == ".mp4":
+    if ext in (".mp4", ".m4a"):
         cmd += ["-movflags", "+faststart"]
     cmd += [str(tmp_path)]
 

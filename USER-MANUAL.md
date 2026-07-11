@@ -361,16 +361,19 @@ machine right now, not a bug to work around.
 
 Switch to the **Record** tab below the rig (Play Along opens on **Perform**
 by default). The **Record performance** card there lets you record
-yourself playing along, camera + the exact audio mix you're hearing
-(backing track + your processed guitar), saved as a video file. The camera
-preview only appears once a camera is actually enabled — no permanent
-black box taking up space before you've turned one on.
+yourself playing along — the exact audio mix you're hearing (backing
+track + your processed guitar), with or without camera video.
 
-1. Expand **Setup: camera, quality & sync** and click **Enable camera** —
-   pick a camera and quality (720p or 1080p), grant camera permission
-   once. **Show framing guides** overlays a rule-of-thirds-style grid plus
-   a dashed band where a horizontally-held guitar neck typically falls for
-   a seated player — toggle it off if it's in your way.
+1. **Camera is now optional (V3, GP-08).** A hint above the Record button
+   says which you'll get: enable a camera (Expand **Setup: camera, quality
+   & sync**, pick a camera and quality, grant permission once) for a video
+   take, or skip it entirely for an **audio-only** take — useful when you
+   just want the performance captured without the storage/setup overhead
+   of video. The camera preview only appears once a camera is actually
+   enabled — no permanent black box taking up space before you've turned
+   one on. **Show framing guides** (video only) overlays a rule-of-thirds
+   grid plus a dashed band where a horizontally-held guitar neck typically
+   falls for a seated player.
 2. Optionally check **Start backing track with recording** to have
    playback begin the moment you hit record, and/or **Start with
    count-in** for a 2-bar click before both start together.
@@ -382,6 +385,8 @@ black box taking up space before you've turned one on.
 4. When you stop, the take uploads and is losslessly remuxed
    (fixes container quirks MediaRecorder is known to leave behind — no
    quality loss). You'll get **Reveal in Finder** and **Discard** options.
+   Audio-only takes save as `.m4a` (or `.webm`, browser-dependent); video
+   takes as `.mp4`/`.webm` as before.
 
 Takes are saved to `output/<song name>/recordings/` (or
 `output/_untracked/recordings/` if no song was loaded), numbered
