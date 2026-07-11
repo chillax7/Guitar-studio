@@ -38,11 +38,19 @@ body {
 #top-banner {
   grid-column: 1 / -1;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 6px 14px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
+}
+
+/* The app icon at title-bar scale. Its own artwork carries the dark rounded
+   backplate, so no extra framing needed here. */
+#app-logo {
+  width: 26px;
+  height: 26px;
+  display: block;
 }
 
 /* Same treatment as #sidebar h2 (LIBRARY) / #inspector h3 (TRACK) — small

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Orpheus Guitar Studio app icon.
+
+     Concept: the app's namesake — Orpheus, the mythical musician whose lyre
+     charmed the underworld — fused with the metal half of the app's soul:
+     a golden lyre whose arms sweep up like horns, strung like a guitar,
+     with a flying-V body for the soundbox, on a dark stage-lit field.
+
+     This SVG is the single source of truth for all icon artwork: the
+     favicon links to it directly, and scripts/build_icon.sh renders it to
+     the .icns bundled into Guitar Studio.app. Edit here, rebuild there. -->
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#23253a"/>
+      <stop offset="0.55" stop-color="#14151f"/>
+      <stop offset="1" stop-color="#0a0a10"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.55">
+      <stop offset="0" stop-color="#7c5cd6" stop-opacity="0.38"/>
+      <stop offset="0.6" stop-color="#5b3fa8" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#5b3fa8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6dd9a"/>
+      <stop offset="0.5" stop-color="#e0b055"/>
+      <stop offset="1" stop-color="#b97f28"/>
+    </linearGradient>
+    <linearGradient id="goldDeep" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8bf6b"/>
+      <stop offset="1" stop-color="#8f5f1c"/>
+    </linearGradient>
+    <linearGradient id="string" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8ecc8"/>
+      <stop offset="1" stop-color="#d8b56a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Backplate -->
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#glow)"/>
+  <!-- Thin inner ring -->
+  <rect x="88" y="88" width="848" height="848" rx="182" fill="none"
+        stroke="#e0b055" stroke-opacity="0.22" stroke-width="6"/>
+
+  <!-- Lyre horns: symmetric S-curves sweeping up and out, curled tips -->
+  <g fill="none" stroke="url(#gold)" stroke-width="38" stroke-linecap="round">
+    <path d="M 420 648
+             C 330 600, 292 512, 316 424
+             C 336 352, 320 300, 282 272
+             C 258 254, 250 226, 268 206"/>
+    <path d="M 604 648
+             C 694 600, 732 512, 708 424
+             C 688 352, 704 300, 742 272
+             C 766 254, 774 226, 756 206"/>
+  </g>
+  <!-- Horn tip curls -->
+  <circle cx="268" cy="200" r="24" fill="url(#gold)"/>
+  <circle cx="756" cy="200" r="24" fill="url(#gold)"/>
+
+  <!-- Crossbar -->
+  <rect x="270" y="272" width="484" height="30" rx="15" fill="url(#goldDeep)"/>
+
+  <!-- Strings: crossbar down to the bridge on the V body -->
+  <g stroke="url(#string)" stroke-width="7">
+    <line x1="422" y1="302" x2="472" y2="668"/>
+    <line x1="467" y1="302" x2="492" y2="668"/>
+    <line x1="512" y1="302" x2="512" y2="668"/>
+    <line x1="557" y1="302" x2="532" y2="668"/>
+    <line x1="602" y1="302" x2="552" y2="668"/>
+  </g>
+
+  <!-- Flying-V body as the lyre's soundbox -->
+  <path d="M 336 612
+           L 688 612
+           C 700 612, 706 622, 700 634
+           L 540 886
+           C 528 906, 496 906, 484 886
+           L 324 634
+           C 318 622, 324 612, 336 612 Z"
+        fill="url(#gold)" stroke="#8f5f1c" stroke-width="8"/>
+  <!-- Body inlay: darker V inset -->
+  <path d="M 380 646
+           L 644 646
+           L 528 848
+           C 520 862, 504 862, 496 848 Z"
+        fill="#1a1420"/>
+  <!-- Bridge -->
+  <rect x="452" y="656" width="120" height="18" rx="9" fill="url(#goldDeep)"/>
+  <!-- Lightning-bolt inlay on the dark V inset -->
+  <path d="M 530 678 L 484 748 L 512 748 L 494 812 L 548 730 L 518 730 L 542 678 Z"
+        fill="url(#gold)"/>
+</svg>

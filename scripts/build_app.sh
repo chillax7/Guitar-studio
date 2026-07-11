@@ -36,11 +36,13 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.0</string>
+    <string>2.5</string>
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>2.5</string>
     <key>CFBundleGetInfoString</key>
-    <string>Guitar Studio 2.0 "Orpheus"</string>
+    <string>Guitar Studio 2.5 "Orpheus"</string>
+    <key>CFBundleIconFile</key>
+    <string>GuitarStudio</string>
     <key>LSMinimumSystemVersion</key>
     <string>11.0</string>
     <key>NSHighResolutionCapable</key>
@@ -80,5 +82,15 @@ open "$URL"
 LAUNCHER
 
 chmod +x "$CONTENTS/MacOS/Guitar Studio"
+
+# App icon: built from GuitarStudio/static/app-icon.svg by scripts/build_icon.sh
+# and committed at assets/GuitarStudio.icns, so a fresh clone doesn't need
+# librsvg installed to get an icon'd app.
+ICNS="$PROJECT_ROOT/assets/GuitarStudio.icns"
+if [ -f "$ICNS" ]; then
+  cp "$ICNS" "$CONTENTS/Resources/GuitarStudio.icns"
+else
+  echo "note: assets/GuitarStudio.icns missing (run scripts/build_icon.sh) — app built without icon" >&2
+fi
 
 echo "Built: $APP_DIR"
