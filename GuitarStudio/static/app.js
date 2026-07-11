@@ -84,6 +84,34 @@ function escapeHtml(s) {
 
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
+// ---------------------------------------------------------------------------
+// BT-17: waveform zoom. Every ruler/lane-body position on screen is time
+// mapped through these three functions instead of a bare Audio.duration
+// division — zoomWindow narrows what "0% to 100% of the timeline" actually
+// means to a sub-range, without touching how any individual feature
+// (playhead, loop, markers, beat grid, mute painting, waveform) renders or
+// hit-tests itself. Deliberately a plain module variable, NOT part of
+// State.ui: State.ui gets serialized wholesale into the saved project
+// (saveProjectDebounced) and reloaded verbatim on the next track switch —
+// same reasoning as Speed/Tune resetting per track, a leftover zoom from a
+// previous song would be a trap, not a feature, so this never touches disk.
+// ---------------------------------------------------------------------------
+let zoomWindow = null;
+
+function viewWindow() {
+  if (zoomWindow) return zoomWindow;
+  return { start: 0, end: Audio.duration || 0 };
+}
+function timeToPct(t) {
+  const { start, end } = viewWindow();
+  const span = end - start;
+  return span > 0 ? (t - start) / span * 100 : 0;
+}
+function pctToTime(pct) {
+  const { start, end } = viewWindow();
+  return start + clamp01(pct / 100) * (end - start);
+}
+
 // V3-E6: shared dB<->linear-gain conversions — playalong.js had two
 // independent Math.pow(10, db/20) call sites (the clip threshold constant
 // and the output-level slider) that had started drifting apart in spelling
@@ -380,33 +408,45 @@ function applyLiveMuteRanges(pos) {
 // Waveforms
 // ---------------------------------------------------------------------------
 
-// Peaks are a pure function of (buffer, buckets) and a full linear scan over
-// the whole PCM buffer (millions of samples per stem). renderLanes() runs on
-// every mute/solo toggle and every mute-region paint, so without this cache
-// that scan repeated across all stems on every such interaction. Keyed by the
-// AudioBuffer in a WeakMap: the same buffer object is reused across renders
+// Peaks are a pure function of (buffer, buckets, window) and a full linear
+// scan over the requested sample range (up to the whole PCM buffer —
+// millions of samples per stem). renderLanes() runs on every mute/solo
+// toggle and every mute-region paint, so without this cache that scan
+// repeats across all stems on every such interaction. Keyed by the
+// AudioBuffer in a WeakMap (the same buffer object is reused across renders
 // and only replaced when stems reload, at which point the old entry is GC'd
-// automatically — no manual invalidation needed.
+// automatically — no manual invalidation needed) holding a small Map of
+// window->peaks, since BT-17 (waveform zoom) means the same buffer gets
+// queried at more than one window now.
 const _peaksCache = new WeakMap();
 
-function computePeaks(buffer, buckets) {
-  const cached = _peaksCache.get(buffer);
-  if (cached && cached.buckets === buckets) return cached.peaks;
+function computePeaks(buffer, buckets, startSec, endSec) {
+  const s = startSec ?? 0;
+  const e = endSec ?? buffer.duration;
+  const key = `${buckets}:${s.toFixed(3)}:${e.toFixed(3)}`;
+  let byWindow = _peaksCache.get(buffer);
+  if (!byWindow) { byWindow = new Map(); _peaksCache.set(buffer, byWindow); }
+  const cached = byWindow.get(key);
+  if (cached) return cached;
 
   const data = buffer.getChannelData(0);
+  const sr = buffer.sampleRate;
+  const startSample = Math.max(0, Math.floor(s * sr));
+  const endSample = Math.min(data.length, Math.ceil(e * sr));
+  const span = Math.max(1, endSample - startSample);
   const peaks = new Float32Array(buckets);
-  const perBucket = Math.max(1, Math.floor(data.length / buckets));
+  const perBucket = Math.max(1, Math.floor(span / buckets));
   for (let i = 0; i < buckets; i++) {
     let max = 0;
-    const start = i * perBucket;
-    const end = Math.min(start + perBucket, data.length);
-    for (let j = start; j < end; j++) {
+    const bstart = startSample + i * perBucket;
+    const bend = Math.min(bstart + perBucket, endSample);
+    for (let j = bstart; j < bend; j++) {
       const v = Math.abs(data[j]);
       if (v > max) max = v;
     }
     peaks[i] = max;
   }
-  _peaksCache.set(buffer, { buckets, peaks });
+  byWindow.set(key, peaks);
   return peaks;
 }
 
@@ -541,6 +581,9 @@ async function selectTrack(name) {
   State.track = name;
   renderTrackList();
   stopPlayback();
+  zoomWindow = null; // BT-17 — same reasoning as Speed/Tune resetting below: a leftover zoom from the last song would be a trap
+  document.getElementById("zoom-to-loop-btn").style.display = "inline-block";
+  document.getElementById("zoom-out-btn").style.display = "none";
   // "Loading…" instead of the empty-state's "select a track" message —
   // a track WAS just selected, that message briefly re-showing while
   // stems load read as if the click hadn't registered.
@@ -690,7 +733,13 @@ function renderLanes() {
     canvas.addEventListener("click", (e) => seekFromElement(canvas, e));
 
     const buf = Audio.buffers[name];
-    if (buf) requestAnimationFrame(() => drawWaveform(canvas, computePeaks(buf, 400)));
+    if (buf) {
+      // BT-17: waveform zoom — slicing peaks to the current view window
+      // (instead of always the whole buffer) is what makes zooming in
+      // actually show more DETAIL rather than the same 400 buckets stretched.
+      const { start, end } = viewWindow();
+      requestAnimationFrame(() => drawWaveform(canvas, computePeaks(buf, 400, start, end)));
+    }
   }
 
   // V3-E5: renderPlayhead() reads this instead of re-querying the DOM every
@@ -723,7 +772,7 @@ function setGain(name, value) {
 
 function seekFromElement(el, e) {
   const rect = el.getBoundingClientRect();
-  seekTo(clamp01((e.clientX - rect.left) / rect.width) * Audio.duration);
+  seekTo(pctToTime((e.clientX - rect.left) / rect.width * 100));
 }
 
 function renderMuteRegions(muteLaneEl, stemName) {
@@ -731,8 +780,8 @@ function renderMuteRegions(muteLaneEl, stemName) {
   for (const [s, e] of ranges) {
     const div = document.createElement("div");
     div.className = "mute-region";
-    div.style.left = (s / Audio.duration * 100) + "%";
-    div.style.width = ((e - s) / Audio.duration * 100) + "%";
+    div.style.left = timeToPct(s) + "%";
+    div.style.width = (timeToPct(e) - timeToPct(s)) + "%";
     muteLaneEl.appendChild(div);
   }
 }
@@ -743,25 +792,25 @@ function wireMuteLane(el, stemName) {
 
   el.addEventListener("mousedown", (e) => {
     const rect = el.getBoundingClientRect();
-    dragStart = clamp01((e.clientX - rect.left) / rect.width) * Audio.duration;
+    dragStart = pctToTime((e.clientX - rect.left) / rect.width * 100);
   });
   el.addEventListener("mousemove", (e) => {
     if (dragStart == null) return;
     const rect = el.getBoundingClientRect();
-    const cur = clamp01((e.clientX - rect.left) / rect.width) * Audio.duration;
+    const cur = pctToTime((e.clientX - rect.left) / rect.width * 100);
     const s = Math.min(dragStart, cur), en = Math.max(dragStart, cur);
     if (!tempEl) {
       tempEl = document.createElement("div");
       tempEl.className = "mute-region";
       el.appendChild(tempEl);
     }
-    tempEl.style.left = (s / Audio.duration * 100) + "%";
-    tempEl.style.width = ((en - s) / Audio.duration * 100) + "%";
+    tempEl.style.left = timeToPct(s) + "%";
+    tempEl.style.width = (timeToPct(en) - timeToPct(s)) + "%";
   });
   function finish(e) {
     if (dragStart == null) return;
     const rect = el.getBoundingClientRect();
-    const cur = clamp01((e.clientX - rect.left) / rect.width) * Audio.duration;
+    const cur = pctToTime((e.clientX - rect.left) / rect.width * 100);
     const s = Math.min(dragStart, cur), en = Math.max(dragStart, cur);
     dragStart = null;
     if (tempEl) { tempEl.remove(); tempEl = null; }
@@ -800,7 +849,7 @@ function initRuler() {
   ruler.addEventListener("click", (e) => {
     if (e.target.classList.contains("loop-handle")) return;
     const rect = ruler.getBoundingClientRect();
-    seekTo(clamp01((e.clientX - rect.left) / rect.width) * Audio.duration);
+    seekTo(pctToTime((e.clientX - rect.left) / rect.width * 100));
   });
 
   function wireHandle(handleEl, key) {
@@ -808,8 +857,8 @@ function initRuler() {
       e.stopPropagation();
       startDrag((me) => {
         const rect = ruler.getBoundingClientRect();
-        const t = clamp01((me.clientX - rect.left) / rect.width) * Audio.duration;
-        if (!State.ui.loop) State.ui.loop = { start: 0, end: Audio.duration };
+        const t = pctToTime((me.clientX - rect.left) / rect.width * 100);
+        if (!State.ui.loop) State.ui.loop = { ...viewWindow() };
         if (key === "start") State.ui.loop.start = Math.min(t, State.ui.loop.end - 0.1);
         else State.ui.loop.end = Math.max(t, State.ui.loop.start + 0.1);
         updateLoopVisual();
@@ -836,8 +885,8 @@ function updateLoopVisual() {
   // since the end handle is later in the DOM and grabs every click).
   document.getElementById("loop-handle-a").style.left = "0%";
   document.getElementById("loop-handle-b").style.left = "100%";
-  const s = State.ui.loop.start / Audio.duration * 100;
-  const e = State.ui.loop.end / Audio.duration * 100;
+  const s = timeToPct(State.ui.loop.start);
+  const e = timeToPct(State.ui.loop.end);
   region.style.left = s + "%";
   region.style.width = Math.max(0, e - s) + "%";
 }
@@ -857,11 +906,16 @@ function renderMarkers() {
   const row = document.getElementById("markers-row");
   row.innerHTML = "";
   if (!Audio.duration) return;
+  // BT-17: "next marker" (for the loop-on-dblclick below) always means the
+  // next one in the whole song, zoomed or not — only which markers actually
+  // get a DOM element (this view's window) is affected by zoom.
   const markers = sortedMarkers();
+  const { start: viewStart, end: viewEnd } = viewWindow();
   markers.forEach((m, i) => {
+    if (m.time < viewStart || m.time > viewEnd) return;
     const el = document.createElement("div");
     el.className = "marker-flag";
-    el.style.left = (m.time / Audio.duration * 100) + "%";
+    el.style.left = timeToPct(m.time) + "%";
     el.title = `${m.label} (${fmtTime(m.time)}) — click to jump, double-click to loop this section`;
     el.textContent = m.label;
 
@@ -914,11 +968,16 @@ function renderBeatGrid() {
   row.innerHTML = "";
   const beats = (State.analysis || {}).beats;
   if (!beats || !Audio.duration) return;
+  // BT-17: the downbeat pattern (every 4th) is fixed to each beat's real
+  // index in the FULL song, so zooming in never shifts which ticks look
+  // like downbeats — only which ones are in range to draw at all.
+  const { start: viewStart, end: viewEnd } = viewWindow();
   const frag = document.createDocumentFragment();
   beats.forEach((t, i) => {
+    if (t < viewStart || t > viewEnd) return;
     const tick = document.createElement("div");
     tick.className = "beat-tick" + (i % 4 === 0 ? " downbeat" : "");
-    tick.style.left = (t / Audio.duration * 100) + "%";
+    tick.style.left = timeToPct(t) + "%";
     frag.appendChild(tick);
   });
   row.appendChild(frag);
@@ -979,7 +1038,7 @@ let lastPlayheadPct = null;
 let lastTimeDisplayText = null;
 
 function renderPlayhead(pos) {
-  const pct = Audio.duration ? (pos / Audio.duration * 100) : 0;
+  const pct = Audio.duration ? timeToPct(pos) : 0;
   if (pct === lastPlayheadPct) return;
   lastPlayheadPct = pct;
   const pctStr = pct + "%";
@@ -1143,10 +1202,38 @@ function wireTransport() {
     saveProjectDebounced();
   });
   onTransportChange("count-in-toggle", () => {}); // no behavior of its own — just keeps both checkboxes in sync
-  // BT-08: mixer-only (the ruler/timeline it marks up doesn't exist in
-  // Play Along), so a plain click handler rather than onTransportClick's
+  // BT-08/BT-17: mixer-only (the ruler/timeline they mark up doesn't exist
+  // in Play Along), so plain click handlers rather than onTransportClick's
   // mixer/Play-Along mirroring.
   document.getElementById("add-marker-btn").addEventListener("click", addMarkerAtPlayhead);
+  wireZoomControls();
+}
+
+// BT-17: re-renders everything whose position is a function of viewWindow()
+// after zoomWindow changes — cheaper to just re-run the existing render
+// functions than to track which DOM nodes need which new lefts by hand.
+function rerenderTimeline() {
+  renderLanes();
+  renderMarkers();
+  renderBeatGrid();
+  updateLoopVisual();
+  renderPlayhead(currentPosition());
+}
+
+function wireZoomControls() {
+  document.getElementById("zoom-to-loop-btn").addEventListener("click", () => {
+    if (!State.ui.loop || !Audio.duration) return; // nothing to zoom to without a loop set (§6)
+    zoomWindow = { start: State.ui.loop.start, end: State.ui.loop.end };
+    document.getElementById("zoom-to-loop-btn").style.display = "none";
+    document.getElementById("zoom-out-btn").style.display = "inline-block";
+    rerenderTimeline();
+  });
+  document.getElementById("zoom-out-btn").addEventListener("click", () => {
+    zoomWindow = null;
+    document.getElementById("zoom-out-btn").style.display = "none";
+    document.getElementById("zoom-to-loop-btn").style.display = "inline-block";
+    rerenderTimeline();
+  });
 }
 
 function wireVolumeSlider() {
@@ -1587,11 +1674,13 @@ function wireKeyboardShortcuts() {
         break;
       case "ArrowLeft":
         e.preventDefault();
-        seekTo(Math.max(0, currentPosition() - (e.shiftKey ? 5 : 1)));
+        // BT-17: Alt = finer 100ms nudge, for lining up a loop/mute edge to
+        // an exact transient rather than the plain 1s step's coarse range.
+        seekTo(Math.max(0, currentPosition() - (e.shiftKey ? 5 : e.altKey ? 0.1 : 1)));
         break;
       case "ArrowRight":
         e.preventDefault();
-        seekTo(Math.min(Audio.duration, currentPosition() + (e.shiftKey ? 5 : 1)));
+        seekTo(Math.min(Audio.duration, currentPosition() + (e.shiftKey ? 5 : e.altKey ? 0.1 : 1)));
         break;
       default:
         break;

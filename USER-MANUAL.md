@@ -133,7 +133,19 @@ exactly what gets exported.
 **A/B loop:** drag the two handles on the ruler above the lanes to set a
 loop region; the **Loop** button in the transport toggles it on/off
 (defaults to the whole track the first time you enable it). Click anywhere
-on the ruler (not on a handle) to seek.
+on the ruler (not on a handle) to seek. Hold **Alt** while pressing **←/→**
+for a finer 100ms nudge (Shift is still the coarse 5s jump) — useful for
+lining a loop/mute edge up to an exact transient.
+
+**Waveform zoom (V3, BT-17):** with a loop set, click **Zoom to loop** in
+the transport to rescale the ruler and every lane's waveform to fill the
+view with just that region — real added detail, not the same picture
+stretched, since the waveform re-renders from the source audio at the new
+resolution. Everything stays consistent while zoomed: ruler clicks, loop-
+handle drags, and mute-region painting all map to time correctly within
+the zoomed range; markers/beat-grid ticks outside it simply don't draw.
+**Zoom out** returns to the whole track. Zoom is a per-session view aid,
+like Speed/Tune — it resets when you switch tracks.
 
 **Section markers (V3):** click **+ Marker** in the transport to drop a
 named marker at the current playhead position (you'll be asked to name

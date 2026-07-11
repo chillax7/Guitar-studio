@@ -46,6 +46,8 @@
       <span id="time-display" data-transport="time-display">0:00 / 0:00</span>
       <button id="loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
       <button id="add-marker-btn" title="Add a section marker at the current position">+ Marker</button>
+      <button id="zoom-to-loop-btn" title="Zoom the waveform/ruler in to the current loop region">Zoom to loop</button>
+      <button id="zoom-out-btn" title="Zoom back out to the whole track" style="display:none">Zoom out</button>
       <label class="transport-label"><input type="checkbox" id="click-toggle"> Click</label>
       <label class="transport-label"><input type="checkbox" id="count-in-toggle" data-transport="count-in-toggle"> Count-in</label>
       <span class="transport-label">BPM</span>
@@ -499,7 +501,7 @@
         <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Set loop start / end to current playhead</td></tr>
         <tr><td><kbd>M</kbd> / <kbd>S</kbd></td><td>Mute / solo the lane under the mouse</td></tr>
         <tr><td><kbd>R</kbd></td><td>Start / stop recording</td></tr>
-        <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>Nudge playhead (hold Shift for 5s steps)</td></tr>
+        <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>Nudge playhead (Shift = 5s steps, Alt = 100ms steps)</td></tr>
         <tr><td><kbd>?</kbd></td><td>Toggle this legend</td></tr>
       </table>
       <p class="hint">Shortcuts don't fire while a text field has focus.</p>

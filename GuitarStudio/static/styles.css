@@ -298,6 +298,7 @@ button.primary:hover { filter: brightness(1.1); }
   background: #1a1c22;
   border-radius: 3px;
   cursor: crosshair;
+  overflow: hidden; /* BT-17 — same reasoning as #ruler's own overflow:hidden */
 }
 .mute-region {
   position: absolute;
@@ -354,6 +355,10 @@ button.primary:hover { filter: brightness(1.1); }
   background: var(--panel-2);
   border-radius: 3px;
   cursor: pointer;
+  /* BT-17: a loop region that only partially overlaps the current zoom
+     window maps to a left/width outside [0%,100%] — clip it at the ruler's
+     own edges instead of letting it visually spill past the rounded box. */
+  overflow: hidden;
 }
 /* BT-02: beat grid overlay — purely decorative (detected beat positions,
    not click targets), so pointer-events:none keeps the ruler's own
