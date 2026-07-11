@@ -712,20 +712,84 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         return parsed.path, {k: v[0] for k, v in parse_qs(parsed.query).items()}
 
-    def _send_file(self, file_path: Path) -> None:
+    _RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)$")
+    _SEND_FILE_CHUNK = 256 * 1024
+
+    def _send_file(self, file_path: Path, cacheable: bool = False) -> None:
+        """V3-E4: streams in fixed-size chunks (was read_bytes() — the whole
+        file, hundreds of MB for a stem, loaded into memory per request) and
+        honors Range (stems and exported takes are the multi-hundred-MB
+        files that actually benefit — a <video> take couldn't seek without
+        it, and re-selecting a track re-downloaded every stem in full every
+        time).
+
+        cacheable=True is for artifacts that never change underneath an
+        existing path once written — stems (keyed by content hash) and
+        .nam/.ir library files — safe to let the browser cache hard instead
+        of re-fetching hundreds of MB on every track/model reselect. Default
+        False covers both app source via _serve_static (the browser reloads
+        it live during development — see the no-store reasoning that used
+        to live here and still applies) and /api/output (exported mixes sit
+        at a fixed, re-exportable filename, so caching those hard would
+        serve a stale mix after a re-export).
+        """
+        file_size = file_path.stat().st_size
         content_type, _ = mimetypes.guess_type(str(file_path))
-        data = file_path.read_bytes()
-        self.send_response(200)
+        start, end, status = 0, file_size - 1, 200
+
+        range_header = self.headers.get("Range")
+        if range_header and file_size > 0:
+            m = self._RANGE_RE.match(range_header)
+            if m and (m.group(1) or m.group(2)):
+                if m.group(1):
+                    start = int(m.group(1))
+                    end = int(m.group(2)) if m.group(2) else file_size - 1
+                else:
+                    # Suffix range ("bytes=-500" == last 500 bytes).
+                    start = max(0, file_size - int(m.group(2)))
+                if start >= file_size:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{file_size}")
+                    self.end_headers()
+                    return
+                end = min(end, file_size - 1)
+                status = 206
+
+        length = end - start + 1
+        self.send_response(status)
         self.send_header("Content-Type", content_type or "application/octet-stream")
-        self.send_header("Content-Length", str(len(data)))
-        # This app is actively developed against a running server — a
-        # cached stale copy of a .js file (especially an AudioWorklet
-        # module, which only re-registers on a full page reload) has
-        # already caused real confusion once. Not worth any browser cache
-        # ambiguity for a single-user local app.
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(length))
+        self.send_header("Accept-Ranges", "bytes")
+        if status == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+        if cacheable:
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        else:
+            # This app is actively developed against a running server — a
+            # cached stale copy of a .js file (especially an AudioWorklet
+            # module, which only re-registers on a full page reload) has
+            # already caused real confusion once. Not worth any browser
+            # cache ambiguity for a single-user local app.
+            self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(data)
+
+        try:
+            with file_path.open("rb") as f:
+                f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk = f.read(min(self._SEND_FILE_CHUNK, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            # Range makes this routine now — a <video> seek or a track
+            # reselect that supersedes an in-flight stem fetch both abort
+            # the underlying connection mid-stream. Headers are already
+            # sent at this point, so there's nothing left to report back;
+            # just stop, don't let it read as a server error.
+            pass
 
     def _serve_static(self, path: str) -> None:
         rel = path.lstrip("/") or "index.html"
@@ -766,18 +830,29 @@ class Handler(BaseHTTPRequestHandler):
                 stem_path = resolve_stem_file(query.get("source_path", ""),
                                                query.get("model", engine.DEFAULT_MODEL),
                                                query.get("stem", ""))
-                return self._send_file(stem_path)
+                return self._send_file(stem_path, cacheable=True)
             if path == "/api/output":
+                # Not cacheable=True: unlike stems/.nam/.ir (genuinely
+                # content-addressed or static library files), this path also
+                # serves exported mixes at a fixed, re-exportable filename
+                # (resolve_output_path defaults to "backing_track.<fmt>" per
+                # track) — a re-export would otherwise serve the browser's
+                # stale cached copy of the old one. Video takes served
+                # through this same route (unique "take NN" filenames, never
+                # overwritten) would benefit from hard caching too, but
+                # there's no cheap way to tell the two apart by path alone
+                # here, so this stays no-store; Range (always sent, see
+                # _send_file) is what actually fixes take-seeking regardless.
                 out_path = resolve_output_file(query.get("path", ""))
                 return self._send_file(out_path)
             if path == "/api/nam_models":
                 return self._send_json(200, svc_nam_models())
             if path == "/api/nam_model_file":
-                return self._send_file(resolve_nam_file(query.get("filename", "")))
+                return self._send_file(resolve_nam_file(query.get("filename", "")), cacheable=True)
             if path == "/api/ir_models":
                 return self._send_json(200, svc_ir_models())
             if path == "/api/ir_model_file":
-                return self._send_file(resolve_ir_file(query.get("filename", "")))
+                return self._send_file(resolve_ir_file(query.get("filename", "")), cacheable=True)
             if path == "/api/recordings":
                 return self._send_json(200, svc_recordings_list(query.get("track", "")))
             if path.startswith("/api/"):
