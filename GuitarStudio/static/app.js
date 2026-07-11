@@ -1116,6 +1116,42 @@ function wireSpeedTune() {
   onTransportInput("tune-slider", apply);
 }
 
+// ---------------------------------------------------------------------------
+// BT-07: speed trainer — cheap once loops (§6) and markers (BT-08) exist:
+// this is just a fast, repeatable way to drive the existing Speed slider
+// instead of dragging it by hand between loop passes. "Start" jumps to a
+// reduced practice speed; "Step up" nudges it toward Target one Step at a
+// time, clamping exactly at Target rather than overshooting on the last
+// click. No new audio path — setSpeedFromPercent drives the same
+// speed-slider input event wireSpeedTune already listens for.
+// ---------------------------------------------------------------------------
+function setSpeedFromPercent(pct) {
+  const speedEl = transportEls("speed-slider")[0];
+  const clamped = Math.max(parseFloat(speedEl.min), Math.min(parseFloat(speedEl.max), pct / 100));
+  setTransportValue("speed-slider", clamped.toFixed(2));
+  speedEl.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function wireSpeedTrainer() {
+  document.getElementById("trainer-start-btn").addEventListener("click", () => {
+    const startPct = parseFloat(document.getElementById("trainer-start-pct").value) || 100;
+    setSpeedFromPercent(startPct);
+    document.getElementById("trainer-status").textContent =
+      `Speed set to ${startPct}%. Loop the passage (§6), then click Step up once it's clean.`;
+  });
+  document.getElementById("trainer-step-btn").addEventListener("click", () => {
+    const stepPct = parseFloat(document.getElementById("trainer-step-pct").value) || 10;
+    const targetPct = parseFloat(document.getElementById("trainer-target-pct").value) || 100;
+    const speedEl = transportEls("speed-slider")[0];
+    const currentPct = parseFloat(speedEl.value) * 100;
+    const nextPct = currentPct >= targetPct ? targetPct : Math.min(targetPct, currentPct + stepPct);
+    setSpeedFromPercent(nextPct);
+    document.getElementById("trainer-status").textContent = nextPct >= targetPct
+      ? `At target speed (${targetPct}%).`
+      : `Stepped up to ${Math.round(nextPct)}% (target ${targetPct}%).`;
+  });
+}
+
 const PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8; // mirrors backing_track.py's constant of the same name
 
 // BT-03: same 12 names/order as backing_track.py's KEY_NOTE_NAMES — this
@@ -1502,6 +1538,7 @@ async function init() {
   wireStaleBanner();
   wireImport();
   wireSpeedTune();
+  wireSpeedTrainer();
   wireVolumeSlider();
   wireKeyboardShortcuts();
 

@@ -140,6 +140,15 @@ a strip above the ruler:
 
 Markers are saved per-song, same as everything else in §6.
 
+**Speed Trainer (V3):** in the right-hand inspector — set a loop first
+(a marker double-click is the fastest way), then use **Start** / **Step
+up** instead of dragging the Speed slider by hand between passes. Start
+jumps to a reduced practice speed (default 60%); each **Step up** click
+nudges Speed toward Target (default 100%) by Step (default 10 points),
+clamping exactly at Target on the last click rather than overshooting.
+Practice a hard passage slow, then step it up toward full tempo one clean
+pass at a time.
+
 ## 7. Guitar split (experimental)
 
 Only available once a stem literally named `guitar` exists (i.e. you

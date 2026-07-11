@@ -96,6 +96,28 @@
       <p class="hint" id="key-hint"></p>
     </section>
 
+    <section id="speed-trainer-panel">
+      <h3>Speed Trainer</h3>
+      <p class="hint">Practice a loop slow, then step the speed up toward full tempo — set a loop first (§6), then use these instead of dragging the Speed slider by hand each time.</p>
+      <div class="row">
+        <label style="margin:0">Start</label>
+        <input type="number" id="trainer-start-pct" value="60" min="50" max="200" step="5">%
+      </div>
+      <div class="row">
+        <label style="margin:0">Step</label>
+        <input type="number" id="trainer-step-pct" value="10" min="1" max="50" step="1">%
+      </div>
+      <div class="row">
+        <label style="margin:0">Target</label>
+        <input type="number" id="trainer-target-pct" value="100" min="50" max="200" step="5">%
+      </div>
+      <div class="row">
+        <button id="trainer-start-btn">Start at Start%</button>
+        <button id="trainer-step-btn" class="primary">Step up</button>
+      </div>
+      <p class="hint" id="trainer-status"></p>
+    </section>
+
     <section id="split-panel" style="display:none">
       <h3>Guitar - Lead / Rhythm Split</h3>
       <p class="hint">Neither candidate is guaranteed to be the lead or rhythm part — this is a panning-based guess and varies by song. Solo each and listen to decide.</p>
