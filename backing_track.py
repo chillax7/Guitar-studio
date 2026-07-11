@@ -377,14 +377,44 @@ def run_audio_separator_backend(input_path: Path, model: str, out_dir: Path, pro
         match.rename(out_dir / f"{stem}.wav")
 
 
+# BT-03: Krumhansl-Schmuckler key-profile correlation — a standard,
+# well-established key-finding heuristic (not ML, just correlating a
+# track's averaged chroma vector against these two rotatable templates).
+# Like every other heuristic in this app, it's a starting point to audition
+# by ear, not a guaranteed answer — the spec explicitly frames it that way,
+# and there's no reason this one would be different.
+KEY_MAJOR_PROFILE = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+KEY_MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+KEY_NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+
+def detect_key(y: "np.ndarray", sr: int) -> dict | None:
+    import librosa
+    chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+    chroma_mean = chroma.mean(axis=1)
+    if chroma_mean.sum() <= 0:
+        return None
+    chroma_norm = chroma_mean / chroma_mean.sum()
+    best = None
+    for mode, profile in (("major", KEY_MAJOR_PROFILE), ("minor", KEY_MINOR_PROFILE)):
+        profile_norm = profile / profile.sum()
+        for root in range(12):
+            rotated = np.roll(profile_norm, root)
+            corr = np.corrcoef(chroma_norm, rotated)[0, 1]
+            if best is None or corr > best[0]:
+                best = (corr, root, mode)
+    corr, root, mode = best
+    return {"key": KEY_NOTE_NAMES[root], "mode": mode, "confidence": round(float(corr), 3)}
+
+
 def analyze_track(out_dir: Path) -> dict:
-    """BT-01/BT-16: best-effort tempo + reference-pitch analysis. Tempo comes
-    from the drums stem (present for every model) via librosa's tempo
-    estimator; pitch offset from A=440 (in cents) comes from librosa's own
-    tuning estimator run on the first harmonic-ish stem available. Either
-    figure is simply omitted from the result if its stem is missing or the
-    estimate fails — a missing BPM/pitch reading is fine; this must never
-    be the reason a separation run fails."""
+    """BT-01/BT-16/BT-03: best-effort tempo + reference-pitch + key
+    analysis. Tempo comes from the drums stem (present for every model) via
+    librosa's tempo estimator; pitch offset from A=440 (in cents) and
+    detected key both come from librosa run on the first harmonic-ish stem
+    available. Any figure is simply omitted from the result if its stem is
+    missing or the estimate fails — a missing reading is fine; this must
+    never be the reason a separation run fails."""
     import librosa
     import librosa.feature.rhythm
 
@@ -423,6 +453,9 @@ def analyze_track(out_dir: Path) -> dict:
             y, sr = librosa.load(str(stem_path), sr=None, mono=True)
             tuning = librosa.estimate_tuning(y=y, sr=sr)
             result["pitch_offset_cents"] = round(float(tuning) * 100, 1)
+            key = detect_key(y, sr)
+            if key:
+                result["key"] = key
             break
         except Exception:
             continue
@@ -496,6 +529,10 @@ def print_analysis(analysis: dict) -> None:
                   f"consider applying it via Tune.")
         else:
             print(f"Reference pitch: {offset:+.1f} cents from A=440 (close enough to ignore).")
+    if "key" in analysis:
+        key = analysis["key"]
+        print(f"Detected key: {key['key']} {key['mode']} (confidence {key['confidence']:.2f} — "
+              f"a heuristic starting point, not guaranteed; check by ear).")
 
 
 def cmd_list(args: argparse.Namespace) -> None:

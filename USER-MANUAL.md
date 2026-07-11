@@ -99,7 +99,14 @@ what gets exported (§8). The transport bar has:
 - **BPM** — the detected tempo, rounded to the nearest whole number, scaling
   live with the Speed slider.
 - **Speed** (0.5×–2×) — changes playback rate while keeping pitch the same.
-- **Tune** (±100 cents) — shifts pitch independently, at the same speed.
+- **Tune** (±1200 cents = ±1 octave, V3) — shifts pitch independently, at
+  the same speed. Originally just a fine correction for tuning drift
+  (±100¢ ≈ ±1 semitone); widened to a full octave so it doubles as a
+  transpose control for playing a song in an easier key. The inspector
+  panel shows a **detected key** (a heuristic — Krumhansl-Schmuckler
+  chroma correlation, confirm by ear) and, once you move Tune off zero, what
+  key that transposition actually lands you in (e.g. "Transposed +2
+  semitones → A major").
 - **Volume** — an overall listening-level slider for the backing track.
 
 Speed and Tune reset to neutral whenever you switch tracks — a leftover

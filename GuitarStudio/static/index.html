@@ -52,7 +52,7 @@
       <input type="range" id="speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
       <span id="speed-display" data-transport="speed-display">1.00×</span>
       <span class="transport-label">Tune</span>
-      <input type="range" id="tune-slider" data-transport="tune-slider" min="-100" max="100" step="1" value="0">
+      <input type="range" id="tune-slider" data-transport="tune-slider" min="-1200" max="1200" step="1" value="0">
       <span id="tune-display" data-transport="tune-display">0¢</span>
       <span class="transport-label">Volume</span>
       <input type="range" id="volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
@@ -91,6 +91,7 @@
       <h3>Track</h3>
       <p class="hint" id="pitch-hint"></p>
       <button id="pitch-apply-btn" style="display:none">Apply to Tune</button>
+      <p class="hint" id="key-hint"></p>
     </section>
 
     <section id="split-panel" style="display:none">
@@ -164,7 +165,7 @@
             <label>Speed <span id="pa-bt-speed-display" data-transport="speed-display">1.00×</span></label>
             <input type="range" id="pa-bt-speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
             <label>Tune <span id="pa-bt-tune-display" data-transport="tune-display">0¢</span></label>
-            <input type="range" id="pa-bt-tune-slider" data-transport="tune-slider" min="-100" max="100" step="1" value="0">
+            <input type="range" id="pa-bt-tune-slider" data-transport="tune-slider" min="-1200" max="1200" step="1" value="0">
             <label>Volume <span id="pa-bt-volume-display" data-transport="volume-display">100%</span></label>
             <input type="range" id="pa-bt-volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
           </section>

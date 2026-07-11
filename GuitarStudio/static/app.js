@@ -1047,6 +1047,7 @@ function wireSpeedTune() {
     setTransportText("speed-display", speed.toFixed(2) + "×");
     setTransportText("tune-display", (cents >= 0 ? "+" : "") + cents + "¢");
     updateBpmDisplay();
+    updateKeyHint(); // BT-03 — live as Tune moves
     setSpeedTune(speed, Math.pow(2, cents / 1200));
   }
   onTransportInput("speed-slider", apply);
@@ -1054,6 +1055,39 @@ function wireSpeedTune() {
 }
 
 const PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8; // mirrors backing_track.py's constant of the same name
+
+// BT-03: same 12 names/order as backing_track.py's KEY_NOTE_NAMES — this
+// mirrors that heuristic's output, not a second key-detection implementation.
+const KEY_NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+function transposedKeyName(keyName, semitones) {
+  const idx = KEY_NOTE_NAMES.indexOf(keyName);
+  if (idx < 0) return null;
+  return KEY_NOTE_NAMES[((idx + semitones) % 12 + 12) % 12];
+}
+
+// BT-03: the detected key is informational (confirm by ear, like every
+// other heuristic here) — the point of showing it alongside the Tune
+// slider's current position is answering "if I transpose by this much,
+// what key does that actually put me in", since Tune's own ±1200¢ range
+// covers a full octave of transposition now, not just fine tuning-drift
+// correction. Called both on track load (renderInspector) and live while
+// dragging Tune (wireSpeedTune), so it never goes stale mid-drag.
+function updateKeyHint() {
+  const el = document.getElementById("key-hint");
+  const key = (State.analysis || {}).key;
+  if (!key) { el.textContent = ""; return; }
+  const base = `Detected key: ${key.key} ${key.mode} (confidence ${key.confidence.toFixed(2)} — a heuristic, confirm by ear).`;
+  const tuneEl = transportEls("tune-slider")[0];
+  const cents = tuneEl ? parseFloat(tuneEl.value) : 0;
+  const semitones = Math.trunc(cents / 100);
+  if (semitones === 0) { el.textContent = base; return; }
+  const remCents = cents - semitones * 100;
+  const newKey = transposedKeyName(key.key, semitones);
+  el.textContent = `${base} Transposed ${semitones > 0 ? "+" : ""}${semitones} semitone${Math.abs(semitones) === 1 ? "" : "s"}` +
+    (remCents ? ` (plus ${remCents > 0 ? "+" : ""}${remCents.toFixed(0)}¢ fine tune)` : "") +
+    (newKey ? ` → ${newKey} ${key.mode}.` : ".");
+}
 
 function renderInspector() {
   const a = State.analysis || {};
@@ -1073,6 +1107,7 @@ function renderInspector() {
     setTransportValue("tune-slider", Math.round(a.pitch_offset_cents));
     transportEls("tune-slider")[0].dispatchEvent(new Event("input"));
   };
+  updateKeyHint();
 
   const hasGuitar = State.stems.some((s) => s.name === "guitar");
   document.getElementById("split-panel").style.display = hasGuitar ? "block" : "none";
