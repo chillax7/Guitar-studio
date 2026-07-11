@@ -99,13 +99,28 @@ body {
 #track-list { flex: 1; overflow-y: auto; min-height: 0; }
 
 .track-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 12px;
   cursor: pointer;
   border-left: 3px solid transparent;
   font-size: 13px;
+}
+.track-name {
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Projects UX: a small dot instead of text/an icon font — reads at a
+   glance without competing with the track name for space. */
+.track-project-dot {
+  flex: none;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 .track-row:hover { background: var(--panel-2); }
@@ -759,3 +774,30 @@ button.primary:hover { filter: brightness(1.1); }
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 3px;
   padding: 1px 6px; font-family: monospace; font-size: 11px;
 }
+
+/* XC-04: in-app help/onboarding — same modal treatment as the shortcuts legend. */
+#help-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 100;
+  align-items: center; justify-content: center;
+}
+#help-overlay.show { display: flex; }
+#help-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+#help-panel h2 { margin: 0 0 12px; font-size: 15px; }
+#help-panel ol { margin: 0 0 12px; padding-left: 20px; font-size: 13px; line-height: 1.6; }
+#help-panel li { margin-bottom: 6px; }
+#help-panel kbd {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 3px;
+  padding: 1px 6px; font-family: monospace; font-size: 11px;
+}
+#help-panel .primary { margin-top: 8px; }

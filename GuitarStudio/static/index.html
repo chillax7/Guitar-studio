@@ -21,6 +21,7 @@
     <div id="import-drop">Drop an audio file here<br>or click to import</div>
     <input type="file" id="import-input" accept="audio/*" style="display:none">
     <button id="playalong-open-btn">🎸 Play Along</button>
+    <button id="help-open-btn">❓ Help</button>
   </div>
 
   <div id="canvas">
@@ -517,6 +518,37 @@
       </table>
       <p class="hint">Shortcuts don't fire while a text field has focus.</p>
       <button id="shortcuts-close-btn">Close</button>
+    </div>
+  </div>
+
+  <!-- XC-04: in-app help/onboarding — auto-shown once on first launch
+       (localStorage-gated, see wireHelp in app.js), and reachable any
+       time via the sidebar's ❓ Help button. Nobody reads USER-MANUAL.md
+       before diving in, so the essentials live here instead. -->
+  <div id="help-overlay">
+    <div id="help-panel">
+      <h2>Welcome to Orpheus Guitar Studio</h2>
+      <ol>
+        <li><b>Import a song</b> — drag an audio file onto the sidebar, or click it.</li>
+        <li><b>Separate</b> — pick a model (top right) and click <b>Separate</b>. Takes a
+          minute or two; splits the song into stems (drums, bass, vocals, guitar, …).</li>
+        <li><b>Mix</b> — mute/solo/fade each stem, paint a mute region over a section
+          you want gone (e.g. the original guitar), loop a section (drag the ruler
+          handles), drop <b>+ Marker</b>s on a solo and double-click one to loop it,
+          <b>Speed Trainer</b> to practice it slow then step up to speed.</li>
+        <li><b>Play Along</b> (🎸 in the sidebar) — plug in your guitar, pick an amp
+          (Clean / Analog / a real captured amp via Neural), shape the tone, add
+          cab/EQ/comp/delay/reverb in whatever order you like (drag the ⠿ handles),
+          and record your take (camera optional).</li>
+        <li><b>Export</b> (right-hand panel) once the mix sounds right.</li>
+      </ol>
+      <p class="hint">Every heuristic in this app (key/tempo detection, tone
+        matching, riff-loudness auto-calibration, …) is a starting point to
+        confirm by ear, never a guaranteed answer — see USER-MANUAL.md in the
+        app folder for the full picture, including the honesty notes on
+        exactly where each one's limits are.</p>
+      <p class="hint">Press <kbd>?</kbd> any time for keyboard shortcuts.</p>
+      <button id="help-close-btn" class="primary">Got it</button>
     </div>
   </div>
 

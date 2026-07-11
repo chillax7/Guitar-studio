@@ -572,7 +572,11 @@ function renderTrackList() {
   for (const t of State.tracks) {
     const row = document.createElement("div");
     row.className = "track-row" + (t.name === State.track ? " selected" : "");
-    row.textContent = t.name;
+    // Projects UX: a visible per-song project indicator — content-hash-
+    // keyed server-side now (server.py's project_path_for), so this stays
+    // accurate even for a track that's been renamed since its mix was saved.
+    row.innerHTML = `<span class="track-name">${escapeHtml(t.name)}</span>` +
+      (t.has_project ? '<span class="track-project-dot" title="Has a saved mix/project"></span>' : "");
     row.addEventListener("click", () => selectTrack(t.name));
     el.appendChild(row);
   }
@@ -1700,6 +1704,27 @@ function toggleShortcutsLegend() {
   document.getElementById("shortcuts-overlay").classList.toggle("show");
 }
 
+// XC-04: in-app onboarding/help — auto-shown once on first launch (nobody
+// reads USER-MANUAL.md before diving in), reachable any time after via the
+// sidebar's ❓ Help button.
+const HELP_SEEN_KEY = "gs_help_seen";
+
+function toggleHelp() {
+  document.getElementById("help-overlay").classList.toggle("show");
+}
+
+function wireHelp() {
+  document.getElementById("help-open-btn").addEventListener("click", toggleHelp);
+  document.getElementById("help-close-btn").addEventListener("click", toggleHelp);
+  document.getElementById("help-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "help-overlay") toggleHelp();
+  });
+  if (!localStorage.getItem(HELP_SEEN_KEY)) {
+    localStorage.setItem(HELP_SEEN_KEY, "1");
+    toggleHelp();
+  }
+}
+
 function wireKeyboardShortcuts() {
   document.getElementById("shortcuts-close-btn").addEventListener("click", toggleShortcutsLegend);
   document.getElementById("shortcuts-overlay").addEventListener("click", (e) => {
@@ -1780,6 +1805,7 @@ async function init() {
   wireSpeedTrainer();
   wireVolumeSlider();
   wireKeyboardShortcuts();
+  wireHelp();
 
   const modelsResp = await Api.get("/api/models");
   State.models = modelsResp.models;

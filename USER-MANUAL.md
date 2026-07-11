@@ -1,10 +1,13 @@
 # Orpheus Guitar Studio — User Manual
 
-**Status:** covers the app as it stands after the v2.5 checkpoint (rebuilt
-baseline, M0–M5, plus every roadmap item since — BT-06/16, GP-01/05/10,
-VD-01/04/09, XC-02 — and a round of real-hardware bug fixes). Nothing in
-this manual is aspirational; anything still open lives in
-[release-v0.4-spec.md](release-v0.4-spec.md) instead.
+**Status:** covers the app through v3.0 (release-v3-spec.md, M1–M6) —
+foundations/debt cleanup, the Play Along redesign, the NAM Tweaker + rig
+presets, practice intelligence (beat grid/click, speed trainer, markers,
+key/transpose), the expanded pedalboard, riff capture, and this polish
+pass. Nothing in this manual is aspirational; anything still open lives in
+[enhancements-backlog.md](enhancements-backlog.md) instead. An in-app
+**❓ Help** button (sidebar) covers the same essentials for anyone who
+won't read this file.
 
 ---
 
@@ -467,14 +470,21 @@ touched.
 
 ## 11. Projects (autosave)
 
-Whatever you set up for a song — model, mix, mute regions, loop, view
-mode — saves automatically a moment after you change it, and restores the
-next time you select that song from the Library. There's no explicit
-"Save" button and no separate "Projects" screen to browse — the Library
-sidebar itself *is* the project list; clicking a song is opening its
-project. This is keyed to the song's filename, so if you rename a source
-file outside the app (e.g. in Finder), its saved mix won't follow the
-rename automatically.
+Whatever you set up for a song — model, mix, mute regions, loop, markers,
+rig preset — saves automatically a moment after you change it, and
+restores the next time you select that song from the Library. There's no
+explicit "Save" button and no separate "Projects" screen to browse — the
+Library sidebar itself *is* the project list; clicking a song is opening
+its project. A small dot next to a track's name means it has a saved
+project.
+
+**Renaming is safe (V3):** projects are keyed by the source file's actual
+content (a hash of its bytes), not its filename — the same scheme the
+stem cache already used. Rename a source file outside the app (e.g. in
+Finder) and its saved mix follows the rename automatically, since
+renaming doesn't change the file's bytes. (Projects saved before this
+change still load correctly under their original filename, and migrate
+to the new scheme the next time they're saved.)
 
 ## 12. Keyboard shortcuts
 

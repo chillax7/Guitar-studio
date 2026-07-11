@@ -164,11 +164,23 @@ def svc_models() -> dict:
 
 
 def svc_tracks() -> dict:
-    """Every importable track under input/, for the Library sidebar."""
+    """Every importable track under input/, for the Library sidebar.
+    has_project hashes each file to check project_path_for's existence
+    (falling back to the legacy filename-keyed path) — real cost for a
+    personal practice library (dozens of songs, not thousands), same
+    trade-off the stem cache already makes per-track; if this library ever
+    grows large enough for that to matter, cache the hash the same way a
+    separated track's fingerprint already does instead of recomputing it
+    on every sidebar refresh."""
     tracks = []
     for path in sorted(INPUT_DIR.iterdir()):
         if path.is_file() and not path.name.startswith("."):
-            tracks.append({"name": path.name, "size": path.stat().st_size})
+            try:
+                digest = engine.content_hash(path)
+                has_project = (PROJECTS_DIR / f"{digest}.json").exists() or legacy_project_path(path.name).exists()
+            except OSError:
+                has_project = False
+            tracks.append({"name": path.name, "size": path.stat().st_size, "has_project": has_project})
     return {"tracks": tracks}
 
 
@@ -680,10 +692,42 @@ def svc_reveal(path: str) -> dict:
     return {"ok": True}
 
 
+def legacy_project_path(track: str) -> Path:
+    return PROJECTS_DIR / f"{safe_name(track)}.json"
+
+
+def project_path_for(track: str) -> Path:
+    """Content-hash-keyed (same content_hash the stem cache already uses,
+    XC-03), not filename-keyed — a known v2 gap: renaming a source file
+    used to orphan its saved project, since the old scheme kept it under
+    the OLD filename with nothing pointing a new selectTrack() call back to
+    it. Renaming a file doesn't change its bytes, so hashing it instead
+    means the same project is found under either name. Falls back to the
+    legacy filename-keyed path if the source file can't be resolved (e.g.
+    it's been deleted, not just renamed) — better to still find an existing
+    project under the name it was saved as than to report none at all."""
+    try:
+        return PROJECTS_DIR / f"{content_hash_for_track(track)}.json"
+    except ApiError:
+        return legacy_project_path(track)
+
+
+def content_hash_for_track(track: str) -> str:
+    return engine.content_hash(resolve_source_path(track))
+
+
 def svc_load_project(track: str) -> dict:
-    path = PROJECTS_DIR / f"{safe_name(track)}.json"
+    path = project_path_for(track)
     if not path.exists():
-        raise ApiError(404, f"No saved project for '{track}'")
+        # Migration: a project saved under the pre-V3 filename-keyed scheme
+        # is still found once here, and gets rewritten under the new
+        # hash-keyed path the next time it's saved (svc_save_project always
+        # writes to project_path_for, never back to the legacy path).
+        legacy = legacy_project_path(track)
+        if legacy.exists():
+            path = legacy
+        else:
+            raise ApiError(404, f"No saved project for '{track}'")
     try:
         return json.loads(path.read_text())
     except (json.JSONDecodeError, OSError) as exc:
@@ -691,7 +735,7 @@ def svc_load_project(track: str) -> dict:
 
 
 def svc_save_project(track: str, project: dict) -> dict:
-    path = PROJECTS_DIR / f"{safe_name(track)}.json"
+    path = project_path_for(track)
     path.write_text(json.dumps(project, indent=2))
     return {"ok": True, "path": str(path)}
 
