@@ -99,12 +99,17 @@ Each stem is a lane: name, **M**(ute)/**S**(olo) buttons, a gain fader, a
 its waveform. **Solo, Pan, and EQ are all *monitoring* conveniences only —
 none of them affect what gets exported (§8)**; they're there to help you
 carve space to play along (pan the drums off-center, cut some bass mud
-while you practice), not to change the mix your export produces. The
-transport bar has:
+while you practice), not to change the mix your export produces.
 
-- **Play / Pause / Stop**, current position, and a **Loop** toggle.
-- **Count-in** — a checkbox; when on, playback (and recording — §10) starts
-  after 2 bars of click, synced to the track's detected BPM.
+Playback controls split across two rows. The **top toolbar** (left of the
+model badge and Separate button) holds the timeline tools: **Loop**,
+**+ Marker**, **Zoom to loop / Zoom out**, **Click**, and **Count-in** —
+all toggle buttons that light up **blue when active** (Loop lights
+**green** while loop mode is running — green means "a playback state is
+engaged", blue means "an option is on"). The **transport bar** below it
+has the playback essentials:
+
+- **Play / Pause / Stop** and the current position.
 - **BPM** — the detected tempo, rounded to the nearest whole number, scaling
   live with the Speed slider.
 - **Speed** (0.5×–2×) — changes playback rate while keeping pitch the same.
@@ -116,6 +121,11 @@ transport bar has:
   you move Tune off zero, what key that transposition actually lands you
   in (e.g. "Transposed +2 semitones → A major").
 - **Volume** — an overall listening-level slider for the backing track.
+
+And the two toolbar click features:
+
+- **Count-in** — when on, playback (and recording — §10) starts after 2
+  bars of click, synced to the track's detected BPM.
 - **Click** — a metronome click synced to the actual detected
   beat grid (not just an assumed manual BPM, like the count-in). Every
   4th beat is accented as a downbeat (an assumed 4/4 — there's no time-
@@ -123,7 +133,10 @@ transport bar has:
   playhead uses rather than pre-scheduled, so it tracks Speed and Tune
   automatically, at the honest cost of a few ms of animation-frame jitter
   versus a real hardware click. A faint beat grid also appears on the
-  ruler itself (brighter tick = downbeat) for precise loop/marker placement.
+  ruler itself (brighter tick = downbeat) for precise loop/marker
+  placement. If Click is grayed out, the track has no beat grid — this
+  is analyzed automatically when a track is (re)selected, so tracks
+  separated by older versions of the app pick it up on the next visit.
 
 Speed and Tune reset to neutral whenever you switch tracks — a leftover
 half-speed setting silently carrying over to a new song would be a trap,
@@ -139,14 +152,14 @@ click an existing region to remove it. This uses exactly the same
 exactly what gets exported.
 
 **A/B loop:** drag the two handles on the ruler above the lanes to set a
-loop region; the **Loop** button in the transport toggles it on/off
+loop region; the **Loop** button in the toolbar toggles it on/off
 (defaults to the whole track the first time you enable it). Click anywhere
 on the ruler (not on a handle) to seek. Hold **Alt** while pressing **←/→**
 for a finer 100ms nudge (Shift is still the coarse 5s jump) — useful for
 lining a loop/mute edge up to an exact transient.
 
 **Waveform zoom:** with a loop set, click **Zoom to loop** in
-the transport to rescale the ruler and every lane's waveform to fill the
+the toolbar to rescale the ruler and every lane's waveform to fill the
 view with just that region — real added detail, not the same picture
 stretched, since the waveform re-renders from the source audio at the new
 resolution. Everything stays consistent while zoomed: ruler clicks, loop-
@@ -155,7 +168,7 @@ the zoomed range; markers/beat-grid ticks outside it simply don't draw.
 **Zoom out** returns to the whole track. Zoom is a per-session view aid,
 like Speed/Tune — it resets when you switch tracks.
 
-**Section markers:** click **+ Marker** in the transport to drop a
+**Section markers:** click **+ Marker** in the toolbar to drop a
 named marker at the current playhead position (you'll be asked to name
 it — "Solo", "Chorus 2", whatever helps). Markers appear as small tags in
 a strip above the ruler:
@@ -229,9 +242,9 @@ row. Below it, the rig itself runs left-to-right in actual signal-chain
 order: Input/Gate → Amp → Cab IR → EQ → Compressor → Delay/Reverb → Output.
 Every rig card has a collapse arrow (▾) in its header if you want to hide
 one you're not touching this session — collapse state is remembered
-between visits. Recording and Takes live in a **Perform / Record** tab
-below the rig, so they're not spending space or attention until you
-actually switch to Record mode.
+between visits. The **Record performance** and **Takes** cards sit
+below the rig, always visible with their setup controls expanded — no
+mode switch needed to get to them.
 
 ### 9.0 Backing Track (top strip)
 The full transport from the main mixer — Play/Stop, Loop, Count-in, BPM,
@@ -384,8 +397,7 @@ machine right now, not a bug to work around.
 
 ## 10. Recording a performance
 
-Switch to the **Record** tab below the rig (Play Along opens on **Perform**
-by default). The **Record performance** card there lets you record
+Scroll to the **Record performance** card below the rig. It lets you record
 yourself playing along — the exact audio mix you're hearing (backing
 track + your processed guitar), with or without camera video.
 

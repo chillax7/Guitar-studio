@@ -94,6 +94,11 @@ SEPARATED_DIR = _PROJECT_ROOT / "separated"
 OUTPUT_DIR = _PROJECT_ROOT / "output"
 FINGERPRINT_FILE = ".source.json"
 ANALYSIS_FILE = "analysis.json"
+# Bump whenever analyze_track() learns a new reading, so tracks analyzed
+# under an older version get lazily re-analyzed (ensure_analysis) instead of
+# serving a cached result that's silently missing the new keys forever —
+# v1: bpm + pitch_offset_cents; v2: + key (BT-03) and beats (BT-02).
+ANALYSIS_VERSION = 2
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -418,7 +423,7 @@ def analyze_track(out_dir: Path) -> dict:
     import librosa
     import librosa.feature.rhythm
 
-    result = {}
+    result = {"version": ANALYSIS_VERSION}
 
     drums_path = out_dir / "drums.wav"
     if drums_path.exists():
@@ -493,12 +498,16 @@ def write_analysis(out_dir: Path, analysis: dict) -> None:
 
 
 def ensure_analysis(out_dir: Path) -> dict:
-    """Return cached analysis if present; otherwise compute it once and
-    cache it. Lets stems separated before BT-01/BT-16 existed get backfilled
+    """Return cached analysis if current; otherwise (re)compute and cache.
+    Lets stems separated before an analysis reading existed get backfilled
     lazily (on next 'separate', 'list', or app open) rather than requiring a
-    forced re-separation."""
+    forced re-separation. The version check matters as much as the existence
+    check: a cache written before ANALYSIS_VERSION's readings existed would
+    otherwise be served forever with those keys silently missing — the
+    browser's click stem doing nothing because a pre-beat-grid cache never
+    gains a "beats" key was exactly this bug."""
     existing = read_analysis(out_dir)
-    if existing:
+    if existing and existing.get("version", 1) >= ANALYSIS_VERSION:
         return existing
     try:
         analysis = analyze_track(out_dir)
@@ -506,7 +515,8 @@ def ensure_analysis(out_dir: Path) -> dict:
         analysis = {}
     if analysis:
         write_analysis(out_dir, analysis)
-    return analysis
+        return analysis
+    return existing
 
 
 def cmd_separate(args: argparse.Namespace) -> None:

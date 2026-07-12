@@ -247,10 +247,18 @@ function teardownStretchNodes() {
   Audio.stretchNodes = {};
 }
 
+// Guards against overlapping loads (e.g. two quick model switches): decode
+// is async, so without this the FIRST load's entries could finish last and
+// silently repoint Audio.gains/buffers at the stale stem set — leaving the
+// lanes' mute/solo buttons wired to gain nodes the audible graph no longer
+// uses. Only the newest load is allowed to commit its results.
+let stemLoadGeneration = 0;
+
 async function loadStemBuffers(stems) {
   ensureCtx();
   stopPlayback();
   teardownStretchNodes();
+  const generation = ++stemLoadGeneration;
   const entries = await Promise.all(stems.map(async (stem) => {
     const url = `/api/stem?source_path=${encodeURIComponent(State.track)}` +
       `&model=${encodeURIComponent(State.model)}&stem=${encodeURIComponent(stem.name)}`;
@@ -259,6 +267,15 @@ async function loadStemBuffers(stems) {
     const audioBuf = await Audio.ctx.decodeAudioData(arrBuf);
     return [stem.name, audioBuf];
   }));
+  if (generation !== stemLoadGeneration) return; // superseded by a newer load
+  // Fully detach the outgoing per-stem chains from the master bus — replaced
+  // gain/EQ/pan nodes would otherwise stay connected (silent but alive) and
+  // any code still holding one would route audio the new lanes can't control.
+  for (const name in Audio.gains) {
+    try { Audio.gains[name].disconnect(); } catch (e) { /* already gone */ }
+    const fx = Audio.stemFx[name];
+    if (fx) for (const key in fx) { try { fx[key].disconnect(); } catch (e) { /* already gone */ } }
+  }
   Audio.buffers = {};
   Audio.gains = {};
   Audio.stemFx = {};
@@ -554,6 +571,7 @@ function showState(name) {
     document.getElementById(s).classList.toggle("show", s === name);
   }
   document.getElementById("transport").classList.toggle("show", name === "workspace");
+  document.getElementById("toolbar-tools").classList.toggle("show", name === "workspace");
 }
 
 function updateModelBadge() {
@@ -671,6 +689,15 @@ async function onStemsLoaded(result) {
   State.stems = result.stems;
   State.analysis = result.analysis || {};
   State.stale = result.stale;
+  // BT-02: the click has nothing to play without a beat grid — disable the
+  // toggle and say why, rather than letting it sit there silently inert.
+  const clickBtn = document.getElementById("click-toggle");
+  const hasBeats = !!(State.analysis.beats && State.analysis.beats.length);
+  clickBtn.disabled = !hasBeats;
+  if (!hasBeats) clickBtn.classList.remove("active");
+  clickBtn.title = hasBeats
+    ? "Metronome click synced to this track's detected beat grid"
+    : "No beat grid detected for this track — beat analysis may still be pending or may have failed";
   for (const s of State.stems) {
     if (!(s.name in State.mix.gains)) State.mix.gains[s.name] = 1.0;
   }
@@ -1097,7 +1124,7 @@ function playClickBlip(ctxTime, accented) {
 
 function updateClickStem(pos) {
   const clickEl = document.getElementById("click-toggle");
-  if (!clickEl || !clickEl.checked || !Audio.playing) return;
+  if (!clickEl || !clickEl.classList.contains("active") || !Audio.playing) return;
   const beats = (State.analysis || {}).beats;
   if (!beats) return;
   const now = Audio.ctx.currentTime;
@@ -1265,7 +1292,7 @@ function wireTransport() {
       // it's correct for both.
       const offset = currentPosition();
       const countInEl = transportEls("count-in-toggle")[0];
-      withOptionalCountIn(!!(countInEl && countInEl.checked), () => startPlaybackAt(offset));
+      withOptionalCountIn(!!(countInEl && countInEl.classList.contains("active")), () => startPlaybackAt(offset));
       setTransportText("play-btn", "⏸");
     }
   });
@@ -1284,7 +1311,19 @@ function wireTransport() {
     updateLoopVisual();
     saveProjectDebounced();
   });
-  onTransportChange("count-in-toggle", () => {}); // no behavior of its own — just keeps both checkboxes in sync
+  onTransportClick("count-in-toggle", () => {
+    const on = !transportEls("count-in-toggle")[0].classList.contains("active");
+    toggleTransportClass("count-in-toggle", "active", on);
+  });
+  document.getElementById("click-toggle").addEventListener("click", (e) => {
+    const btn = e.currentTarget;
+    if (btn.disabled) return;
+    btn.classList.toggle("active");
+    // Resync the beat pointer to the current position: while the click is
+    // off, updateClickStem() never advances it, so toggling on mid-song
+    // would otherwise fire every skipped beat at once as a single blast.
+    resyncClickPointer(currentPosition());
+  });
   // BT-08/BT-17: mixer-only (the ruler/timeline they mark up doesn't exist
   // in Play Along), so plain click handlers rather than onTransportClick's
   // mixer/Play-Along mirroring.

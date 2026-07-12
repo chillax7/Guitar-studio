@@ -359,7 +359,8 @@ const DATA = [
       "Double-clicking a marker loops from it to the next marker (or the end of the track) and turns Loop on automatically.",
       "With a loop region set, <strong>Zoom to loop</strong> visibly zooms the waveform in with real extra detail (not just a stretched blur), and <strong>Zoom out</strong> brings back the full view.",
       "Faint tick marks appear along the ruler in time with the beat, with a brighter tick on every downbeat.",
-      "Turning on <strong>Click</strong> plays an audible metronome in sync with those ticks, accenting the first beat of every bar.",
+      "The toolbar's toggle buttons (Loop / Click / Count-in) light up blue when active — except Loop, which lights green while loop mode is engaged.",
+      "Turning on <strong>Click</strong> (toolbar) plays an audible metronome in sync with those ticks, accenting the first beat of every bar; toggling it on mid-song joins cleanly (no burst of catch-up clicks). If Click is grayed out, reselecting the track re-analyzes and enables it.",
       "In the Speed Trainer panel, <strong>Start at Start%</strong> drops playback speed to the configured percentage, and repeated <strong>Step up</strong> clicks raise it in steps without overshooting the target percentage.",
       "The inspector shows a detected musical key; moving the Tune slider previews the new (transposed) key live as you drag it.",
       "Switching to a different track resets Speed and Tune back to normal, but leaves your Volume level alone.",
@@ -435,7 +436,7 @@ const DATA = [
     title: "11. Recording a take",
     note: "Switch to the Record tab inside Play Along.",
     items: [
-      "The Record tab shows Record/Takes sub-tabs, with Perform selected by default when Play Along first opens.",
+      "The Record performance and Takes cards are always visible below the rig, with the camera/quality/sync setup section expanded by default.",
       "With no camera enabled, hitting <strong>● Record</strong> and stopping produces an audio-only file, and the interface says so beforehand (not a silent black video box).",
       "Turning on <strong>Enable camera</strong> shows a live preview, switches the hint to say video will be included, and produces an actual video file on the next take.",
       "Recording with \"start backing track\"/count-in turned on actually starts the backing track in sync with the recording.",

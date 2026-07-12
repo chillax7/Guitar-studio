@@ -158,6 +158,12 @@ body {
 
 #toolbar .spacer { flex: 1; }
 
+/* Timeline tools (loop/markers/zoom/click/count-in) live in the toolbar,
+   left of the model/Separate controls; hidden until a track's workspace is
+   actually showing — same condition as the transport row. */
+#toolbar-tools { display: none; align-items: center; gap: 8px; }
+#toolbar-tools.show { display: flex; }
+
 button {
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -171,6 +177,11 @@ button:hover { background: var(--accent-dim); }
 button:disabled { opacity: 0.4; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.primary:hover { filter: brightness(1.1); }
+/* House rule: any toggle button that's currently ON is accent-blue. More
+   specific rules override per-button (the Loop and Tuner toggles stay
+   green — green = "a transport/monitor state is running", blue = "an
+   option is enabled"). */
+button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 #model-badge {
   position: relative;
@@ -259,7 +270,8 @@ button.primary:hover { filter: brightness(1.1); }
 #transport.show { display: flex; }
 #time-display { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--text-dim); min-width: 90px; }
 #transport input[type=range] { width: 90px; }
-#loop-toggle-btn.active { background: var(--success); border-color: var(--success); color: #fff; }
+#loop-toggle-btn.active,
+#pa-bt-loop-toggle-btn.active { background: var(--success); border-color: var(--success); color: #fff; }
 #pa-tuner-toggle.active { background: var(--success); border-color: var(--success); color: #fff; }
 .transport-label { font-size: 11px; color: var(--text-dim); }
 

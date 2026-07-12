@@ -1487,21 +1487,6 @@ function wirePedalDragReorder() {
 }
 
 // ---------------------------------------------------------------------------
-// V3-U1: Perform/Record session tabs — Record + Takes are no longer
-// permanent cards under the rig, just a tab that reveals them.
-// ---------------------------------------------------------------------------
-function wirePASessionTabs() {
-  const buttons = document.querySelectorAll("#pa-session-tabs button");
-  const recordPanel = document.getElementById("pa-session-record");
-  buttons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      buttons.forEach((b) => b.classList.toggle("active", b === btn));
-      recordPanel.style.display = btn.dataset.paSession === "record" ? "" : "none";
-    });
-  });
-}
-
-// ---------------------------------------------------------------------------
 // V3-T2 / GP-02: rig presets — full rack state (amp mode, capture, tweaker
 // knobs, IR, FX, output), named and recallable, attachable to a song so
 // loading the song loads the rig. Presets themselves are cross-song and
@@ -1843,7 +1828,6 @@ function wireRiffCapture() {
 wirePAControls();
 wirePedalboardCollapse();
 wirePedalDragReorder();
-wirePASessionTabs();
 wireRigPresets();
 wireRiffCapture();
 document.getElementById("playalong-open-btn").addEventListener("click", paShowLatencyEstimate);

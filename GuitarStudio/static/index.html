@@ -27,6 +27,14 @@
   <div id="canvas">
     <div id="toolbar">
       <button id="rec-pill" style="display:none">● REC</button>
+      <div id="toolbar-tools">
+        <button id="loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
+        <button id="add-marker-btn" title="Add a section marker at the current position">+ Marker</button>
+        <button id="zoom-to-loop-btn" title="Zoom the waveform/ruler in to the current loop region">Zoom to loop</button>
+        <button id="zoom-out-btn" title="Zoom back out to the whole track" style="display:none">Zoom out</button>
+        <button id="click-toggle" title="Metronome click synced to this track's detected beat grid">Click</button>
+        <button id="count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
+      </div>
       <div class="spacer"></div>
       <div id="model-badge">
         <span id="model-badge-label">—</span>
@@ -45,12 +53,6 @@
       <button id="play-btn" data-transport="play-btn">▶</button>
       <button id="stop-btn" data-transport="stop-btn">■</button>
       <span id="time-display" data-transport="time-display">0:00 / 0:00</span>
-      <button id="loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
-      <button id="add-marker-btn" title="Add a section marker at the current position">+ Marker</button>
-      <button id="zoom-to-loop-btn" title="Zoom the waveform/ruler in to the current loop region">Zoom to loop</button>
-      <button id="zoom-out-btn" title="Zoom back out to the whole track" style="display:none">Zoom out</button>
-      <label class="transport-label"><input type="checkbox" id="click-toggle"> Click</label>
-      <label class="transport-label"><input type="checkbox" id="count-in-toggle" data-transport="count-in-toggle"> Count-in</label>
       <span class="transport-label">BPM</span>
       <span id="bpm-display" data-transport="bpm-display">—</span>
       <span class="transport-label">Speed</span>
@@ -187,7 +189,7 @@
             </div>
             <div class="row">
               <button id="pa-bt-loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
-              <label style="margin:0"><input type="checkbox" id="pa-bt-count-in-toggle" data-transport="count-in-toggle"> Count-in</label>
+              <button id="pa-bt-count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
             </div>
             <label>BPM <span id="pa-bt-bpm-display" data-transport="bpm-display">—</span></label>
             <label>Speed <span id="pa-bt-speed-display" data-transport="speed-display">1.00×</span></label>
@@ -424,21 +426,13 @@
           </section>
         </div>
 
-        <!-- V3-U1: Record + Takes stop being permanent cards under the rig
-             and become a mode tab instead — camera preview only renders
-             once a camera is actually enabled (was a permanently visible
-             black box, see recStartCamera/#rec-preview-wrap), and every
-             setup-once control (camera pick, quality, A/V offset,
-             auto-calibrate) folds into a "Setup" disclosure so the
-             every-session controls (Record button, takes list) aren't
-             competing with them for space. The toolbar's REC pill already
-             covers "recording while elsewhere". -->
-        <div id="pa-session-tabs" class="pa-tabs">
-          <button data-pa-session="perform" class="active">Perform</button>
-          <button data-pa-session="record">Record</button>
-        </div>
-
-        <div id="pa-session-record" class="pa-session-panel" style="display:none">
+        <!-- Record + Takes: always visible below the rig (a Perform/Record
+             tab was tried and found unintuitive in hardware testing — the
+             record controls were too hidden). The camera preview still only
+             renders once a camera is actually enabled (see recStartCamera/
+             #rec-preview-wrap), so the always-visible cards stay compact
+             until video is in play. -->
+        <div id="pa-session-record" class="pa-session-panel">
           <section class="pa-card" id="rec-card">
             <h3>Record performance</h3>
             <div id="rec-preview-wrap" style="display:none">
@@ -460,7 +454,7 @@
             </div>
             <div id="rec-result" class="hint"></div>
 
-            <details id="rec-setup">
+            <details id="rec-setup" open>
               <summary>Setup: camera, quality &amp; sync</summary>
               <div class="row">
                 <label style="margin:0">Show framing guides</label>

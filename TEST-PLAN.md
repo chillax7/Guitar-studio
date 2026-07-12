@@ -36,7 +36,7 @@ instead — open it directly in a browser, no server required.
 - [ ] **Section markers (BT-08):** **+ Marker** drops a marker at the playhead and prompts for a name; clicking a marker seeks to it; double-clicking loops from it to the next marker (or track end) and turns Loop on; hovering reveals a delete **×**; markers persist across a reload of the same song.
 - [ ] **Waveform zoom (BT-17):** with a loop set, **Zoom to loop** rescales the ruler/waveforms to that region with real added detail (not the same picture stretched); ruler clicks, loop-handle drags, and mute-painting all still land on the correct time while zoomed; **Zoom out** restores the full view; zoom resets on track switch.
 - [ ] **Finer nudge (BT-17):** Alt+←/→ moves the playhead in ~100ms steps (Shift+←/→ still does 5s).
-- [ ] **Beat grid + Click (BT-02):** faint beat ticks appear on the ruler (brighter = downbeat) once a track's analysis includes them; the **Click** toggle produces an audible metronome click synced to those beats during playback, accenting every 4th beat; toggling Click on/off, seeking, and looping don't cause the click to drift or burst.
+- [ ] **Beat grid + Click (BT-02):** faint beat ticks appear on the ruler (brighter = downbeat) once a track's analysis includes them; the **Click** toggle produces an audible metronome click synced to those beats during playback, accenting every 4th beat; toggling Click on/off (including mid-playback), seeking, and looping don't cause the click to drift or burst; on a track separated by an older app version, Click is grayed out at most once — reselecting the track re-analyzes and enables it.
 - [ ] **Speed Trainer (BT-07):** **Start at Start%** sets Speed to the configured percentage; **Step up** increases Speed by Step%, clamping exactly at Target% without overshooting; BPM display scales with Speed throughout.
 - [ ] **Key detection + Tune (BT-03):** the inspector shows a detected key (with a confidence caveat); moving Tune shows the resulting transposed key live; Tune's range covers a full octave (±1200¢).
 - [ ] Speed/Tune reset to unity on track switch; Volume does not.
@@ -68,7 +68,7 @@ instead — open it directly in a browser, no server required.
 
 ## 6. Recording
 
-- [ ] Switching to the Record tab reveals Record/Takes; Perform is the default tab on open.
+- [ ] The Record performance and Takes cards are always visible below the rig, with the camera/quality/sync setup expanded by default.
 - [ ] **Audio-only takes (GP-08):** with no camera enabled, Record produces a `.m4a`/`.webm` audio file and the mode hint says "audio-only" beforehand; enabling a camera switches the hint to "will include video" and produces a video file as before.
 - [ ] Camera preview only appears once a camera is actually enabled (no permanent black box beforehand); framing guides toggle correctly.
 - [ ] Record/Stop works with and without "start backing track"/count-in; the REC pill appears in the main toolbar while recording and is clickable to jump back to Play Along; Stop also stops the backing track.
