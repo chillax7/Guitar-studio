@@ -1,13 +1,8 @@
 # Orpheus Guitar Studio — User Manual
 
-**Status:** covers the app through v3.0 (release-v3-spec.md, M1–M6) —
-foundations/debt cleanup, the Play Along redesign, the NAM Tweaker + rig
-presets, practice intelligence (beat grid/click, speed trainer, markers,
-key/transpose), the expanded pedalboard, riff capture, and this polish
-pass. Nothing in this manual is aspirational; anything still open lives in
-[enhancements-backlog.md](enhancements-backlog.md) instead. An in-app
-**❓ Help** button (sidebar) covers the same essentials for anyone who
-won't read this file.
+Everything in this manual exists and works today — nothing here is
+aspirational. An in-app **❓ Help** button (sidebar) covers the same
+essentials for anyone who won't read this file.
 
 New to the app, or verifying a fresh build? Open
 [FIRST-SESSION-CHECKLIST.html](FIRST-SESSION-CHECKLIST.html) directly in a
@@ -83,7 +78,7 @@ estimate, just a heartbeat that something is happening.
 
 | Model | Stems | Notes |
 |---|---|---|
-| `bs_roformer_sw` | vocals, drums, bass, guitar, piano, other | **Default.** Notably better guitar-stem quality than the Demucs models — see [guitar-separation-upgrade-spec.md](guitar-separation-upgrade-spec.md) |
+| `bs_roformer_sw` | vocals, drums, bass, guitar, piano, other | **Default.** Notably better guitar-stem quality than the Demucs models |
 | `htdemucs` | vocals, drums, bass, other | Fast, no guitar stem |
 | `htdemucs_ft` | same | Slower, slightly cleaner |
 | `htdemucs_6s` | + guitar, piano | Also guitar-capable, if you want to A/B against `bs_roformer_sw` |
@@ -113,16 +108,15 @@ transport bar has:
 - **BPM** — the detected tempo, rounded to the nearest whole number, scaling
   live with the Speed slider.
 - **Speed** (0.5×–2×) — changes playback rate while keeping pitch the same.
-- **Tune** (±1200 cents = ±1 octave, V3) — shifts pitch independently, at
-  the same speed. Originally just a fine correction for tuning drift
-  (±100¢ ≈ ±1 semitone); widened to a full octave so it doubles as a
+- **Tune** (±1200 cents = ±1 octave) — shifts pitch independently, at
+  the same speed. Fine corrections handle a record that's slightly off
+  concert pitch (±100¢ ≈ ±1 semitone); the full-octave range makes it a
   transpose control for playing a song in an easier key. The inspector
-  panel shows a **detected key** (a heuristic — Krumhansl-Schmuckler
-  chroma correlation, confirm by ear) and, once you move Tune off zero, what
-  key that transposition actually lands you in (e.g. "Transposed +2
-  semitones → A major").
+  panel shows a **detected key** (a heuristic — confirm by ear) and, once
+  you move Tune off zero, what key that transposition actually lands you
+  in (e.g. "Transposed +2 semitones → A major").
 - **Volume** — an overall listening-level slider for the backing track.
-- **Click** (V3, BT-02) — a metronome click synced to the actual detected
+- **Click** — a metronome click synced to the actual detected
   beat grid (not just an assumed manual BPM, like the count-in). Every
   4th beat is accented as a downbeat (an assumed 4/4 — there's no time-
   signature detection). Driven from the same per-frame position poll the
@@ -151,7 +145,7 @@ on the ruler (not on a handle) to seek. Hold **Alt** while pressing **←/→**
 for a finer 100ms nudge (Shift is still the coarse 5s jump) — useful for
 lining a loop/mute edge up to an exact transient.
 
-**Waveform zoom (V3, BT-17):** with a loop set, click **Zoom to loop** in
+**Waveform zoom:** with a loop set, click **Zoom to loop** in
 the transport to rescale the ruler and every lane's waveform to fill the
 view with just that region — real added detail, not the same picture
 stretched, since the waveform re-renders from the source audio at the new
@@ -161,7 +155,7 @@ the zoomed range; markers/beat-grid ticks outside it simply don't draw.
 **Zoom out** returns to the whole track. Zoom is a per-session view aid,
 like Speed/Tune — it resets when you switch tracks.
 
-**Section markers (V3):** click **+ Marker** in the transport to drop a
+**Section markers:** click **+ Marker** in the transport to drop a
 named marker at the current playhead position (you'll be asked to name
 it — "Solo", "Chorus 2", whatever helps). Markers appear as small tags in
 a strip above the ruler:
@@ -174,7 +168,7 @@ a strip above the ruler:
 
 Markers are saved per-song, same as everything else in §6.
 
-**Speed Trainer (V3):** in the right-hand inspector — set a loop first
+**Speed Trainer:** in the right-hand inspector — set a loop first
 (a marker double-click is the fastest way), then use **Start** / **Step
 up** instead of dragging the Speed slider by hand between passes. Start
 jumps to a reduced practice speed (default 60%); each **Step up** click
@@ -191,8 +185,7 @@ Rhythm Split** section in the right-hand inspector once a guitar stem is
 loaded.
 
 This is a **stereo-panning heuristic**, not a real lead/rhythm separation
-model — no such model exists anywhere as an open weight (see
-[guitar-separation-upgrade-spec.md](guitar-separation-upgrade-spec.md)).
+model — no such model exists anywhere as an open weight.
 The two results are always labeled **Candidate A (center)** and
 **Candidate B (sides)** — never "Lead"/"Rhythm" — because which one is
 actually which varies by song and sometimes neither is clean. Solo each
@@ -230,15 +223,15 @@ session) — so backing-track playback and your live guitar mix together
 naturally, with no added round-trip latency from the recording or mixing
 side.
 
-**Layout (V3):** a top strip (Backing Track / Tuner / Input) stays visible
+**Layout:** a top strip (Backing Track / Tuner / Input) stays visible
 at all times — the "am I in tune, am I clipping, where's the song" glance
 row. Below it, the rig itself runs left-to-right in actual signal-chain
 order: Input/Gate → Amp → Cab IR → EQ → Compressor → Delay/Reverb → Output.
 Every rig card has a collapse arrow (▾) in its header if you want to hide
 one you're not touching this session — collapse state is remembered
-between visits. Recording and Takes moved out of the main layout into a
-**Perform / Record** tab below the rig, so they're not spending space or
-attention until you actually switch to Record mode.
+between visits. Recording and Takes live in a **Perform / Record** tab
+below the rig, so they're not spending space or attention until you
+actually switch to Record mode.
 
 ### 9.0 Backing Track (top strip)
 The full transport from the main mixer — Play/Stop, Loop, Count-in, BPM,
@@ -280,7 +273,7 @@ won't read cleanly.
   inference — see §9.6 for where to get models, §9.3a for the Tweaker
   controls, and §9.9 for a note on which captures can and can't run live.
 
-### 9.3a The NAM Tweaker (V3)
+### 9.3a The NAM Tweaker
 A standard `.nam` capture is a snapshot of one amp at one knob setting —
 there's no gain/presence/bass/treble hiding inside the file to expose, the
 knobs were frozen in when it was trained. The Neural mode panel builds a
@@ -293,25 +286,23 @@ plugin does:
   architecture, the realtime-cost estimate from the speed probe, whether
   loudness metadata drove auto-calibration, and an ESR pulled from the
   filename if one's embedded there.
-- **Drive** — the old "Input trim" slider, renamed and widened
-  (-24 to +48 dB). This is the closest thing to a real "gain knob" a frozen
-  capture allows: it's how hard you push the captured amp, like a boost
-  pedal in front — genuinely changes the distortion character.
+- **Drive** (-24 to +48 dB) — the closest thing to a real "gain knob" a
+  frozen capture allows: it's how hard you push the captured amp, like a
+  boost pedal in front — genuinely changes the distortion character.
 - **Bass / Mid / Treble / Presence** — a dedicated post-amp tone stack
   *inside* the amp block, before Cab IR, separate from the EQ card further
   down the chain. Presence is a high-shelf tilt around 6kHz. Flat (0dB) by
   default — today's sound is unaffected until you reach for these.
-- **Output level** — unchanged control, but now paired with an **auto-level**
-  readout showing the calibration gain a capture without loudness metadata
-  gets measured against a test tone (previously baked in invisibly). The
-  slider still adds on top of that baked-in number.
+- **Output level** — paired with an **auto-level** readout showing the
+  calibration gain a capture without loudness metadata gets, measured
+  against a test tone. The slider adds on top of that calibrated number.
 - **Parametric captures** — a rare "A2"/slimmable NAM family has real
   conditioning knobs; this app's engine only supports the standard
   (ordinary shared-capture) architecture. Loading one of these shows an
   honest "not yet supported" message instead of a confusing generic
   failure or silently misreading the weights.
 
-### 9.3b Rig presets (V3)
+### 9.3b Rig presets
 The **Rig Presets** card (above the pedalboard) saves the *entire* rig —
 amp mode, NAM capture + Tweaker knobs (or Analog's tone stack), Cab IR,
 EQ, Compressor, Delay/Reverb, and Output level — as a named preset.
@@ -333,7 +324,7 @@ A standard post-amp chain: 3-band EQ, a compressor (threshold/ratio),
 delay (time/feedback/mix), and reverb (size/mix) — each independently
 bypassable — then a final output level with a meter.
 
-**Drag-to-reorder (V3, GP-03):** Cab IR, EQ, Compressor, and Delay/Reverb
+**Drag-to-reorder:** Cab IR, EQ, Compressor, and Delay/Reverb
 can be rearranged into any order — drag a card by the **⠿** handle in its
 header and drop it where you want it. Compression before the cab IR
 instead of after, EQ before compression, whatever your ears want. Gate and
@@ -360,11 +351,10 @@ guitar stem** button appears — only in Neural (NAM) mode, just below the
 Output trim slider. It compares that isolated guitar stem against your
 available NAM models (or, in Analog mode, nudges the tone-stack sliders)
 using a brightness heuristic and picks the closest. **This is a rough
-starting point, not a guaranteed match** — always finish by ear. See
-[backing-track-tone-match-spec.md](backing-track-tone-match-spec.md) for
-why an exact "make my rig sound like the record" match isn't a solved
-problem anywhere, not just here. Suggest automatically skips any capture
-too heavy to run live (§9.9).
+starting point, not a guaranteed match** — always finish by ear; an exact
+"make my rig sound like the record" match isn't a solved problem
+anywhere, not just here. Suggest automatically skips any capture too
+heavy to run live (§9.9).
 
 ### 9.8 Latency
 The panel shows an estimated round-trip latency figure. It's **read from
@@ -399,7 +389,7 @@ by default). The **Record performance** card there lets you record
 yourself playing along — the exact audio mix you're hearing (backing
 track + your processed guitar), with or without camera video.
 
-1. **Camera is now optional (V3, GP-08).** A hint above the Record button
+1. **Camera is optional.** A hint above the Record button
    says which you'll get: enable a camera (Expand **Setup: camera, quality
    & sync**, pick a camera and quality, grant permission once) for a video
    take, or skip it entirely for an **audio-only** take — useful when you
@@ -421,7 +411,7 @@ track + your processed guitar), with or without camera video.
    (fixes container quirks MediaRecorder is known to leave behind — no
    quality loss). You'll get **Reveal in Finder** and **Discard** options.
    Audio-only takes save as `.m4a` (or `.webm`, browser-dependent); video
-   takes as `.mp4`/`.webm` as before.
+   takes as `.mp4`/`.webm`.
 
 Takes are saved to `output/<song name>/recordings/` (or
 `output/_untracked/recordings/` if no song was loaded), numbered
@@ -432,7 +422,7 @@ there's no ambiguity with your interface input and no feedback risk. What
 you hear is what gets recorded, from the same graph, not a room-mic
 capture of your speakers.
 
-### 10.1 Riff capture — "Save that!" (V3, GP-07)
+### 10.1 Riff capture — "Save that!"
 The **Riff Capture** card in the top strip is always quietly rolling
 whenever Play Along is open — no button to start it, nothing to forget.
 It keeps the last ~20 seconds of the same live mix a real take captures
@@ -485,13 +475,11 @@ Library sidebar itself *is* the project list; clicking a song is opening
 its project. A small dot next to a track's name means it has a saved
 project.
 
-**Renaming is safe (V3):** projects are keyed by the source file's actual
+**Renaming is safe:** projects are keyed by the source file's actual
 content (a hash of its bytes), not its filename — the same scheme the
-stem cache already used. Rename a source file outside the app (e.g. in
-Finder) and its saved mix follows the rename automatically, since
-renaming doesn't change the file's bytes. (Projects saved before this
-change still load correctly under their original filename, and migrate
-to the new scheme the next time they're saved.)
+stem cache uses. Rename a source file outside the app (e.g. in Finder)
+and its saved mix follows the rename automatically, since renaming
+doesn't change the file's bytes.
 
 ## 12. Keyboard shortcuts
 
@@ -538,8 +526,8 @@ Shortcuts don't fire while a text field has focus.
 - The tone-suggestion feature is a cheap heuristic, explicitly not a
   guaranteed match — always finish tone-matching by ear.
 - The latency figure in Play Along is an estimate, not a measurement.
-- Projects are identified by filename, not content — renaming a source
-  song outside the app orphans its saved mix state.
+- The Click and beat grid assume 4/4 time — there's no time-signature
+  detection, so the downbeat accent will be wrong in 3/4 or odd meters.
 
 ## 15. File locations reference
 
@@ -547,7 +535,7 @@ Shortcuts don't fire while a text field has focus.
 input/                          source songs you've imported
 separated/<model>/<hash>/       cached stems (content-hash keyed)
 output/<song>/                  exported mixes + a copy of every stem
-output/<song>/recordings/       performance video takes
+output/<song>/recordings/       takes (video + audio-only) and saved riffs
 GuitarStudio/models/nam/        .nam amp captures (subfolders OK)
 GuitarStudio/models/ir/         cabinet impulse responses (subfolders OK)
 GuitarStudio/projects/          autosaved per-song mix state
