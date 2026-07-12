@@ -10,7 +10,10 @@ that touches the areas it covers, not just at release time.
 
 Checkbox format is for your own copy — tick as you go. Group headers
 roughly match the sidebar/UI areas so a targeted change only needs its own
-section re-run, not the whole file.
+section re-run, not the whole file. For a first-time walkthrough in the
+order a new user would actually hit each feature (rather than grouped by
+app area), see [FIRST-SESSION-CHECKLIST.html](FIRST-SESSION-CHECKLIST.html)
+instead — open it directly in a browser, no server required.
 
 ---
 

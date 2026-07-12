@@ -9,6 +9,13 @@ pass. Nothing in this manual is aspirational; anything still open lives in
 **❓ Help** button (sidebar) covers the same essentials for anyone who
 won't read this file.
 
+New to the app, or verifying a fresh build? Open
+[FIRST-SESSION-CHECKLIST.html](FIRST-SESSION-CHECKLIST.html) directly in a
+browser (no server needed) for a self-contained, tickable walkthrough of
+every feature in first-use order — progress is saved locally as you check
+things off. [TEST-PLAN.md](TEST-PLAN.md) covers the same ground the other
+way round, as a regression pass grouped by app area for after a change.
+
 ---
 
 ## 1. What this is

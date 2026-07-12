@@ -1,0 +1,574 @@
+<title>Orpheus Guitar Studio — First Session Checklist</title>
+<style>
+  :root{
+    --bg:#f3efe6;
+    --surface:#ffffffcc;
+    --ink:#211c14;
+    --muted:#7a7160;
+    --line:#ddd4c0;
+    --gold:#a3771f;
+    --gold-ink:#5c3f0d;
+    --purple:#5b3fa8;
+    --done-bg:#eee7d8;
+    --shadow: 0 1px 2px rgba(40,30,10,.06);
+    font-size: 16px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#101018;
+      --surface:#1a1a24;
+      --ink:#ece6d6;
+      --muted:#928d9c;
+      --line:#2e2c3c;
+      --gold:#e0b055;
+      --gold-ink:#f6dd9a;
+      --purple:#9c85dd;
+      --done-bg:#20202c;
+      --shadow: 0 1px 2px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#101018; --surface:#1a1a24; --ink:#ece6d6; --muted:#928d9c;
+    --line:#2e2c3c; --gold:#e0b055; --gold-ink:#f6dd9a; --purple:#9c85dd;
+    --done-bg:#20202c; --shadow: 0 1px 2px rgba(0,0,0,.4);
+  }
+  :root[data-theme="light"]{
+    --bg:#f3efe6; --surface:#ffffffcc; --ink:#211c14; --muted:#7a7160;
+    --line:#ddd4c0; --gold:#a3771f; --gold-ink:#5c3f0d; --purple:#5b3fa8;
+    --done-bg:#eee7d8; --shadow: 0 1px 2px rgba(40,30,10,.06);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, color-mix(in srgb, var(--purple) 10%, transparent), transparent),
+      var(--bg);
+    color:var(--ink);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .display{
+    font-family: ui-serif, Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    text-wrap: balance;
+  }
+  .mono{
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .label{
+    text-transform:uppercase;
+    letter-spacing:.09em;
+    font-size:.72rem;
+    color:var(--muted);
+    font-weight:600;
+  }
+
+  a{color:var(--gold-ink);}
+
+  #page{
+    max-width:760px;
+    margin:0 auto;
+    padding: 2.4rem 1.5rem 6rem;
+  }
+
+  header.masthead{
+    display:flex;
+    flex-direction:column;
+    gap:.35rem;
+    margin-bottom:1.6rem;
+  }
+  header.masthead .eyebrow{
+    display:flex;
+    align-items:center;
+    gap:.6rem;
+    color:var(--muted);
+  }
+  header.masthead .eyebrow svg{ flex:none; }
+  h1.display{
+    font-size:2.1rem;
+    line-height:1.15;
+    margin:.1rem 0 0;
+    font-weight:600;
+  }
+  header.masthead p{
+    margin:.4rem 0 0;
+    color:var(--muted);
+    max-width:62ch;
+    line-height:1.55;
+  }
+
+  /* sticky progress rail */
+  #rail{
+    position:sticky;
+    top:0;
+    z-index:5;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom:1px solid var(--line);
+    margin: 0 -1.5rem 1.8rem;
+    padding: .85rem 1.5rem;
+  }
+  #rail-inner{
+    max-width:760px;
+    margin:0 auto;
+    display:flex;
+    align-items:center;
+    gap:1rem;
+  }
+  #rail-count{
+    font-size:1.05rem;
+    font-weight:700;
+    white-space:nowrap;
+  }
+  #rail-count .of{ color:var(--muted); font-weight:500; }
+  #rail-bar-track{
+    flex:1;
+    height:7px;
+    border-radius:99px;
+    background:var(--line);
+    overflow:hidden;
+  }
+  #rail-bar-fill{
+    height:100%;
+    border-radius:99px;
+    background: linear-gradient(90deg, var(--gold), var(--purple));
+    width:0%;
+    transition: width .35s ease;
+  }
+  #reset-btn{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--muted);
+    font-size:.78rem;
+    padding:.35rem .7rem;
+    border-radius:7px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  #reset-btn:hover{ color:var(--ink); border-color:var(--muted); }
+  #reset-btn:focus-visible, a:focus-visible, .item:focus-within, #rail input:focus-visible{
+    outline: 2px solid var(--purple);
+    outline-offset:2px;
+  }
+
+  nav#toc{
+    display:flex;
+    flex-wrap:wrap;
+    gap:.4rem .5rem;
+    margin-bottom:2rem;
+  }
+  nav#toc a{
+    font-size:.78rem;
+    text-decoration:none;
+    color:var(--muted);
+    border:1px solid var(--line);
+    padding:.3rem .6rem;
+    border-radius:99px;
+    transition: color .15s, border-color .15s;
+  }
+  nav#toc a:hover{ color:var(--ink); border-color:var(--gold); }
+
+  section.rig{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:14px;
+    box-shadow: var(--shadow);
+    padding:1.3rem 1.4rem 1.5rem;
+    margin-bottom:1.3rem;
+    scroll-margin-top: 4.5rem;
+  }
+  .rig-head{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:1rem;
+    border-bottom:1px solid var(--line);
+    padding-bottom:.7rem;
+    margin-bottom:.2rem;
+  }
+  .rig-head h2{
+    font-size:1.12rem;
+    margin:0;
+    font-weight:600;
+  }
+  .rig-head .tally{
+    color:var(--muted);
+    font-size:.82rem;
+    white-space:nowrap;
+  }
+  .rig-note{
+    color:var(--muted);
+    font-size:.86rem;
+    margin: .5rem 0 .9rem;
+    line-height:1.5;
+  }
+
+  ul.items{ list-style:none; margin:0; padding:0; }
+  .item{
+    display:flex;
+    align-items:flex-start;
+    gap:.65rem;
+    padding:.55rem 0;
+    border-top:1px solid var(--line);
+  }
+  .item:first-child{ border-top:none; }
+  .item input[type="checkbox"]{
+    appearance:none;
+    -webkit-appearance:none;
+    width:19px; height:19px;
+    margin-top:.15rem;
+    flex:none;
+    border-radius:5px;
+    border:1.5px solid var(--muted);
+    background:transparent;
+    cursor:pointer;
+    position:relative;
+    transition: background .15s, border-color .15s;
+  }
+  .item input[type="checkbox"]:checked{
+    background:var(--gold);
+    border-color:var(--gold);
+  }
+  .item input[type="checkbox"]:checked::after{
+    content:"";
+    position:absolute;
+    left:5px; top:1px;
+    width:6px; height:11px;
+    border-right:2px solid var(--surface);
+    border-bottom:2px solid var(--surface);
+    transform:rotate(40deg);
+  }
+  .item label{
+    line-height:1.5;
+    cursor:pointer;
+  }
+  .item.done label{
+    color:var(--muted);
+  }
+  .item kbd{
+    font-family: ui-monospace, monospace;
+    font-size:.82em;
+    background:var(--done-bg);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:0 .35em;
+  }
+
+  footer{
+    text-align:center;
+    color:var(--muted);
+    font-size:.8rem;
+    margin-top:2.5rem;
+    line-height:1.6;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    #rail-bar-fill{ transition:none; }
+  }
+</style>
+
+<div id="page">
+
+  <div id="rail">
+    <div id="rail-inner">
+      <div id="rail-count" class="mono"><span id="rail-done">0</span><span class="of">&nbsp;/&nbsp;<span id="rail-total">0</span> checked</span></div>
+      <div id="rail-bar-track"><div id="rail-bar-fill"></div></div>
+      <button id="reset-btn" type="button">Reset all</button>
+    </div>
+  </div>
+
+  <header class="masthead">
+    <div class="eyebrow label">
+      <svg width="18" height="18" viewBox="0 0 1024 1024" aria-hidden="true">
+        <rect x="64" y="64" width="896" height="896" rx="200" fill="var(--gold)"/>
+        <path d="M336 612 L688 612 C700 612 706 622 700 634 L540 886 C528 906 496 906 484 886 L324 634 C318 622 324 612 336 612 Z" fill="var(--bg)"/>
+      </svg>
+      Orpheus Guitar Studio &nbsp;·&nbsp; v3.0
+    </div>
+    <h1 class="display">First Session Checklist</h1>
+    <p>Walk through the app exactly as someone opening it for the very first time would — import a song, split it into stems, mix, plug in a guitar, record a take, and save your work. Each box you tick stays ticked in this browser, so you can close the tab and pick back up later. This needs real audio in and out (a guitar, an interface or built-in mic, speakers or headphones) to mean anything — it's a hands-on pass, not a code review.</p>
+  </header>
+
+  <nav id="toc"></nav>
+
+  <main id="sections"></main>
+
+  <footer>
+    Progress is saved to this browser only (<span class="mono">localStorage</span>), per device. Nothing is sent anywhere.
+  </footer>
+
+</div>
+
+<script>
+const DATA = [
+  {
+    id: "launch",
+    title: "1. Launch & orientation",
+    note: "Before touching any one feature, get your bearings.",
+    items: [
+      "The app opens to a Library sidebar (empty, or showing tracks if you've imported before) and a version number reads <strong>v3.0</strong> in the top banner.",
+      "The <strong>🎸 Play Along</strong> and <strong>❓ Help</strong> buttons are visible in the toolbar even with nothing imported yet.",
+      "Clicking <strong>❓ Help</strong> opens an overlay explaining the app; on a genuinely first-ever launch, it should already have opened itself once automatically.",
+      "Closing Help (<strong>Got it</strong>) and reopening it works, and it does not auto-open again on a page reload.",
+      "Pressing <kbd>?</kbd> opens a keyboard-shortcuts legend that matches what actually works elsewhere in the app.",
+    ]
+  },
+  {
+    id: "import",
+    title: "2. Import a song",
+    note: "Bring in one full backing track or full-band recording to work with for the rest of this checklist.",
+    items: [
+      "Dragging an audio file onto the sidebar imports it and it appears in the Library list.",
+      "Using the file picker (click-to-import) imports a second file the same way.",
+      "Selecting a freshly-imported track shows a <strong>Separate</strong> button rather than a mixer full of stems.",
+    ]
+  },
+  {
+    id: "separation",
+    title: "3. Stem separation",
+    note: "This is the slow, CPU-heavy step — give it a minute or two on a real machine.",
+    items: [
+      "Clicking <strong>Separate</strong> runs and finishes, leaving you with individual stem lanes (e.g. drums, bass, vocals, other/guitar).",
+      "Reselecting that same track later is fast (cached) — it does not re-run separation from scratch.",
+      "If the original audio file is moved or replaced on disk, reselecting the track shows a stale-source warning, and both <strong>Re-separate</strong> and <strong>Dismiss</strong> do something sensible.",
+    ]
+  },
+  {
+    id: "mixer",
+    title: "4. Mixer basics",
+    note: "One stem lane per instrument, plus transport controls above them.",
+    items: [
+      "Each lane's Mute and Solo buttons work, and soloing one lane silences all the others without losing their individual mute states when you un-solo.",
+      "Each lane's waveform is visible and its shape roughly tracks the loud/quiet parts you can hear.",
+      "Each lane's volume fader audibly changes that stem's level.",
+      "Opening a lane's <strong>Pan</strong> control and dragging it moves that stem audibly left/right, with a readable label (e.g. <span class='mono'>L50</span> / <span class='mono'>C</span> / <span class='mono'>R30</span>).",
+      "Opening a lane's EQ disclosure reveals Bass / Mid / Treble controls that each audibly reshape that stem's tone.",
+      "<span class='label' style='display:inline'>▶ / ■</span> Play and Stop work from the main transport, and the playhead moves along the ruler in time with the audio.",
+    ]
+  },
+  {
+    id: "practice",
+    title: "5. Practice tools",
+    note: "The features aimed at actually learning a song, not just listening to it.",
+    items: [
+      "Click-drag on the mute lane paints a muted region, and clicking an existing painted region removes it.",
+      "Dragging the two ruler handles sets an A/B loop; turning <strong>Loop</strong> on makes playback wrap at that region instead of continuing past it.",
+      "<strong>+ Marker</strong> drops a named marker at the playhead; clicking a marker later seeks straight to it.",
+      "Double-clicking a marker loops from it to the next marker (or the end of the track) and turns Loop on automatically.",
+      "With a loop region set, <strong>Zoom to loop</strong> visibly zooms the waveform in with real extra detail (not just a stretched blur), and <strong>Zoom out</strong> brings back the full view.",
+      "Faint tick marks appear along the ruler in time with the beat, with a brighter tick on every downbeat.",
+      "Turning on <strong>Click</strong> plays an audible metronome in sync with those ticks, accenting the first beat of every bar.",
+      "In the Speed Trainer panel, <strong>Start at Start%</strong> drops playback speed to the configured percentage, and repeated <strong>Step up</strong> clicks raise it in steps without overshooting the target percentage.",
+      "The inspector shows a detected musical key; moving the Tune slider previews the new (transposed) key live as you drag it.",
+      "Switching to a different track resets Speed and Tune back to normal, but leaves your Volume level alone.",
+    ]
+  },
+  {
+    id: "split",
+    title: "6. Guitar split (experimental)",
+    note: "Only relevant once a track has a combined guitar stem worth splitting into two takes.",
+    items: [
+      "The split panel appears once a <span class='mono'>guitar</span> stem exists for the selected track.",
+      "Running both the Spectral and Mid-side methods completes and reports a correlation figure for each.",
+      "The two resulting candidates sound like audibly different stereo pictures of the same performance.",
+    ]
+  },
+  {
+    id: "playalong-transport",
+    title: "7. Play Along — backing track & tuner",
+    note: "Open Play Along and work through the top strip before touching the pedalboard below it.",
+    items: [
+      "Opening <strong>🎸 Play Along</strong> shows the backing track transport, tuner, input meter, and pedalboard without needing to scroll to find them.",
+      "Play/Stop/Loop/Count-in/Speed/Tune/Volume here mirror whatever you already set in the main mixer, and changes here reflect back if you return to the mixer.",
+      "Turning the tuner on mutes both the backing track and your live guitar tone; turning it off restores both to their actual prior levels (not just full volume).",
+      "Playing a single note shows a plausible note name, cents offset, and a needle that settles rather than jitters wildly, when checked against an actual tuner or piano.",
+    ]
+  },
+  {
+    id: "playalong-input",
+    title: "8. Play Along — input & riff capture",
+    note: "Needs a real guitar plugged into an interface (or a mic picking up an amp).",
+    items: [
+      "The device dropdown lists your actual audio interface/input, and <strong>Enable input</strong> makes the meter respond to real playing.",
+      "The clip light lights up on a hot signal and stays lit until you hit <strong>Clear</strong> or start a new input session.",
+      "<strong>Calibrate (play your loudest chord)</strong> produces a sensible auto level rather than obviously wrong clipping or silence.",
+      "The input/calibration panel collapses itself after the first successful <strong>Enable input</strong>, and can be reopened by hand.",
+      "With no setup beyond opening Play Along, hitting <strong>🎸 Save that!</strong> saves a WAV of roughly your last ~20 seconds of playing (backing track + your guitar together).",
+      "Playing more and hitting <strong>Save that!</strong> again produces a second, different riff file — the rolling capture keeps running after a save.",
+      "Riff files are numbered on their own sequence, separate from numbered takes recorded via the Record tab.",
+    ]
+  },
+  {
+    id: "playalong-rig",
+    title: "9. Play Along — amp & pedalboard",
+    note: "The tone-shaping heart of Play Along — work through it front-to-back.",
+    items: [
+      "Switching between amp modes (Clean / Analog / Neural) is click-free, and only the active mode actually makes sound.",
+      "Loading a <span class='mono'>.nam</span> capture shows either real metadata or an honest \"no metadata\" message, plus its architecture and a speed-probe result.",
+      "The <strong>Drive</strong> knob audibly changes distortion character across its range.",
+      "The post-amp tone stack (Bass / Mid / Treble / Presence) sits flat by default and each knob audibly reshapes the tone when moved.",
+      "Loading a capture with no built-in loudness metadata shows an auto-calibration output-level readout instead of silently guessing.",
+      "Loading a parametric (non-WaveNet) capture shows a clear \"not yet supported\" message rather than failing confusingly.",
+      "Picking a Cab IR turns its bypass off automatically, and toggling bypass by hand is clearly audible.",
+      "EQ, Compressor, and Delay/Reverb each have an audible, independent bypass, and their sliders behave as labeled.",
+      "Dragging a pedal card by its <span class='mono'>⠿</span> handle to a new spot changes the actual signal order (compression before vs. after the cab sounds different) — Gate and Amp stay pinned at the front, Output stays pinned at the end.",
+      "Reloading the page keeps your pedal order exactly as you left it.",
+      "<strong>Suggest from this track's guitar stem</strong> proposes a plausible, clearly-labeled-as-rough tone based on the imported guitar part.",
+      "The Output meter and level slider respond correctly, and a browser-reported latency estimate appears when Play Along opens.",
+    ]
+  },
+  {
+    id: "presets",
+    title: "10. Rig presets",
+    note: "Save a tone once, recall it instantly next time.",
+    items: [
+      "<strong>Save current rig as…</strong> captures the full chain: amp mode, loaded capture + tweaker knobs, cab IR, EQ, Compressor, Delay/Reverb, Output level, and pedal order.",
+      "<strong>Load</strong>ing that preset later restores every one of those settings, not just some of them.",
+      "Checking \"attach to this song\" and reopening Play Along on the same song automatically recalls that preset without you doing anything.",
+      "Deleting a preset that's attached to the current song cleanly detaches it (no dangling reference, no error).",
+    ]
+  },
+  {
+    id: "recording",
+    title: "11. Recording a take",
+    note: "Switch to the Record tab inside Play Along.",
+    items: [
+      "The Record tab shows Record/Takes sub-tabs, with Perform selected by default when Play Along first opens.",
+      "With no camera enabled, hitting <strong>● Record</strong> and stopping produces an audio-only file, and the interface says so beforehand (not a silent black video box).",
+      "Turning on <strong>Enable camera</strong> shows a live preview, switches the hint to say video will be included, and produces an actual video file on the next take.",
+      "Recording with \"start backing track\"/count-in turned on actually starts the backing track in sync with the recording.",
+      "A red <strong>REC</strong> indicator appears in the main toolbar while recording, and clicking it jumps back into Play Along; stopping the recording also stops the backing track.",
+      "After stopping, the take finishes processing and offers <strong>Reveal</strong> and <strong>Discard</strong>.",
+      "For a video take, <strong>Auto-calibrate (clap once, ~5s)</strong> (or the manual alternative) produces a believable audio/video sync offset.",
+    ]
+  },
+  {
+    id: "takes",
+    title: "12. Reviewing takes",
+    items: [
+      "The Takes list shows every recording you've made, oldest/newest in a sensible order.",
+      "Star, rename, reveal-in-folder, and delete each work on a take.",
+      "Clicking Play loads a take into an inline player without leaving the page.",
+      "<strong>Trim (lossless copy, new file)</strong> produces a new, correctly-trimmed file and leaves the original take untouched.",
+    ]
+  },
+  {
+    id: "projects",
+    title: "13. Projects (saving your work)",
+    note: "Confirms your mix, loop, markers, and rig choices actually survive.",
+    items: [
+      "After changing the mix, loop, or markers on a song, waiting a moment and reselecting a different track then coming back restores exactly what you left.",
+      "A small dot appears next to any track in the Library sidebar that has a saved project.",
+      "Renaming the source audio file on disk and reselecting the (now differently-named) track still loads the same saved mix, loop, and markers correctly.",
+    ]
+  },
+  {
+    id: "export",
+    title: "14. Export",
+    items: [
+      "Exporting bounces exactly your mute/gain choices from the mixer — Solo, Pan, and per-stem EQ do <em>not</em> leak into the exported file (they're for monitoring while you play, not for the mix itself).",
+      "Both the WAV and MP3 export formats produce a playable file.",
+      "The output filename, target loudness (LUFS), normalize toggle, and boost cap all visibly change the exported result.",
+    ]
+  },
+  {
+    id: "cross-cutting",
+    title: "15. Cross-cutting checks",
+    note: "Things that should just quietly work no matter what else you were doing.",
+    items: [
+      "Leaving the app idle in a background tab for a while and coming back doesn't require a page reload to hear audio again.",
+      "None of the keyboard shortcuts fire while you're typing into a text field (e.g. renaming a take or naming a marker).",
+      "<kbd>Shift</kbd> + <kbd>←/→</kbd> nudges the playhead by ~5 seconds; <kbd>Alt</kbd> + <kbd>←/→</kbd> nudges it by ~100ms.",
+      "Reselecting a track you've already opened once loads its stems and any loaded amp captures/cab IRs noticeably faster the second time.",
+      "Seeking around inside a recorded video take (scrubbing the player) works immediately rather than needing the whole file to download first.",
+    ]
+  },
+];
+
+const root = document.getElementById("sections");
+const toc = document.getElementById("toc");
+const STORAGE_KEY = "orpheus-first-session-checklist-v1";
+
+let state = {};
+try { state = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch(e) { state = {}; }
+
+let totalItems = 0;
+
+DATA.forEach(section => {
+  const tocLink = document.createElement("a");
+  tocLink.href = "#" + section.id;
+  tocLink.textContent = section.title.replace(/^\d+\.\s*/, "");
+  toc.appendChild(tocLink);
+
+  const el = document.createElement("section");
+  el.className = "rig";
+  el.id = section.id;
+
+  const head = document.createElement("div");
+  head.className = "rig-head";
+  head.innerHTML = `<h2>${section.title}</h2><span class="tally mono" data-tally></span>`;
+  el.appendChild(head);
+
+  if (section.note) {
+    const note = document.createElement("p");
+    note.className = "rig-note";
+    note.textContent = section.note;
+    el.appendChild(note);
+  }
+
+  const ul = document.createElement("ul");
+  ul.className = "items";
+
+  section.items.forEach((html, i) => {
+    totalItems++;
+    const id = section.id + "-" + i;
+    const li = document.createElement("li");
+    li.className = "item";
+    const checked = !!state[id];
+    if (checked) li.classList.add("done");
+    li.innerHTML = `<input type="checkbox" id="${id}" ${checked ? "checked" : ""}><label for="${id}">${html}</label>`;
+    ul.appendChild(li);
+  });
+
+  el.appendChild(ul);
+  root.appendChild(el);
+});
+
+function updateTallies() {
+  let grandDone = 0;
+  DATA.forEach(section => {
+    const el = document.getElementById(section.id);
+    const boxes = el.querySelectorAll('input[type="checkbox"]');
+    const done = [...boxes].filter(b => b.checked).length;
+    grandDone += done;
+    el.querySelector('[data-tally]').textContent = `${done} / ${boxes.length}`;
+  });
+  document.getElementById("rail-done").textContent = grandDone;
+  document.getElementById("rail-total").textContent = totalItems;
+  document.getElementById("rail-bar-fill").style.width = totalItems ? (100 * grandDone / totalItems) + "%" : "0%";
+}
+
+root.addEventListener("change", e => {
+  if (e.target.matches('input[type="checkbox"]')) {
+    state[e.target.id] = e.target.checked;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    e.target.closest(".item").classList.toggle("done", e.target.checked);
+    updateTallies();
+  }
+});
+
+document.getElementById("reset-btn").addEventListener("click", () => {
+  if (!confirm("Clear every checked box on this checklist?")) return;
+  state = {};
+  localStorage.removeItem(STORAGE_KEY);
+  root.querySelectorAll('input[type="checkbox"]').forEach(b => {
+    b.checked = false;
+    b.closest(".item").classList.remove("done");
+  });
+  updateTallies();
+});
+
+updateTallies();
+</script>
