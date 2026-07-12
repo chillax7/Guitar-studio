@@ -131,3 +131,31 @@ see appstore-plan.md — demands it).
 
 Each milestone ends the v3 way: update the docs for what shipped, commit
 with root-cause-style messages, push, user run-through before the next.
+
+## 5. After v4: the compatibility line (decided 2026-07-12)
+
+User decision at the v3.0 checkpoint: **v4 ships and is fully tested on
+the Mac, then a line is drawn under new features** before any
+cross-platform work. Nothing platform-related belongs in v4 itself.
+The post-v4 compatibility phase, in the order a July 2026 audit ranked
+the effort:
+
+1. **Linux — days.** Backend already proven on Linux (every headless dev
+   verification runs the real stack there); `find_ffmpeg()` already
+   covers `/usr/bin/ffmpeg`. Needs: platform-dispatched reveal
+   (`org.freedesktop.FileManager1` ShowItems, `xdg-open` fallback),
+   `run.sh` + `.desktop`, a setup doc. Bonus: cleanest torch-CUDA path
+   of any platform.
+2. **Windows — about a week (XC-06).** Same reveal dispatch
+   (`explorer /select,`), Windows ffmpeg lookup + install docs, a real
+   `run.bat` (the backlog's claim that one exists is wrong — none is in
+   the repo), `SETUP-WINDOWS.md`, and an honesty note that browser audio
+   on Windows is shared-mode WASAPI (~20–50 ms round trip, no ASIO) so
+   the live rig feels less immediate than CoreAudio.
+3. **Chromebook — don't port.** Crostini + typical Chromebook hardware
+   can't carry the separation models or the WASM NAM realtime budget.
+   The right answer is **LAN mode**: opt-in server bind beyond loopback
+   with a simple token, so a Mac does the ML and any browser device
+   (Chromebook, tablet, laptop) is a practice-rig client. Same
+   companion-device shape as appstore-plan.md's iOS story. Spec it as a
+   new backlog item when the phase starts.
