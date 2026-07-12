@@ -164,24 +164,34 @@ body {
 #toolbar-tools { display: none; align-items: center; gap: 8px; }
 #toolbar-tools.show { display: flex; }
 
+/* House rule: any button available to click reads as blue (accent-outlined,
+   like Separate's own resting look) so "this is clickable" is legible at a
+   glance; solid blue fill means "on" (.primary, .active). Disabled buttons
+   drop out of the blue family entirely via the color/border reset below
+   (opacity alone reads as "dim blue", not "unavailable"). More specific
+   rules override the .active fill per-button (the Loop and Tuner toggles
+   go green instead — green = "a transport/monitor state is running", blue
+   = "an option is available/on"). */
 button {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
   border-radius: 4px;
   padding: 5px 10px;
   cursor: pointer;
   font-size: 12px;
 }
 button:hover { background: var(--accent-dim); }
-button:disabled { opacity: 0.4; cursor: default; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.primary:hover { filter: brightness(1.1); }
-/* House rule: any toggle button that's currently ON is accent-blue. More
-   specific rules override per-button (the Loop and Tuner toggles stay
-   green — green = "a transport/monitor state is running", blue = "an
-   option is enabled"). */
-button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+  border-color: var(--border);
+  color: var(--text-dim);
+  background: transparent;
+}
+button:disabled:hover { background: transparent; }
+button.primary, button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover, button.active:hover { filter: brightness(1.1); }
 
 #model-badge {
   position: relative;
