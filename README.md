@@ -38,7 +38,7 @@ python3 backing_track.py separate path/to/song.mp3 --model htdemucs_6s
 Or use `bs_roformer_sw` (BT-13) instead — a newer model (via the
 `audio-separator` package) with much better guitar-stem quality than
 `htdemucs_6s` (benchmarked ~9 dB vs. ~2.6 dB SDR on guitar specifically; see
-`guitar-separation-upgrade-spec.md`). Produces the same 6 stems. Kept
+`research/guitar-separation-upgrade-spec.md`). Produces the same 6 stems. Kept
 alongside `htdemucs_6s`, not replacing it, so you can A/B the two on the same
 song — both get cached under `separated/<model>/` and copied into
 `output/<track>/` with a model-name prefix so nothing collides:

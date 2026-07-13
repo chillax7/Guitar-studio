@@ -1,7 +1,7 @@
 # Lead/Rhythm Guitar Separation — Deep Research: How Others Do It, and How We Could Train Our Own
 
 **Status:** research document (July 2026), extending
-[guitar-separation-upgrade-spec.md](../guitar-separation-upgrade-spec.md) §4,
+[guitar-separation-upgrade-spec.md](guitar-separation-upgrade-spec.md) §4,
 which established in early 2026 that no open model or dataset for
 role-based guitar separation existed. This doc goes further: what Moises
 actually does (new evidence), whether the landscape has changed, and a

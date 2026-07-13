@@ -6,10 +6,10 @@ to be handed to a **fresh working session** as its starting brief — it
 assumes no memory of how v2.5 was built, so context that a new session
 needs is spelled out rather than implied.
 
-**Companion docs:** [enhancements-backlog.md](enhancements-backlog.md)
+**Companion docs:** [enhancements-backlog.md](../enhancements-backlog.md)
 (the full picklist this selects from — item IDs like GP-02 refer to it),
-[USER-MANUAL.md](USER-MANUAL.md) (what the app does today),
-[TEST-PLAN.md](TEST-PLAN.md) (regression checklist).
+[USER-MANUAL.md](../USER-MANUAL.md) (what the app does today),
+[TEST-PLAN.md](../TEST-PLAN.md) (regression checklist).
 
 ---
 

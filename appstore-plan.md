@@ -2,7 +2,7 @@
 
 **Status:** planning document, written at the v3.0 checkpoint. This is
 the *distribution* track — deliberately separate from the v4 feature
-release ([release-v4-spec.md](release-v4-spec.md)) so neither blocks the
+release ([release-v4-spec.md](research/release-v4-spec.md)) so neither blocks the
 other. Nothing here is committed until a phase is selected.
 
 **The short answer to "does it need a Swift rewrite?":** No for the Mac —

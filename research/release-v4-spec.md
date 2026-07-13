@@ -7,11 +7,11 @@ handed to a **fresh working session** as its starting brief.
 
 **Companion docs:** [rate-my-take-spec.md](rate-my-take-spec.md) (full
 design for this release's headline feature),
-[appstore-plan.md](appstore-plan.md) (distribution track, deliberately
+[appstore-plan.md](../appstore-plan.md) (distribution track, deliberately
 kept OUT of this feature release),
-[enhancements-backlog.md](enhancements-backlog.md) (picklist — IDs like
-BT-04 refer to it), [USER-MANUAL.md](USER-MANUAL.md),
-[TEST-PLAN.md](TEST-PLAN.md),
+[enhancements-backlog.md](../enhancements-backlog.md) (picklist — IDs like
+BT-04 refer to it), [USER-MANUAL.md](../USER-MANUAL.md),
+[TEST-PLAN.md](../TEST-PLAN.md),
 [FIRST-SESSION-CHECKLIST.html](FIRST-SESSION-CHECKLIST.html).
 
 ---

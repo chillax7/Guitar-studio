@@ -1,6 +1,6 @@
 # Guitar Studio v0.4 "Orpheus" — Release Specification
 
-**Status:** planning document — nothing in here is built yet. Scopes the next release: 14 items selected from [enhancements-backlog.md](enhancements-backlog.md) — **BT-01, BT-05, BT-06, BT-16, GP-01, GP-05, GP-10, GP-13, VD-01, VD-03, VD-04, VD-09, XC-02, XC-03** — mostly the "Quick win" tier plus a few small Core items that round out a coherent practice-session workflow. BT-13 (separation engine upgrade) already shipped; not part of this release.
+**Status:** planning document — nothing in here is built yet. Scopes the next release: 14 items selected from [enhancements-backlog.md](../enhancements-backlog.md) — **BT-01, BT-05, BT-06, BT-16, GP-01, GP-05, GP-10, GP-13, VD-01, VD-03, VD-04, VD-09, XC-02, XC-03** — mostly the "Quick win" tier plus a few small Core items that round out a coherent practice-session workflow. BT-13 (separation engine upgrade) already shipped; not part of this release.
 
 ---
 
