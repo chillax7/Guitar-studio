@@ -364,9 +364,10 @@ with a meter:
   "Auto-Wah," not "Wah," on purpose: this sweeps on its own timer, it
   doesn't track an expression pedal — there's no MIDI/expression input
   wired up yet.
-- **Octaver** — a rectify-and-filter sub-octave coloration (Blend knob).
-  This is **not** a true pitch tracker; it's cleanest on single
-  monophonic notes and breaks up on chords, same honesty-note spirit as
+- **Octaver** — a real octave-down via zero-crossing frequency division
+  (Blend knob), the same technique classic analog octave pedals use.
+  Monophonic by construction; it's cleanest on single notes and breaks up
+  on chords, same honesty-note spirit as
   the guitar-split and chord-detection features elsewhere in this app.
 
 **Drag-to-reorder:** all twelve of the above (Cab IR, EQ, Compressor,

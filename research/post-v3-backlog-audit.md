@@ -12,6 +12,9 @@ genuine survivors given a proper new home below.
 what's left was already known and is already tracked in release-v4-spec.md
 — except **six small items** that fell through the cracks of every
 later planning doc. Those six are this document's actual payload (§2).
+Since being written, this doc has also become the informal landing spot
+for new ideas surfacing during v3.1 hardware testing that don't yet
+belong to any milestone — see §4.
 
 ---
 
@@ -104,10 +107,18 @@ built: all eight are reorderable pedalboard cards alongside the original
 four (twelve total between Gate/Amp and Output), each with its own
 bypass, controls, and rig-preset round-trip. Auto-Wah is named that (not
 "Wah") since it's LFO-swept, not expression-pedal controlled — there's
-still no MIDI/expression input (GP-11, still open). Octaver is a
-rectify-and-filter sub-octave approximation, not a true pitch tracker —
-flagged honestly in its own card hint, same spirit as the chord-detection
-and off-pitch-detect honesty notes elsewhere. v3.1 also added a
+still no MIDI/expression input (GP-11, still open). Octaver went through
+one design revision: the first cut used a WaveShaper "rectify and
+lowpass" trick, which turned out not to actually produce sub-octave
+content at all (rectifying a sine doubles its frequency — an octave UP —
+so the lowpassed result was a near-DC blob that audibly muddied the mix,
+reported during hardware testing as the pedal "cutting the sound").
+Replaced with a proper zero-crossing frequency divider (octave-processor.js,
+a small AudioWorklet, same pattern as the existing gate/NAM worklets) —
+the real technique classic analog octave pedals use. Monophonic by
+construction, flagged honestly in its own card hint, same spirit as the
+chord-detection and off-pitch-detect honesty notes elsewhere. v3.1 also
+added a
 signal-flow visualization (arrows between pedalboard cards, following
 chain order) that wasn't part of the original GP-03 ask but was requested
 alongside it.
@@ -180,3 +191,47 @@ whichever v4 milestone touches the artifact-cleanup pass (V4-F6) as a
 small bonus item, and leave 2.4/2.5/2.6 as a genuine "v5 or whenever it's
 wanted" pile — this document is their record so they don't need
 re-discovering from scratch later.
+
+---
+
+## 4. New idea logged since this audit (not yet scoped)
+
+### GP-14 · Multiple rig presets per song, cycled with one key
+
+User idea (2026-07-14, while hardware-testing v3.1): rig presets (GP-02)
+are currently one-preset-per-song ("attach to this song" recalls a single
+named preset on load). The ask is to attach **several** presets to one
+song — e.g. **Clean**, **Rhythm**, **Solo** — and a fast, hands-on-guitar
+way to step through them live, floated as "something like Space to
+cycle."
+
+Worth scoping as its own item because it's a real design decision, not
+just a UI tweak:
+
+- **Data model:** a song's project would need an ordered *list* of preset
+  names instead of GP-02's single `rigPreset` field — a small, additive
+  change to XC-01's project format (already versioned for exactly this
+  kind of growth).
+- **The cycle key:** plain Space is already bound to play/pause (see
+  USER-MANUAL.md §12 and XC-02's "Beyond Space" framing — Space is the
+  one shortcut that predates that list). Reusing it for preset-cycling
+  would collide with transport control, so this needs either a modifier
+  (e.g. Shift+Space), a dedicated key, or — arguably the better fit for
+  "hands stay on the guitar" — a foot-switch binding once GP-11 (MIDI
+  foot controller, picked for v4 as V4-F5) exists. Worth deciding
+  alongside V4-F5 rather than shipping a keyboard-only version first and
+  re-doing it.
+- **Switching behavior:** rig preset recall today (`paApplyRigState`) sets
+  every control via the same dispatch path a manual change would use — no
+  click-suppression/crossfade on switch. That's fine for "recall once on
+  song load," but a live mid-song cycle (e.g. rhythm→solo mid-song) makes
+  an audible switch artifact much more likely to matter. Would need at
+  least a fast fade-through-silence on switch, maybe more.
+- **Size:** M — mostly UI + the project-format list change; the switching
+  artifact question is the one part that might need real listening/tuning
+  time.
+
+Not scoped further than this — no milestone assignment yet. Natural
+pairing candidates: v4's V4-F5 (MIDI foot controller) for the cycle
+trigger, and V4-F3 (playlists) since both are about fast song-to-song/
+preset-to-preset flow during a practice or gig session.

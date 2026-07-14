@@ -130,6 +130,7 @@ async function ensurePAGraph() {
   if (PA.built) return;
   await Audio.ctx.audioWorklet.addModule("gate-processor.js");
   await Audio.ctx.audioWorklet.addModule("nam-processor.js");
+  await Audio.ctx.audioWorklet.addModule("octave-processor.js");
 
   PA.inAnal = Audio.ctx.createAnalyser();
   PA.inAnal.fftSize = 8192; // GP-01 needs several full cycles of a low guitar E (~82Hz) for accurate autocorrelation
@@ -368,22 +369,20 @@ async function ensurePAGraph() {
   PA.wahMerge = Audio.ctx.createGain();
   PA.wahWetGain.connect(PA.wahMerge);
 
-  // Octaver — full-wave rectification + lowpass, an approximate sub-octave
-  // coloration (not a true pitch tracker — see the card's own hint text
-  // and USER-MANUAL.md). Blend knob crossfades dry/wet.
-  const octRectifyCurve = new Float32Array(2048);
-  for (let i = 0; i < 2048; i++) {
-    const x = (i * 2) / 2048 - 1;
-    octRectifyCurve[i] = Math.abs(x) * 2 - 1;
-  }
-  PA.octaverShaper = Audio.ctx.createWaveShaper();
-  PA.octaverShaper.curve = octRectifyCurve;
-  PA.octaverLowpass = Audio.ctx.createBiquadFilter();
-  PA.octaverLowpass.type = "lowpass"; PA.octaverLowpass.frequency.value = 300;
-  PA.octaverShaper.connect(PA.octaverLowpass);
+  // Octaver — real octave-down via zero-crossing frequency division
+  // (octave-processor.js AudioWorklet), same technique classic analog
+  // octave pedals use. An earlier version tried a WaveShaper "rectify and
+  // lowpass" trick, which turned out not to produce sub-octave content at
+  // all (rectifying a sine DOUBLES its frequency — that's an octave UP —
+  // so low-passing away the doubled content just left a near-DC blob that
+  // muddied the mix instead of adding a real low note under it). Blend
+  // knob crossfades dry/wet, same idiom as Boost's hard-bypass pair.
+  PA.octaveNode = new AudioWorkletNode(Audio.ctx, "octave-processor", {
+    numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1,
+  });
   PA.octaverDryGain = Audio.ctx.createGain(); PA.octaverDryGain.gain.value = 1;
   PA.octaverWetGain = Audio.ctx.createGain(); PA.octaverWetGain.gain.value = 0;
-  PA.octaverLowpass.connect(PA.octaverWetGain);
+  PA.octaveNode.connect(PA.octaverWetGain);
   PA.octaverMerge = Audio.ctx.createGain();
   PA.octaverDryGain.connect(PA.octaverMerge);
   PA.octaverWetGain.connect(PA.octaverMerge);
@@ -411,7 +410,7 @@ async function ensurePAGraph() {
     phaser: { inputs: [PA.phaserStages[0], PA.phaserMerge], output: PA.phaserMerge },
     tremolo: { inputs: [PA.tremoloGain], output: PA.tremoloGain },
     wah: { inputs: [PA.wahFilter, PA.wahMerge], output: PA.wahMerge },
-    octaver: { inputs: [PA.octaverDryGain, PA.octaverShaper], output: PA.octaverMerge },
+    octaver: { inputs: [PA.octaverDryGain, PA.octaveNode], output: PA.octaverMerge },
   };
   PA.pedalOrder = paLoadPedalOrder();
   rewirePedalChain();
@@ -517,6 +516,22 @@ function setAmpMode(mode) {
 // ---------------------------------------------------------------------------
 // Input device + getUserMedia
 // ---------------------------------------------------------------------------
+//
+// v3.1 fix: "Enable Input" used to default to whatever getUserMedia's own
+// default is, which on a Mac with no explicit choice is the built-in
+// microphone — live-monitored through speakers into an amp/distortion
+// chain, a textbook feedback loop (the exact scenario documented in
+// USER-MANUAL.md's auto-calibrate section, which hit the same issue from
+// the recording side). Two fixes, same idiom as pedal order/collapsed
+// cards (localStorage): remember whichever device was last actually used,
+// and — before any device has ever been chosen — prefer an input whose
+// label doesn't look like the built-in mic. Device labels are blank until
+// mic permission has been granted at least once for this origin, so on a
+// truly first-ever run (no prior permission grant in this browser
+// profile) this heuristic can't see anything to prefer and the OS default
+// wins for that one session — same platform limitation the app can't see
+// around, not a bug in this fix.
+const PA_INPUT_DEVICE_KEY = "gs_pa_input_device";
 
 async function paRefreshDevices() {
   const devices = await navigator.mediaDevices.enumerateDevices();
@@ -530,7 +545,18 @@ async function paRefreshDevices() {
     opt.textContent = d.label || `Input ${sel.children.length + 1}`;
     sel.appendChild(opt);
   }
-  if (prevValue) sel.value = prevValue;
+
+  if (prevValue && inputs.some((d) => d.deviceId === prevValue)) {
+    sel.value = prevValue;
+    return;
+  }
+  const savedId = localStorage.getItem(PA_INPUT_DEVICE_KEY);
+  if (savedId && inputs.some((d) => d.deviceId === savedId)) {
+    sel.value = savedId;
+    return;
+  }
+  const nonBuiltIn = inputs.find((d) => d.label && !/built-in|macbook/i.test(d.label));
+  if (nonBuiltIn) sel.value = nonBuiltIn.deviceId;
 }
 
 async function paEnableInput() {
@@ -557,6 +583,11 @@ async function paEnableInput() {
 
     hintEl.textContent = "Input enabled.";
     await paRefreshDevices(); // device labels only populate after permission is granted
+    // v3.1: persist whichever device actually just succeeded — including
+    // the very first auto-picked default — so future sessions start here
+    // instead of re-deriving the same heuristic from scratch every time.
+    const activeId = document.getElementById("pa-device-select").value;
+    if (activeId) localStorage.setItem(PA_INPUT_DEVICE_KEY, activeId);
     paStartMeters();
   } catch (e) {
     hintEl.textContent = `Could not access input: ${e.message}. Check System Settings > Privacy & Security > Microphone.`;
