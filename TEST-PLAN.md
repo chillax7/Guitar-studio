@@ -54,7 +54,7 @@ instead — open it directly in a browser, no server required.
 - [ ] Input: meter and clip light respond to real input level; clip light latches until Clear or a new input session; the device/Calibrate disclosure stays open across uses until you collapse it yourself.
 - [ ] Double-clicking the Speed/Tune value readout (mixer and Play Along) resets that slider to 1.00×/0¢; double-clicking a stem's volume percentage in the mixer resets it to 100%.
 - [ ] **Rig preset auto-recall:** attaching a preset, closing Play Along, reselecting the track (or any other track and back), and reopening Play Along recalls the rig AND shows the "attach" checkbox still checked against the right preset name.
-- [ ] **Auto-calibrate:** with a genuine pause before clapping, the reported offset falls in a plausible range (roughly 50-300ms); an implausible result says so explicitly rather than silently applying a bad number.
+- [ ] **Auto-calibrate:** requires Input enabled first (with an instrument connected, not a bare microphone) and says so clearly if it isn't; with a genuine pause before strumming, the reported offset falls in a plausible range (roughly 50-300ms); an implausible result says so explicitly rather than silently applying a bad number.
 - [ ] **Riff Capture (GP-07):** "Save that!" (with no prior setup) saves a WAV file capturing roughly the last ~20s of backing+guitar audio; saving doesn't interrupt the rolling capture (playing right after and saving again produces a second, different riff file); riff files are numbered independently from regular takes.
 
 ## 5. Play Along — pedalboard

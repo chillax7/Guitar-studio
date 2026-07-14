@@ -335,6 +335,20 @@ async function vdAutoCalibrate() {
     resultEl.textContent = "Enable the camera first.";
     return;
   }
+  // A clap makes no sound in what actually gets analyzed/recorded here:
+  // Recorder.recordBus is the backing track mix + your PROCESSED guitar
+  // signal (see ensureRecordBus/§10 of the manual) — there's no live room
+  // microphone in that path by design, so a physical clap was always
+  // silent to it regardless of detection tuning. A guitar strum instead
+  // travels through the real signal path (input -> gate -> amp -> this
+  // same recordBus) and is just as visible on camera, from the same real
+  // moment — so it calibrates against what you're actually recording,
+  // not a side-channel a mic would introduce (and which, on speakers
+  // rather than headphones, is exactly what causes feedback).
+  if (!(typeof PA !== "undefined" && PA.stream)) {
+    resultEl.textContent = "Enable Play Along input first (Input > Enable input) — calibration needs a real strum through your instrument, not a microphone.";
+    return;
+  }
   ensureRecordBus();
 
   const audioAnalyser = Audio.ctx.createAnalyser();
@@ -350,7 +364,7 @@ async function vdAutoCalibrate() {
   let prevFrame = null;
   const videoSamples = [];
 
-  resultEl.textContent = "Listening — wait a beat, then clap once in front of the camera (5s)…";
+  resultEl.textContent = "Listening — wait a beat, then give your guitar strings one hard strum/hit, visible on camera (5s)…";
   const startTime = performance.now();
   const durationMs = 5000;
 
@@ -416,7 +430,7 @@ async function vdAutoCalibrate() {
   }
 
   if (audioSpikeT === null || videoSpikeT === null) {
-    resultEl.textContent = "Calibration failed — no clear clap detected above background noise within a plausible video-lag window, try again (clap firmly, closer to the mic, and make sure the clap is visible on camera).";
+    resultEl.textContent = "Calibration failed — no clear strum detected above background noise within a plausible video-lag window, try again (hit the strings firmly, and make sure your strumming hand is visible on camera).";
     return;
   }
 

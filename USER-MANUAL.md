@@ -455,18 +455,25 @@ Consumer webcams have a real pipeline delay (commonly 50–200ms) — video
 arrives late relative to audio, which is captured essentially instantly.
 Two ways to fix it:
 
-- **Auto-calibrate (wait a beat, then clap once, ~5s)** — records a short
-  burst, finds the clap in both the audio and the video automatically, and
-  fills in the A/V offset field for you. Waiting briefly before clapping
-  matters: the first fraction of a second is used to measure background
-  noise/motion so the real clap can be told apart from it. Quick, but not
-  infallible — a result flagged as implausible (outside the 50–300ms range
-  real webcam latency falls in) is more likely a mistimed detection than
-  genuine lag; retry or fall back to manual.
-- **Manual:** record a 5-second take clapping once in front of the camera,
-  open the file in QuickTime (or similar), find the video frame where your
-  hands meet and the audio spike of the clap, and enter the difference (in
-  milliseconds) into the **A/V offset** field yourself.
+- **Auto-calibrate (wait a beat, then strum once, ~5s)** — records a short
+  burst and finds the moment your strum hits in both the video and the
+  actual recorded audio. It deliberately asks for a strum, not a clap: what
+  gets calibrated against is the same signal a take actually records —
+  backing track + your **processed guitar** (§10) — which has no live
+  microphone in it by design, so a clap makes no sound in it no matter how
+  loud it is in the room. Needs **Input enabled** first (§9.1) with your
+  instrument actually connected — this is calibrating your real rig's
+  path, not a side-channel mic (which, monitored through speakers rather
+  than headphones, is also the fastest way to a feedback howl). Waiting
+  briefly before strumming matters: the first fraction of a second measures
+  background noise/motion so the real strum can be told apart from it.
+  Quick, but not infallible — a result flagged as implausible (outside the
+  50–300ms range real webcam latency falls in) is more likely a mistimed
+  detection than genuine lag; retry or fall back to manual.
+- **Manual:** record a 5-second take striking a single hard, clear note
+  visibly, open the file in QuickTime (or similar), find the video frame
+  where you strike it and the audio spike of that note, and enter the
+  difference (in milliseconds) into the **A/V offset** field yourself.
 
 Either way, this delays the audio by that amount at finalize time to match
 the late video — it's a one-time calibration per camera, and it persists
