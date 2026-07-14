@@ -53,6 +53,7 @@ const State = {
   markers: [], // BT-08 (M4) — not populated until that lands
   rigPreset: null, // GP-02 — name of the rig preset attached to this song, if any
   rigPresetApplied: false, // has paApplyAttachedRigPreset already run for the current track
+  bpmOverride: null, // user-corrected BPM (×2/½ octave-error fix), overrides State.analysis.bpm once loaded
 };
 
 const STEM_ORDER = ["vocals", "drums", "bass", "guitar", "piano", "other"];
@@ -540,6 +541,7 @@ function migrateProjectV2(raw) {
     ui: raw.ui || { loop: null, loopEnabled: false },
     markers: [], // BT-08 (M4) — empty until that lands
     rigPreset: null, // GP-02 (M3) — no preset attached to a v1 project
+    bpmOverride: null, // no tempo correction recorded on a v1 project
   };
 }
 
@@ -557,6 +559,7 @@ function saveProjectDebounced() {
         ui: State.ui,
         markers: State.markers || [],
         rigPreset: State.rigPreset || null,
+        bpmOverride: State.bpmOverride || null,
       },
     }).catch(() => { /* best-effort */ });
   }, 600);
@@ -659,6 +662,7 @@ async function selectTrack(name) {
   // here, since the PA audio graph doesn't exist until ensurePAGraph runs.
   State.rigPreset = (project && project.rigPreset) || null;
   State.rigPresetApplied = false;
+  State.bpmOverride = (project && project.bpmOverride) || null;
   toggleTransportClass("loop-toggle-btn", "active", State.ui.loopEnabled);
   updateModelBadge();
   if (typeof refreshTakesList === "function") refreshTakesList(); // recorder.js — takes are per-track
@@ -689,6 +693,13 @@ async function onStemsLoaded(result) {
   State.stems = result.stems;
   State.analysis = result.analysis || {};
   State.stale = result.stale;
+  // Octave errors (detecting half or double the real tempo) are a known,
+  // essentially unfixable-in-general failure mode of automatic tempo
+  // estimation — the ×2/½ buttons next to the BPM readout are the escape
+  // hatch. State.bpmOverride is loaded from the project in selectTrack();
+  // apply it now that a fresh State.analysis (with the raw detected value)
+  // has just landed on top of it.
+  if (State.bpmOverride && State.analysis.bpm) State.analysis.bpm = State.bpmOverride;
   // BT-02: the click has nothing to play without a beat grid — disable the
   // toggle and say why, rather than letting it sit there silently inert.
   const clickBtn = document.getElementById("click-toggle");
@@ -754,7 +765,7 @@ function renderLanes() {
       </div>
       <div class="lane-fader">
         <input type="range" class="lane-gain-input" min="0" max="1.5" step="0.01" value="${State.mix.gains[name] ?? 1.0}">
-        <span class="lane-gain-val">${Math.round((State.mix.gains[name] ?? 1.0) * 100)}%</span>
+        <span class="lane-gain-val" style="cursor:pointer" title="Double-click to reset to 100%">${Math.round((State.mix.gains[name] ?? 1.0) * 100)}%</span>
       </div>
       <div class="lane-pan-row">
         <input type="range" class="lane-pan-input" min="-1" max="1" step="0.01" value="${pan}">
@@ -797,6 +808,10 @@ function renderLanes() {
       const v = parseFloat(e.target.value);
       setGain(name, v);
       header.querySelector(".lane-gain-val").textContent = Math.round(v * 100) + "%";
+    });
+    header.querySelector(".lane-gain-val").addEventListener("dblclick", () => {
+      fader.value = "1";
+      fader.dispatchEvent(new Event("input", { bubbles: true }));
     });
 
     // BT-11: pan + 3-band EQ per stem.
@@ -1372,6 +1387,28 @@ function wireVolumeSlider() {
 // Inspector: track analysis, guitar split, export
 // ---------------------------------------------------------------------------
 
+// Octave errors (locking onto half or double the real tempo) are a known
+// failure mode of automatic tempo estimation that no amount of tuning
+// fully eliminates — see backing_track.py's own start_bpm=140 comment.
+// Rather than chase a perfect detector, give the user a one-click escape
+// hatch; the corrected value is saved per-song (State.bpmOverride) so it
+// sticks. Mutates State.analysis.bpm directly (not a separate multiplier)
+// so every consumer that already reads it — the display here, and
+// countInBpm()'s count-in scheduling — picks up the correction for free.
+function correctBpm(multiplier) {
+  const a = State.analysis || {};
+  if (!a.bpm) return;
+  a.bpm = Math.round(a.bpm * multiplier * 10) / 10;
+  State.bpmOverride = a.bpm;
+  updateBpmDisplay();
+  saveProjectDebounced();
+}
+
+function wireBpmCorrection() {
+  document.getElementById("bpm-half-btn").addEventListener("click", () => correctBpm(0.5));
+  document.getElementById("bpm-double-btn").addEventListener("click", () => correctBpm(2));
+}
+
 function updateBpmDisplay() {
   const a = State.analysis || {};
   if (!a.bpm) { setTransportText("bpm-display", "—"); return; }
@@ -1394,6 +1431,23 @@ function wireSpeedTune() {
   }
   onTransportInput("speed-slider", apply);
   onTransportInput("tune-slider", apply);
+  wireDoubleClickReset("speed-display", "speed-slider", 1);
+  wireDoubleClickReset("tune-display", "tune-slider", 0);
+}
+
+// Double-clicking a value readout resets its slider to a neutral default —
+// a fast way back to "unmodified" without dragging, standard behavior for
+// this kind of control. Works through the same transport input event every
+// other listener already reacts to, so nothing needs to know this exists.
+function wireDoubleClickReset(displayName, sliderName, defaultValue) {
+  for (const el of transportEls(displayName)) {
+    el.style.cursor = "pointer";
+    el.title = `Double-click to reset to ${defaultValue}`;
+    el.addEventListener("dblclick", () => {
+      setTransportValue(sliderName, defaultValue);
+      transportEls(sliderName)[0].dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1842,6 +1896,7 @@ async function init() {
   wireImport();
   wireSpeedTune();
   wireSpeedTrainer();
+  wireBpmCorrection();
   wireVolumeSlider();
   wireKeyboardShortcuts();
   wireHelp();

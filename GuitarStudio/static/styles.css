@@ -547,18 +547,28 @@ button:disabled:hover { filter: none; }
 }
 .pa-top-card { min-width: 0; }
 
-/* V3-U1: the rig, left-to-right in signal-chain order. Amp gets the most
-   width (pa-card-wide) since it's the tab surface (Clean/Analog/Neural)
-   players touch most; the others share the remaining columns evenly. */
+/* The rig, packed like a masonry/Pinterest board rather than a uniform
+   grid: a real CSS grid gives every card in a row the same row height, so
+   when the Amp card is tall (Neural mode's metadata/tone-stack/output
+   controls run long) the whole row it shares becomes that tall, leaving a
+   large empty gap under every shorter card next to it — including Amp's
+   own former double-width span, which enlarged exactly the card causing
+   the problem. Multi-column flow instead lets each card take only the
+   height it needs and the next card in DOM order flow up to fill the
+   space beside a tall neighbor, in any column — 2-3 short pedal cards can
+   now sit alongside a tall Amp card instead of one wasted gap. Card DOM
+   order (and therefore reading/drag order) is unchanged; this is a pure
+   layout change. */
 #pa-pedalboard {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
+  columns: 3 260px;
+  column-gap: 14px;
   margin-bottom: 18px;
-  align-items: start;
 }
-.pa-card-wide { grid-column: span 2; }
-@media (max-width: 900px) { .pa-card-wide { grid-column: span 1; } }
+#pa-pedalboard .pa-rig-card {
+  break-inside: avoid;
+  margin-bottom: 14px;
+}
+@media (max-width: 900px) { #pa-pedalboard { columns: 1; } }
 
 .pa-card-head {
   display: flex; align-items: center; gap: 6px;

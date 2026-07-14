@@ -396,11 +396,6 @@ async function paEnableInput() {
     hintEl.textContent = "Input enabled.";
     await paRefreshDevices(); // device labels only populate after permission is granted
     paStartMeters();
-    // V3-U1: device pick + Calibrate are setup-once — fold the disclosure
-    // closed after the first successful enable so they stop competing with
-    // the meter/clip light for space; still one click away for later.
-    const setupEl = document.getElementById("pa-input-setup");
-    if (setupEl) setupEl.open = false;
   } catch (e) {
     hintEl.textContent = `Could not access input: ${e.message}. Check System Settings > Privacy & Security > Microphone.`;
   }
@@ -1479,7 +1474,12 @@ function wirePedalDragReorder() {
       card.classList.remove("drag-over");
       if (!draggingCard || draggingCard === card) return;
       const rect = card.getBoundingClientRect();
-      const before = e.clientX < rect.left + rect.width / 2;
+      // The pedalboard flows as CSS columns (top-to-bottom within each
+      // column, not left-to-right across a single row), so "before/after"
+      // is a vertical comparison — a horizontal one made sense for the
+      // old single-row grid but would misfire constantly when dragging
+      // within the same column now.
+      const before = e.clientY < rect.top + rect.height / 2;
       card.parentNode.insertBefore(draggingCard, before ? card : card.nextSibling);
       paSyncPedalOrderFromDom();
     });
@@ -1675,7 +1675,18 @@ async function paApplyAttachedRigPreset() {
   State.rigPresetApplied = true; // before the await — openPlayAlong can be called again while this is in flight
   if (!paRigPresets[State.rigPreset]) await paRefreshRigPresets();
   const state = paRigPresets[State.rigPreset];
-  if (state) await paApplyRigState(state);
+  if (state) {
+    await paApplyRigState(state);
+    // The rig itself just recalled correctly, but the dropdown was still
+    // sitting on whatever it last showed (or its own default) — without
+    // pointing it at the preset that just auto-applied, the next line's
+    // paUpdateAttachCheckbox() compares State.rigPreset against the WRONG
+    // dropdown value and shows "attach" as unchecked despite it being live.
+    // Left alone, a user who then re-checks the box to "fix" it would
+    // attach whatever preset the dropdown happened to be on instead.
+    const sel = document.getElementById("pa-preset-select");
+    if ([...sel.options].some((o) => o.value === State.rigPreset)) sel.value = State.rigPreset;
+  }
   paUpdateAttachCheckbox();
 }
 

@@ -40,6 +40,7 @@ instead — open it directly in a browser, no server required.
 - [ ] **Speed Trainer (BT-07):** **Start at Start%** sets Speed to the configured percentage; **Step up** increases Speed by Step%, clamping exactly at Target% without overshooting; BPM display scales with Speed throughout.
 - [ ] **Key detection + Tune (BT-03):** the inspector shows a detected key (with a confidence caveat); moving Tune shows the resulting transposed key live; Tune's range covers a full octave (±1200¢).
 - [ ] Speed/Tune reset to unity on track switch; Volume does not.
+- [ ] **BPM correction:** on a track where the detected BPM looks halved/doubled from the real tempo, the ½×/2× buttons fix it in one click and the correction is remembered on reselecting that song later.
 - [ ] Count-in (2 bars of click) plays before playback starts when enabled, synced to the track's detected BPM.
 
 ## 3. Guitar Split (experimental)
@@ -50,7 +51,10 @@ instead — open it directly in a browser, no server required.
 
 - [ ] Backing Track transport (Play/Stop/Loop/Count-in/BPM/Speed/Tune/Volume) mirrors the mixer's own state in both directions.
 - [ ] Tuner: toggling on mutes both the backing track and your live guitar tone (both restore to their actual prior levels, not just unity, on toggling off); note/cents/needle read correctly against a tuned reference.
-- [ ] Input: meter and clip light respond to real input level; clip light latches until Clear or a new input session; the device/Calibrate disclosure closes itself after the first successful Enable input, and can be reopened.
+- [ ] Input: meter and clip light respond to real input level; clip light latches until Clear or a new input session; the device/Calibrate disclosure stays open across uses until you collapse it yourself.
+- [ ] Double-clicking the Speed/Tune value readout (mixer and Play Along) resets that slider to 1.00×/0¢; double-clicking a stem's volume percentage in the mixer resets it to 100%.
+- [ ] **Rig preset auto-recall:** attaching a preset, closing Play Along, reselecting the track (or any other track and back), and reopening Play Along recalls the rig AND shows the "attach" checkbox still checked against the right preset name.
+- [ ] **Auto-calibrate:** with a genuine pause before clapping, the reported offset falls in a plausible range (roughly 50-300ms); an implausible result says so explicitly rather than silently applying a bad number.
 - [ ] **Riff Capture (GP-07):** "Save that!" (with no prior setup) saves a WAV file capturing roughly the last ~20s of backing+guitar audio; saving doesn't interrupt the rolling capture (playing right after and saving again produces a second, different riff file); riff files are numbered independently from regular takes.
 
 ## 5. Play Along — pedalboard

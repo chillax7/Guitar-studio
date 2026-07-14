@@ -350,7 +350,7 @@ async function vdAutoCalibrate() {
   let prevFrame = null;
   const videoSamples = [];
 
-  resultEl.textContent = "Listening — clap once in front of the camera (5s)…";
+  resultEl.textContent = "Listening — wait a beat, then clap once in front of the camera (5s)…";
   const startTime = performance.now();
   const durationMs = 5000;
 
@@ -379,24 +379,59 @@ async function vdAutoCalibrate() {
     return;
   }
 
-  let bestAudioIdx = 0, bestAudioJump = -Infinity;
-  for (let i = 1; i < audioSamples.length; i++) {
-    const jump = audioSamples[i].level - audioSamples[i - 1].level;
-    if (jump > bestAudioJump) { bestAudioJump = jump; bestAudioIdx = i; }
-  }
-  const audioSpikeT = audioSamples[bestAudioIdx].t;
+  // Find the audio clap first, then look for its matching video motion in
+  // a bounded window AROUND that moment — not "the single loudest/
+  // brightest sample in the whole 5s clip" (the original approach), which
+  // routinely picked up a webcam's autoexposure/auto-focus settling (often
+  // the single biggest frame-to-frame delta in the whole clip, well before
+  // any clap) instead of the clap itself, producing offsets over a second
+  // off. Any such settling happens BEFORE the user claps (given a beat's
+  // pause first), so bounding the video search to start at the audio
+  // onset excludes it by construction, regardless of how long it lasts —
+  // no need to guess a safe "warm-up" duration.
+  const FLOOR_PERCENTILE = 0.2; // low percentile = the background/quiet level, resistant to one loud transient
+  const THRESHOLD_MULT = 5;
+  const VIDEO_SEARCH_BEFORE_MS = 50;  // pipeline jitter tolerance if video ever leads audio
+  const VIDEO_SEARCH_AFTER_MS = 600;  // generous upper bound on real webcam capture-to-decode latency
 
-  let bestVideoIdx = 0, bestVideoDiff = -Infinity;
-  for (let i = 0; i < videoSamples.length; i++) {
-    if (videoSamples[i].diff > bestVideoDiff) { bestVideoDiff = videoSamples[i].diff; bestVideoIdx = i; }
+  function percentile(values, p) {
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted[Math.floor(p * (sorted.length - 1))];
   }
-  const videoSpikeT = videoSamples[bestVideoIdx].t;
+  function floorAndThreshold(samples, valueKey) {
+    const floor = Math.max(percentile(samples.map((s) => s[valueKey]), FLOOR_PERCENTILE), 1e-6);
+    return floor * THRESHOLD_MULT;
+  }
+  const audioThreshold = floorAndThreshold(audioSamples, "level");
+  const audioHit = audioSamples.find((s) => s.level > audioThreshold);
+  const audioSpikeT = audioHit ? audioHit.t : null;
+
+  let videoSpikeT = null;
+  if (audioSpikeT !== null) {
+    const videoThreshold = floorAndThreshold(videoSamples, "diff");
+    const windowed = videoSamples.filter((s) =>
+      s.t >= audioSpikeT - VIDEO_SEARCH_BEFORE_MS && s.t <= audioSpikeT + VIDEO_SEARCH_AFTER_MS);
+    const videoHit = windowed.find((s) => s.diff > videoThreshold);
+    videoSpikeT = videoHit ? videoHit.t : null;
+  }
+
+  if (audioSpikeT === null || videoSpikeT === null) {
+    resultEl.textContent = "Calibration failed — no clear clap detected above background noise within a plausible video-lag window, try again (clap firmly, closer to the mic, and make sure the clap is visible on camera).";
+    return;
+  }
 
   const offsetMs = Math.round(videoSpikeT - audioSpikeT);
   document.getElementById("rec-av-offset").value = offsetMs;
   document.getElementById("rec-av-offset").dispatchEvent(new Event("change"));
+  // A real USB/built-in webcam's capture-to-decode pipeline delay is
+  // well-documented as roughly 50-300ms; anything far outside that is more
+  // likely a detection miss than genuine hardware latency, so say so
+  // instead of presenting a wild number with the same confidence as a
+  // plausible one.
+  const implausible = Math.abs(offsetMs) > 500;
   resultEl.textContent = `Detected offset: ${offsetMs}ms (video spike at ${videoSpikeT.toFixed(0)}ms, ` +
-    `audio spike at ${audioSpikeT.toFixed(0)}ms). Applied to the field above — still adjustable by hand.`;
+    `audio spike at ${audioSpikeT.toFixed(0)}ms). Applied to the field above — still adjustable by hand.` +
+    (implausible ? " This is well outside typical webcam latency (50-300ms) — likely a mistimed detection rather than real lag; try again or set the offset manually (§10.2)." : "");
 }
 
 // VD-09: preview-only thirds/grid + a "fretboard visible?" guide box, drawn

@@ -55,6 +55,8 @@
       <span id="time-display" data-transport="time-display">0:00 / 0:00</span>
       <span class="transport-label">BPM</span>
       <span id="bpm-display" data-transport="bpm-display">—</span>
+      <button id="bpm-half-btn" title="Detected tempo looks like double the real one? Halve it" style="padding:2px 6px;font-size:10px;">½×</button>
+      <button id="bpm-double-btn" title="Detected tempo looks like half the real one? Double it" style="padding:2px 6px;font-size:10px;">2×</button>
       <span class="transport-label">Speed</span>
       <input type="range" id="speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
       <span id="speed-display" data-transport="speed-display">1.00×</span>
@@ -275,7 +277,7 @@
             </div>
           </section>
 
-          <section class="pa-card pa-rig-card pa-card-wide" data-card-id="amp">
+          <section class="pa-card pa-rig-card" data-card-id="amp">
             <div class="pa-card-head">
               <h3>Amp</h3>
               <button class="pa-collapse-btn" aria-label="Collapse Amp" title="Collapse">▾</button>
@@ -474,7 +476,7 @@
               <p class="hint" id="rec-camera-hint"></p>
               <label>A/V offset (ms) <span class="hint">delays audio to match a late camera — see manual</span></label>
               <input type="number" id="rec-av-offset" value="0" step="10">
-              <button id="rec-auto-calibrate-btn">Auto-calibrate (clap once, ~5s)</button>
+              <button id="rec-auto-calibrate-btn">Auto-calibrate (wait a beat, then clap once, ~5s)</button>
               <p class="hint" id="rec-calibrate-result"></p>
             </details>
           </section>

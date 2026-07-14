@@ -94,7 +94,8 @@ separation engine's quality ceiling, not a bug in your mix.
 
 ## 5. The Mixer
 
-Each stem is a lane: name, **M**(ute)/**S**(olo) buttons, a gain fader, a
+Each stem is a lane: name, **M**(ute)/**S**(olo) buttons, a gain fader
+(double-click its percentage to reset to 100%), a
 **Pan** slider, an **EQ** disclosure (3-band: bass/mid/treble, ±12dB), and
 its waveform. **Solo, Pan, and EQ are all *monitoring* conveniences only —
 none of them affect what gets exported (§8)**; they're there to help you
@@ -111,12 +112,18 @@ has the playback essentials:
 
 - **Play / Pause / Stop** and the current position.
 - **BPM** — the detected tempo, rounded to the nearest whole number, scaling
-  live with the Speed slider.
+  live with the Speed slider. Automatic tempo detection occasionally locks
+  onto exactly half or double the real tempo (a well-known limitation of
+  tempo estimation, not specific to any one song) — the small **½×**/**2×**
+  buttons beside it correct this in one click and the fix is remembered for
+  that song from then on.
 - **Speed** (0.5×–2×) — changes playback rate while keeping pitch the same.
+  Double-click the ×-value to reset to 1.00×.
 - **Tune** (±1200 cents = ±1 octave) — shifts pitch independently, at
   the same speed. Fine corrections handle a record that's slightly off
   concert pitch (±100¢ ≈ ±1 semitone); the full-octave range makes it a
-  transpose control for playing a song in an easier key. The inspector
+  transpose control for playing a song in an easier key. Double-click the
+  ¢-value to reset to 0. The inspector
   panel shows a **detected key** (a heuristic — confirm by ear) and, once
   you move Tune off zero, what key that transposition actually lands you
   in (e.g. "Transposed +2 semitones → A major").
@@ -257,11 +264,9 @@ The input meter, clip light, and a **Setup: device & calibration**
 disclosure sit in the top strip. Expand **Setup**, pick your audio
 interface/microphone, and click **Enable input** — the browser will ask
 for microphone permission once. Switching the device dropdown while
-already enabled re-enables input on the new device automatically. Once
-input is enabled the first time, the Setup disclosure folds itself closed
-automatically (it's a setup-once step, not something you touch every
-session) — expand it again any time to re-calibrate or switch devices. The
-meter shows input level with too-cold/good/too-hot zones; a **clip** light
+already enabled re-enables input on the new device automatically. The
+Setup disclosure stays open once expanded — collapse it yourself if you
+want the space back. The meter shows input level with too-cold/good/too-hot zones; a **clip** light
 latches on if a transient clips (it doesn't self-clear — click **Clear**,
 or start a new input session, once you've noted it and fixed your gain
 staging). **Calibrate (play your loudest chord)**, inside Setup, listens
@@ -450,9 +455,14 @@ Consumer webcams have a real pipeline delay (commonly 50–200ms) — video
 arrives late relative to audio, which is captured essentially instantly.
 Two ways to fix it:
 
-- **Auto-calibrate (clap once, ~5s)** — records a short burst, finds the
-  clap in both the audio and the video automatically, and fills in the
-  A/V offset field for you. Quick, but not infallible — check the result.
+- **Auto-calibrate (wait a beat, then clap once, ~5s)** — records a short
+  burst, finds the clap in both the audio and the video automatically, and
+  fills in the A/V offset field for you. Waiting briefly before clapping
+  matters: the first fraction of a second is used to measure background
+  noise/motion so the real clap can be told apart from it. Quick, but not
+  infallible — a result flagged as implausible (outside the 50–300ms range
+  real webcam latency falls in) is more likely a mistimed detection than
+  genuine lag; retry or fall back to manual.
 - **Manual:** record a 5-second take clapping once in front of the camera,
   open the file in QuickTime (or similar), find the video frame where your
   hands meet and the audio spike of the clap, and enter the difference (in

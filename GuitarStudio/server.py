@@ -409,6 +409,14 @@ def svc_mix(source_path: str, model: str, gains: dict, mute_ranges: dict,
                                                 normalize=normalize, max_boost_db=max_boost_db)
 
     output_name = output_name or f"backing_track.{fmt}"
+    # The browser's Output name field doesn't require an extension — the
+    # Format dropdown is meant to control that — but a name typed without
+    # one (e.g. "My Mix") reached write_audio() with an empty suffix and
+    # died as "Unsupported output format: .". Append the selected format's
+    # extension whenever the given name doesn't already end in a supported
+    # one, so the dropdown always wins over a bare name.
+    if Path(output_name).suffix.lower() not in (".wav", ".mp3"):
+        output_name = f"{output_name}.{fmt}"
     out_path = engine.resolve_output_path(output_name, input_path.stem)
     # Containment check — this is the web boundary. resolve_output_path
     # honors a '/'-bearing or absolute output_name verbatim (intentional for
