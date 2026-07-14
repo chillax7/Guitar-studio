@@ -1,6 +1,6 @@
 # Guitar Separation Upgrade — Specification (BT-13 + BT-14)
 
-**Status:** research + proposal, not yet built. Written to unblock a joint decision: [enhancements-backlog.md](../enhancements-backlog.md) lists **BT-13** (next-gen separation model) and **BT-14** (real ML lead/rhythm guitar split) as separate backlog items, but they are not independent — the choice of separation engine (BT-13) determines the quality of the `guitar` stem that any lead/rhythm split (BT-14) has to work with. This document researches both together and proposes a coupled decision.
+**Status:** research + proposal, not yet built. Written to unblock a joint decision: the now-retired enhancements-backlog.md listed **BT-13** (next-gen separation model) and **BT-14** (real ML lead/rhythm guitar split) as separate backlog items, but they are not independent — the choice of separation engine (BT-13) determines the quality of the `guitar` stem that any lead/rhythm split (BT-14) has to work with. This document researches both together and proposes a coupled decision. (BT-13 has since shipped; BT-14's status is tracked in [post-v3-backlog-audit.md](post-v3-backlog-audit.md) §2.1 and the deeper ML research in [lead-rhythm-split-research.md](lead-rhythm-split-research.md).)
 
 **Relationship to other specs:** extends `engine-spec.md` §3.1 (source separation) and §3.4 (guitar lead/rhythm split), which describe the current Demucs `htdemucs_6s` + stereo-panning-heuristic implementation this document proposes to upgrade.
 

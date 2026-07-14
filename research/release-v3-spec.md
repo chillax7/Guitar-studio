@@ -6,8 +6,10 @@ to be handed to a **fresh working session** as its starting brief — it
 assumes no memory of how v2.5 was built, so context that a new session
 needs is spelled out rather than implied.
 
-**Companion docs:** [enhancements-backlog.md](../enhancements-backlog.md)
-(the full picklist this selects from — item IDs like GP-02 refer to it),
+**Companion docs:** enhancements-backlog.md (the full picklist this
+selected from — item IDs like GP-02 refer to it; retired at the v3.0
+checkpoint, see [post-v3-backlog-audit.md](post-v3-backlog-audit.md) for
+what became of every item in it),
 [USER-MANUAL.md](../USER-MANUAL.md) (what the app does today),
 [TEST-PLAN.md](../TEST-PLAN.md) (regression checklist).
 
@@ -217,8 +219,9 @@ v2, versioned migration).
 
 ## 5. Feature picks from the backlog
 
-Curated for the practice-flow arc, in dependency order (IDs →
-enhancements-backlog.md):
+Curated for the practice-flow arc, in dependency order (IDs → the
+now-retired enhancements-backlog.md — see
+[post-v3-backlog-audit.md](post-v3-backlog-audit.md)):
 
 | Pick | Item | Size | Why now |
 |---|---|---|---|

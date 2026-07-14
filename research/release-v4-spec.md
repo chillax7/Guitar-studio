@@ -9,10 +9,11 @@ handed to a **fresh working session** as its starting brief.
 design for this release's headline feature),
 [appstore-plan.md](../appstore-plan.md) (distribution track, deliberately
 kept OUT of this feature release),
-[enhancements-backlog.md](../enhancements-backlog.md) (picklist — IDs like
-BT-04 refer to it), [USER-MANUAL.md](../USER-MANUAL.md),
+[post-v3-backlog-audit.md](post-v3-backlog-audit.md) (what became of
+every item in the now-retired enhancements-backlog.md — IDs like BT-04
+refer to it), [USER-MANUAL.md](../USER-MANUAL.md),
 [TEST-PLAN.md](../TEST-PLAN.md),
-[FIRST-SESSION-CHECKLIST.html](FIRST-SESSION-CHECKLIST.html).
+[FIRST-SESSION-CHECKLIST.html](../FIRST-SESSION-CHECKLIST.html).
 
 ---
 
