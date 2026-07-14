@@ -492,7 +492,14 @@ button:disabled:hover { filter: none; }
 #inspector .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
 #split-methods { display: flex; gap: 6px; margin: 6px 0; }
 #split-methods button { flex: 1; }
-#split-methods button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* Same idiom as .nav-screen-btn.active / #compare-listen-a-btn.active —
+   every button here is already solid blue by the house rule, so a same-
+   color background is invisible; brightness + inset ring is what actually
+   reads as "selected." */
+#split-methods button.active {
+  filter: brightness(1.15);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4);
+}
 #export-result { margin-top: 8px; font-size: 11px; color: var(--text-dim); }
 #export-result.error { color: var(--danger); }
 
