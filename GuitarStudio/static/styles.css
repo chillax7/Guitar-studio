@@ -164,34 +164,32 @@ body {
 #toolbar-tools { display: none; align-items: center; gap: 8px; }
 #toolbar-tools.show { display: flex; }
 
-/* House rule: any button available to click reads as blue (accent-outlined,
-   like Separate's own resting look) so "this is clickable" is legible at a
-   glance; solid blue fill means "on" (.primary, .active). Disabled buttons
-   drop out of the blue family entirely via the color/border reset below
-   (opacity alone reads as "dim blue", not "unavailable"). More specific
-   rules override the .active fill per-button (the Loop and Tuner toggles
-   go green instead — green = "a transport/monitor state is running", blue
-   = "an option is available/on"). */
+/* House rule: any button available to click is solid blue with white text
+   (Separate's look, and what Click/Count-in look like whether on or off) —
+   "clickable" is one consistent solid color everywhere, not just on primary
+   CTAs. Disabled buttons drop out of the blue family entirely (not just
+   dimmed) so "unavailable" still reads clearly. The Loop and Tuner toggles
+   are the one override: solid green while active — green = "a transport/
+   monitor state is running", blue = everything else clickable. */
 button {
-  background: transparent;
+  background: var(--accent);
   border: 1px solid var(--accent);
-  color: var(--accent);
+  color: #fff;
   border-radius: 4px;
   padding: 5px 10px;
   cursor: pointer;
   font-size: 12px;
 }
-button:hover { background: var(--accent-dim); }
+button:hover { filter: brightness(1.1); }
 button:disabled {
   opacity: 0.5;
   cursor: default;
+  background: var(--panel-2);
   border-color: var(--border);
   color: var(--text-dim);
-  background: transparent;
+  filter: none;
 }
-button:disabled:hover { background: transparent; }
-button.primary, button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.primary:hover, button.active:hover { filter: brightness(1.1); }
+button:disabled:hover { filter: none; }
 
 #model-badge {
   position: relative;
