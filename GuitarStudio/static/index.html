@@ -12,7 +12,12 @@
   <div id="top-banner">
     <img id="app-logo" src="app-icon.svg" alt="">
     <span id="app-title">Orpheus Guitar Studio</span>
-    <span id="app-version">v3.0</span>
+    <span id="app-version">v3.1</span>
+    <!-- Centered on the full window width (not just the canvas column) via
+         absolute positioning in CSS — see #top-banner-screen-label. Kept in
+         sync with the current screen by paSetActiveScreen (playalong.js),
+         the same function that highlights the sidebar nav button. -->
+    <span id="top-banner-screen-label">Mixer</span>
   </div>
 
   <div id="sidebar">
@@ -177,7 +182,6 @@
   <div id="playalong-overlay" class="screen-overlay">
     <div id="playalong-panel" class="screen-panel">
       <div id="playalong-header" class="screen-header">
-        <h2>Play Along</h2>
         <button id="playalong-close-btn">✕ Close</button>
       </div>
       <div id="playalong-body" class="screen-body">
@@ -311,7 +315,6 @@
   <div id="tonelab-overlay" class="screen-overlay">
     <div id="tonelab-panel" class="screen-panel">
       <div id="tonelab-header" class="screen-header">
-        <h2>Tone Lab</h2>
         <button id="tonelab-close-btn">✕ Close</button>
       </div>
       <div id="tonelab-body" class="screen-body">

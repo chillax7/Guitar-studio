@@ -12,6 +12,7 @@
   --success: #4caf6a;
   --mute: #55596a;
   --solo: #e0c34a;
+  --topbar-height: 44px;
   font-size: 14px;
 }
 
@@ -36,11 +37,13 @@ body {
 /* ---------- Top banner ---------- */
 
 #top-banner {
+  position: relative; /* anchors #top-banner-screen-label's absolute centering */
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px;
+  height: var(--topbar-height);
+  padding: 0 14px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
 }
@@ -66,6 +69,19 @@ body {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+/* Current-screen label — centered on the *whole* window width (not just
+   the canvas column), so it lines up the same way regardless of sidebar
+   width. Absolute + left:50%/translateX(-50%) achieves that independent
+   of how wide the logo/title/version group on the left ends up being. */
+#top-banner-screen-label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-dim);
 }
 
@@ -520,19 +536,24 @@ button:disabled:hover { filter: none; }
 .screen-overlay {
   display: none;
   position: fixed;
-  top: 0; left: 240px; right: 0; bottom: 0;
+  /* Starts below #top-banner instead of at the viewport top, so it no
+     longer covers the ORPHEUS GUITAR STUDIO title/screen-label — it used
+     to sit at top:0 with a higher z-index, layering its own header
+     directly over the real title bar. */
+  top: var(--topbar-height); left: 240px; right: 0; bottom: 0;
   background: var(--bg);
   z-index: 50;
   overflow-y: auto;
 }
 .screen-overlay.show { display: block; }
 
+/* Just a Close button now — the screen name itself lives in
+   #top-banner-screen-label so it isn't duplicated here. */
 .screen-header {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: flex-end;
   padding: 12px 20px; border-bottom: 1px solid var(--border);
   position: sticky; top: 0; background: var(--bg); z-index: 1;
 }
-.screen-header h2 { margin: 0; font-size: 16px; }
 
 .screen-body {
   padding: 16px 20px;

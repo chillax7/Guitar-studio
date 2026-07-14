@@ -1420,12 +1420,20 @@ async function paEnsureRigSessionReady() {
   await ensureRiffCapture(); // GP-07 — starts rolling as soon as the rig exists; no-op if already running
 }
 
-// Toggles which of the 3 persistent-screen nav buttons reads as "current."
-// Help is deliberately excluded — it's a transient modal, not a screen.
+// Toggles which of the 3 persistent-screen nav buttons reads as "current,"
+// and keeps the centered title-bar label (#top-banner-screen-label) in
+// sync with it. Help is deliberately excluded from both — it's a
+// transient modal, not a screen.
+const PA_SCREEN_LABELS = {
+  "mixer-open-btn": "Mixer",
+  "tonelab-open-btn": "Tone Lab",
+  "playalong-open-btn": "Play Along",
+};
 function paSetActiveScreen(id) {
   document.querySelectorAll(".nav-screen-row .nav-screen-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.id === id);
   });
+  document.getElementById("top-banner-screen-label").textContent = PA_SCREEN_LABELS[id] || "";
 }
 
 async function openToneLab() {
