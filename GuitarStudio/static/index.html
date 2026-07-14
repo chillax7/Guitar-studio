@@ -12,7 +12,7 @@
   <div id="top-banner">
     <img id="app-logo" src="app-icon.svg" alt="">
     <span id="app-title">Orpheus Guitar Studio</span>
-    <span id="app-version">v3.1</span>
+    <span id="app-version">v3.2</span>
     <!-- Centered on the full window width (not just the canvas column) via
          absolute positioning in CSS — see #top-banner-screen-label. Kept in
          sync with the current screen by paSetActiveScreen (playalong.js),
@@ -146,6 +146,7 @@
       <div id="split-methods">
         <button data-method="spectral" class="active">Spectral</button>
         <button data-method="midside">Mid-side</button>
+        <button data-method="hybrid" title="Spectral, sharpened using onset-to-beat-grid alignment (Option D) — needs a detected beat grid, falls back to Spectral without one">Hybrid</button>
       </div>
       <p class="hint" id="split-correlation"></p>
       <button id="run-split-btn" class="primary">Run split</button>
@@ -266,6 +267,11 @@
               <label style="margin:0">Start with count-in</label>
               <input type="checkbox" id="rec-count-in">
             </div>
+            <div class="row">
+              <label style="margin:0">Practice mode: auto-retake each loop pass</label>
+              <input type="checkbox" id="rec-practice-toggle">
+            </div>
+            <p class="hint" id="rec-practice-hint">Needs a loop region set and Loop enabled (Mixer) — each pass through the loop is saved as its own take automatically.</p>
             <div id="rec-result" class="hint"></div>
 
             <details id="rec-setup" open>
@@ -295,6 +301,7 @@
 
           <section class="pa-card" id="takes-card">
             <h3>Takes</h3>
+            <p class="hint">Check the box on two takes below to compare them side by side.</p>
             <div id="takes-list"></div>
             <div id="takes-player-wrap" style="display:none">
               <video id="takes-player" controls></video>
@@ -305,6 +312,36 @@
               <button id="takes-trim-btn" class="primary">Trim (lossless copy, new file)</button>
               <p class="hint" id="takes-trim-result"></p>
             </div>
+          </section>
+
+          <!-- VD-08: both takes already contain the backing track baked in
+               (see recorder.js's Recorder.recordBus comment), so "synced"
+               just means starting both from 0 together and keeping their
+               clocks from drifting apart — see wireCompareControls. -->
+          <section class="pa-card" id="takes-compare-card" style="display:none">
+            <h3>Compare takes</h3>
+            <p class="hint">Both play together, in sync — the toggle switches which one you hear.</p>
+            <div id="takes-compare-row">
+              <div class="takes-compare-slot">
+                <p class="hint" id="compare-a-label">A: —</p>
+                <video id="compare-video-a" playsinline></video>
+              </div>
+              <div class="takes-compare-slot">
+                <p class="hint" id="compare-b-label">B: —</p>
+                <video id="compare-video-b" playsinline></video>
+              </div>
+            </div>
+            <input type="range" id="compare-seek" min="0" max="100" step="0.1" value="0">
+            <div class="row">
+              <button id="compare-play-btn" class="primary">▶ Play both</button>
+              <button id="compare-pause-btn">Pause</button>
+              <button id="compare-stop-btn">■ Stop</button>
+            </div>
+            <div class="row">
+              <button id="compare-listen-a-btn" class="active">🔊 Listening: A</button>
+              <button id="compare-listen-b-btn">Listening: B</button>
+            </div>
+            <p class="hint" id="compare-status"></p>
           </section>
         </div>
 

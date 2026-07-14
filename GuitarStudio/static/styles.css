@@ -861,6 +861,25 @@ button:disabled:hover { filter: none; }
   width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 4px; margin: 8px 0;
 }
 
+/* ---------- Take compare (VD-08) ---------- */
+
+#takes-compare-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.takes-compare-slot .hint { margin: 0 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.takes-compare-slot video {
+  width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 4px;
+}
+/* Same idiom as .nav-screen-btn.active — every button here is already
+   solid blue by the house rule, so "which one is selected" needs a
+   brightness/inset-ring bump rather than a color change. */
+#compare-listen-a-btn.active, #compare-listen-b-btn.active {
+  filter: brightness(1.15);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4);
+}
+
 /* ---------- Keyboard shortcuts legend (XC-02) ---------- */
 
 #shortcuts-overlay {

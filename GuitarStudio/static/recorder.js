@@ -21,14 +21,18 @@ const Recorder = {
   recordBus: null,
   recDest: null,
   mediaRecorder: null,
-  chunks: [],
   state: "idle", // idle | recording | saving
   startedAt: 0,
-  mimeType: null,
-  audioOnly: false, // GP-08 — whether the take in progress/just finished has no video track
   quality: "720p",
   avOffsetMs: 0,
   tickInterval: null,
+  // VD-05: practice mode's auto-retake starts a new MediaRecorder before the
+  // previous one's onstop/finalize has necessarily run, so chunks/mimeType/
+  // audioOnly can no longer live here as shared fields — beginRecordingPass
+  // closes over its own local copies per pass instead (see there).
+  practiceMode: false,
+  practiceInterval: null,
+  practiceLastPos: 0,
 };
 
 const REC_MIME_CANDIDATES = [
@@ -149,74 +153,92 @@ async function toggleRecording() {
 }
 
 async function startRecording() {
-  // GP-08: no camera enabled is no longer a hard stop — record audio-only
-  // instead of blocking the take entirely. Camera enabled = video+audio,
-  // same as before.
-  const audioOnly = !Recorder.camStream;
   ensureRecordDest();
-
-  const mimeType = audioOnly ? recPickAudioMimeType() : recPickMimeType();
-  if (!mimeType) {
-    document.getElementById("rec-result").textContent = audioOnly
-      ? "This browser can't record audio (no supported MediaRecorder format)."
-      : "This browser can't record video (no supported MediaRecorder format).";
-    return;
-  }
-
   // VD-01: reuses BT-06's exact click generator (app.js) — recording and
-  // playback both begin inside the same beginTake() callback, i.e.
+  // playback both begin inside the same beginRecordingPass() callback, i.e.
   // together on beat 1, no beat lost or duplicated at the seam. The clicks
   // themselves are never captured: scheduleCountIn() routes them straight
   // to ctx.destination, never into the record bus.
   const doPlayback = document.getElementById("rec-start-with-playback").checked && State.track && Audio.duration;
   const doCountIn = document.getElementById("rec-count-in").checked;
-
-  function beginTake() {
-    const audioTrack = Recorder.recDest.stream.getAudioTracks()[0];
-    const combined = audioOnly
-      ? new MediaStream([audioTrack])
-      : new MediaStream([Recorder.camStream.getVideoTracks()[0], audioTrack]);
-
-    Recorder.chunks = [];
-    Recorder.mimeType = mimeType;
-    Recorder.audioOnly = audioOnly;
-    const recorder = new MediaRecorder(combined, audioOnly
-      ? { mimeType, audioBitsPerSecond: 192_000 }
-      : { mimeType, videoBitsPerSecond: 5_000_000, audioBitsPerSecond: 192_000 });
-    recorder.ondataavailable = (e) => { if (e.data && e.data.size) Recorder.chunks.push(e.data); };
-    recorder.onerror = (e) => {
-      console.error("MediaRecorder error", e.error);
-      document.getElementById("rec-result").textContent = "Recorder error — take ended early, salvaging what was captured.";
-      stopRecording();
-    };
-    recorder.onstop = () => finalizeAndUpload();
-
-    Recorder.mediaRecorder = recorder;
-    Recorder.state = "recording";
-    Recorder.startedAt = performance.now();
-    recorder.start(1000); // 1s timeslices — a crash loses at most the last second
-
-    window.addEventListener("beforeunload", recBeforeUnloadGuard);
-
-    if (doPlayback) startPlaybackAt(currentPosition()); // app.js — current position (correct in processed mode too, unlike playStartOffset)
-
-    document.getElementById("rec-result").innerHTML = "";
-    updateRecUI();
-    recTick();
-    Recorder.tickInterval = setInterval(recTick, 250);
-  }
-
-  withOptionalCountIn(doCountIn, beginTake); // app.js
+  withOptionalCountIn(doCountIn, () => beginRecordingPass(doPlayback)); // app.js
 }
 
-function stopRecording() {
-  if (!Recorder.mediaRecorder) return;
+// Starts one MediaRecorder session against the shared record bus. Split out
+// of startRecording() so VD-05 practice mode can call it back-to-back for
+// each loop pass without re-running count-in/playback-start — those only
+// make sense for the very first take, not an auto-retake mid-loop.
+//
+// chunks/mimeType/audioOnly are local to this pass (closed over by
+// ondataavailable/onstop) rather than shared Recorder fields: practice mode
+// starts the next pass's recorder before the previous pass's onstop has
+// necessarily fired, and shared mutable fields would let the new pass's
+// resets corrupt the previous pass's still-in-flight blob.
+function beginRecordingPass(withPlayback) {
+  // GP-08: no camera enabled is no longer a hard stop — record audio-only
+  // instead of blocking the take entirely. Camera enabled = video+audio,
+  // same as before.
+  const audioOnly = !Recorder.camStream;
+  const mimeType = audioOnly ? recPickAudioMimeType() : recPickMimeType();
+  if (!mimeType) {
+    document.getElementById("rec-result").textContent = audioOnly
+      ? "This browser can't record audio (no supported MediaRecorder format)."
+      : "This browser can't record video (no supported MediaRecorder format).";
+    return false;
+  }
+
+  const audioTrack = Recorder.recDest.stream.getAudioTracks()[0];
+  const combined = audioOnly
+    ? new MediaStream([audioTrack])
+    : new MediaStream([Recorder.camStream.getVideoTracks()[0], audioTrack]);
+
+  const chunks = [];
+  const recorder = new MediaRecorder(combined, audioOnly
+    ? { mimeType, audioBitsPerSecond: 192_000 }
+    : { mimeType, videoBitsPerSecond: 5_000_000, audioBitsPerSecond: 192_000 });
+  recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+  recorder.onerror = (e) => {
+    console.error("MediaRecorder error", e.error);
+    document.getElementById("rec-result").textContent = "Recorder error — take ended early, salvaging what was captured.";
+    stopRecording({ keepPlaying: Recorder.practiceMode });
+  };
+  // Identity check at the end of finalizeAndUpload (via `recorder`) is what
+  // stops a fast-finishing later pass's "idle" reset from being clobbered
+  // by an earlier pass's finalize resolving after it.
+  recorder.onstop = () => finalizeAndUpload(recorder, chunks, mimeType, audioOnly);
+
+  Recorder.mediaRecorder = recorder;
+  Recorder.state = "recording";
+  Recorder.startedAt = performance.now();
+  recorder.start(1000); // 1s timeslices — a crash loses at most the last second
+
+  window.addEventListener("beforeunload", recBeforeUnloadGuard);
+
+  if (withPlayback) startPlaybackAt(currentPosition()); // app.js — current position (correct in processed mode too, unlike playStartOffset)
+
+  document.getElementById("rec-result").innerHTML = "";
+  updateRecUI();
+  recTick();
+  Recorder.tickInterval = setInterval(recTick, 250);
+  return true;
+}
+
+function stopRecording(options = {}) {
+  // Defensive against a double-stop: practice mode's own wrap-triggered
+  // stop and a manual Stop-button click (disabled during practice mode,
+  // but harmless to guard anyway) could otherwise both reach here for the
+  // same pass, and MediaRecorder.stop() throws on an already-inactive
+  // recorder.
+  if (!Recorder.mediaRecorder || Recorder.mediaRecorder.state === "inactive") return;
   Recorder.mediaRecorder.stop();
   Recorder.state = "saving";
   window.removeEventListener("beforeunload", recBeforeUnloadGuard);
   // Stop Record started the backing track (rec-start-with-playback); leaving
   // it running after Stop meant the take ended but the mix kept going.
-  if (typeof pausePlayback === "function") pausePlayback();
+  // Practice mode passes `keepPlaying` between loop passes — the backing
+  // track and loop keep running across the whole practice session, only
+  // pausing when practice mode itself is turned off (see practiceStop()).
+  if (!options.keepPlaying && typeof pausePlayback === "function") pausePlayback();
   updateRecUI();
 }
 
@@ -236,14 +258,14 @@ function recTick() {
 // Save + finalize
 // ---------------------------------------------------------------------------
 
-async function finalizeAndUpload() {
-  const blob = new Blob(Recorder.chunks, { type: Recorder.mimeType });
+async function finalizeAndUpload(sourceRecorder, chunks, mimeType, audioOnly) {
+  const blob = new Blob(chunks, { type: mimeType });
   // GP-08: audio-only containers get their own extension — ".m4a" rather
   // than ".mp4" so a take without video reads as what it is, even though
   // both are technically the same MPEG-4 container.
-  const ext = Recorder.audioOnly
-    ? (Recorder.mimeType.includes("mp4") ? "m4a" : "webm")
-    : (Recorder.mimeType.includes("mp4") ? "mp4" : "webm");
+  const ext = audioOnly
+    ? (mimeType.includes("mp4") ? "m4a" : "webm")
+    : (mimeType.includes("mp4") ? "mp4" : "webm");
   const track = State.track || "";
   const resultEl = document.getElementById("rec-result");
   resultEl.textContent = "Saving take…";
@@ -258,7 +280,7 @@ async function finalizeAndUpload() {
     const finalizeResp = await fetch("/api/recording/finalize", {
       method: "POST", headers: { "Content-Type": "application/json" },
       // A/V offset only means anything with a video track to sync against.
-      body: JSON.stringify({ path: saveJson.path, av_offset_ms: Recorder.audioOnly ? 0 : Recorder.avOffsetMs }),
+      body: JSON.stringify({ path: saveJson.path, av_offset_ms: audioOnly ? 0 : Recorder.avOffsetMs }),
     });
     const finalizeJson = await finalizeResp.json();
     showTakeResult(saveJson, finalizeJson);
@@ -271,8 +293,14 @@ async function finalizeAndUpload() {
       `<a href="${url}" download="take.${ext}">click to download the take</a> instead.`;
   }
 
-  Recorder.state = "idle";
-  updateRecUI();
+  // Only this pass's own recorder instance is allowed to clear "recording"
+  // back to "idle" — if a newer pass has since taken over Recorder.mediaRecorder
+  // (VD-05 practice mode's back-to-back retakes), leave its "recording"
+  // state alone rather than stomping it once this older upload finishes.
+  if (Recorder.mediaRecorder === sourceRecorder) {
+    Recorder.state = "idle";
+    updateRecUI();
+  }
 }
 
 function showTakeResult(saveJson, finalizeJson) {
@@ -301,7 +329,10 @@ function updateRecUI() {
   const recording = Recorder.state === "recording";
   btn.textContent = recording ? "■ Stop" : "● Record";
   btn.classList.toggle("recording", recording);
-  btn.disabled = Recorder.state === "saving";
+  // VD-05: practice mode owns start/stop across every loop pass itself —
+  // the manual button would race it (see stopRecording's double-stop
+  // guard), so it's disabled for the duration rather than left to conflict.
+  btn.disabled = Recorder.state === "saving" || Recorder.practiceMode;
   pill.style.display = recording ? "inline-block" : "none";
   // GP-08: no camera enabled no longer blocks recording — say so up front
   // rather than the user finding out only after pressing Record.
@@ -315,6 +346,77 @@ function updateRecUI() {
     clearInterval(Recorder.tickInterval);
     Recorder.tickInterval = null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// VD-05: multi-take practice mode — loop a section, auto-retake each pass.
+// Owns the record start/stop cycle itself; each time app.js's tick() wraps
+// the loop back to its start (a backward jump in currentPosition(), the
+// same signal a listener would notice), the in-progress pass is stopped
+// (saved as its own take) and a new one begins immediately, backing track
+// still running underneath the whole time.
+// ---------------------------------------------------------------------------
+
+const PRACTICE_POLL_MS = 100; // wrap-detection granularity — see practiceTick
+const PRACTICE_WRAP_EPSILON_SEC = 0.05;
+
+function practiceStart() {
+  const hint = document.getElementById("rec-practice-hint");
+  if (!State.track) {
+    hint.textContent = "Load a track first.";
+    return false;
+  }
+  if (!State.ui.loopEnabled || !State.ui.loop) {
+    hint.textContent = "Set a loop region and enable Loop (Mixer) first.";
+    return false;
+  }
+  if (Recorder.state !== "idle") {
+    hint.textContent = "Stop the current take first.";
+    return false;
+  }
+
+  Recorder.practiceMode = true;
+  hint.textContent = "Practice mode running — each pass through the loop is saved as its own take.";
+  ensureRecordDest();
+  startPlaybackAt(State.ui.loop.start); // app.js — clean start from the top of the loop
+  Recorder.practiceLastPos = State.ui.loop.start;
+  beginRecordingPass(false); // playback already started above, ours to manage from here
+  Recorder.practiceInterval = setInterval(practiceTick, PRACTICE_POLL_MS);
+  updateRecUI();
+  return true;
+}
+
+function practiceTick() {
+  if (!Recorder.practiceMode) return;
+  if (!Audio.playing) {
+    // Playback stopped outside practice mode's own control (e.g. the
+    // backing track reached its own end without looping, or the user hit
+    // the transport Stop) — end the session rather than spin forever.
+    practiceStop();
+    return;
+  }
+  const pos = currentPosition();
+  if (pos < Recorder.practiceLastPos - PRACTICE_WRAP_EPSILON_SEC) {
+    // Loop wrapped (app.js's tick() just seeked back to loop.start) —
+    // that's the boundary between one pass and the next.
+    stopRecording({ keepPlaying: true });
+    beginRecordingPass(false);
+  }
+  Recorder.practiceLastPos = pos;
+}
+
+function practiceStop() {
+  if (!Recorder.practiceMode) return;
+  Recorder.practiceMode = false;
+  if (Recorder.practiceInterval) {
+    clearInterval(Recorder.practiceInterval);
+    Recorder.practiceInterval = null;
+  }
+  if (Recorder.state === "recording") stopRecording(); // last pass — finalize + stop playback
+  document.getElementById("rec-practice-toggle").checked = false;
+  document.getElementById("rec-practice-hint").textContent =
+    "Needs a loop region set and Loop enabled (Mixer) — each pass through the loop is saved as its own take automatically.";
+  updateRecUI();
 }
 
 function loadAvOffset() {
@@ -489,6 +591,7 @@ function updateFramingOverlayVisibility() {
 // ---------------------------------------------------------------------------
 
 let currentTake = null; // {filename, path, size, starred}
+let compareSelection = []; // VD-08: up to 2 takes picked for side-by-side compare
 
 async function refreshTakesList() {
   const track = (typeof State !== "undefined" && State.track) || "";
@@ -498,16 +601,25 @@ async function refreshTakesList() {
     takes = r.takes;
   } catch (e) { /* best-effort */ }
 
+  // VD-08: carry the compare selection across a refresh by path, dropping
+  // any selected take that no longer exists (deleted/renamed elsewhere).
+  compareSelection = compareSelection
+    .map((sel) => takes.find((t) => t.path === sel.path))
+    .filter(Boolean);
+
   const listEl = document.getElementById("takes-list");
   listEl.innerHTML = "";
   if (!takes.length) {
     listEl.innerHTML = '<p class="hint">No takes for this track yet.</p>';
+    updateCompareUI();
     return;
   }
   for (const take of takes) {
     const row = document.createElement("div");
     row.className = "take-row";
+    const isSelected = compareSelection.some((t) => t.path === take.path);
     row.innerHTML = `
+      <input type="checkbox" class="take-compare-check" title="Select for side-by-side compare" ${isSelected ? "checked" : ""}>
       <button class="take-star-btn ${take.starred ? "starred" : ""}">${take.starred ? "★" : "☆"}</button>
       <span class="take-name">${escapeHtml(take.filename)}</span>
       <button class="take-play-btn">Play</button>
@@ -516,6 +628,19 @@ async function refreshTakesList() {
       <button class="take-delete-btn">Delete</button>`;
     listEl.appendChild(row);
 
+    row.querySelector(".take-compare-check").addEventListener("change", (e) => {
+      if (e.target.checked) {
+        if (compareSelection.length >= 2) {
+          e.target.checked = false;
+          document.getElementById("compare-status").textContent = "Compare needs exactly 2 — uncheck one first.";
+          return;
+        }
+        compareSelection.push(take);
+      } else {
+        compareSelection = compareSelection.filter((t) => t.path !== take.path);
+      }
+      updateCompareUI();
+    });
     row.querySelector(".take-star-btn").addEventListener("click", async () => {
       await Api.post("/api/recording/star", { path: take.path, starred: !take.starred }).catch(() => {});
       refreshTakesList();
@@ -549,9 +674,129 @@ async function refreshTakesList() {
         document.getElementById("takes-player-wrap").style.display = "none";
         currentTake = null;
       }
+      compareSelection = compareSelection.filter((t) => t.path !== take.path);
       refreshTakesList();
     });
   }
+  updateCompareUI();
+}
+
+// ---------------------------------------------------------------------------
+// VD-08: side-by-side take compare — both takes already have the backing
+// track baked into their own audio (see the Recorder.recordBus comment up
+// top), so "synced" just means starting both media elements from the same
+// point together and correcting drift, not re-deriving a shared clock.
+// ---------------------------------------------------------------------------
+
+let compareListening = "a"; // "a" | "b" — which take is currently audible
+let compareSyncInterval = null;
+
+function updateCompareUI() {
+  const card = document.getElementById("takes-compare-card");
+  if (compareSelection.length !== 2) {
+    card.style.display = "none";
+    compareStopSync();
+    return;
+  }
+  card.style.display = "block";
+  document.getElementById("compare-status").textContent = "";
+
+  const [a, b] = compareSelection;
+  document.getElementById("compare-a-label").textContent = `A: ${a.filename}`;
+  document.getElementById("compare-b-label").textContent = `B: ${b.filename}`;
+  const videoA = document.getElementById("compare-video-a");
+  const videoB = document.getElementById("compare-video-b");
+  videoA.pause(); videoB.pause();
+  videoA.src = `/api/output?path=${encodeURIComponent(a.path)}`;
+  videoB.src = `/api/output?path=${encodeURIComponent(b.path)}`;
+  compareListening = "a";
+  compareApplyListening();
+
+  videoA.onloadedmetadata = compareUpdateSeekRange;
+  videoB.onloadedmetadata = compareUpdateSeekRange;
+}
+
+function compareUpdateSeekRange() {
+  const videoA = document.getElementById("compare-video-a");
+  const videoB = document.getElementById("compare-video-b");
+  const seek = document.getElementById("compare-seek");
+  const dur = Math.max(videoA.duration || 0, videoB.duration || 0);
+  if (isFinite(dur) && dur > 0) seek.max = dur;
+}
+
+function compareApplyListening() {
+  const videoA = document.getElementById("compare-video-a");
+  const videoB = document.getElementById("compare-video-b");
+  videoA.muted = compareListening !== "a";
+  videoB.muted = compareListening !== "b";
+  document.getElementById("compare-listen-a-btn").classList.toggle("active", compareListening === "a");
+  document.getElementById("compare-listen-b-btn").classList.toggle("active", compareListening === "b");
+}
+
+function compareStopSync() {
+  if (compareSyncInterval) {
+    clearInterval(compareSyncInterval);
+    compareSyncInterval = null;
+  }
+}
+
+// Two independent HTMLMediaElements drift apart over time even when
+// started together — periodically nudge the muted one back onto the
+// audible one's clock rather than trying to run them off one shared
+// timer, since that's what the ear would actually notice.
+const COMPARE_DRIFT_TOLERANCE_SEC = 0.15;
+
+function compareStartSync() {
+  compareStopSync();
+  compareSyncInterval = setInterval(() => {
+    const videoA = document.getElementById("compare-video-a");
+    const videoB = document.getElementById("compare-video-b");
+    if (videoA.paused && videoB.paused) return;
+    const [lead, follow] = compareListening === "a" ? [videoA, videoB] : [videoB, videoA];
+    if (Math.abs(follow.currentTime - lead.currentTime) > COMPARE_DRIFT_TOLERANCE_SEC) {
+      follow.currentTime = lead.currentTime;
+    }
+    document.getElementById("compare-seek").value = lead.currentTime;
+  }, 500);
+}
+
+function wireCompareControls() {
+  document.getElementById("compare-play-btn").addEventListener("click", async () => {
+    const videoA = document.getElementById("compare-video-a");
+    const videoB = document.getElementById("compare-video-b");
+    try {
+      await Promise.all([videoA.play(), videoB.play()]);
+      compareStartSync();
+    } catch (e) {
+      document.getElementById("compare-status").textContent = "Playback failed: " + e.message;
+    }
+  });
+  document.getElementById("compare-pause-btn").addEventListener("click", () => {
+    document.getElementById("compare-video-a").pause();
+    document.getElementById("compare-video-b").pause();
+    compareStopSync();
+  });
+  document.getElementById("compare-stop-btn").addEventListener("click", () => {
+    const videoA = document.getElementById("compare-video-a");
+    const videoB = document.getElementById("compare-video-b");
+    videoA.pause(); videoB.pause();
+    videoA.currentTime = 0; videoB.currentTime = 0;
+    document.getElementById("compare-seek").value = 0;
+    compareStopSync();
+  });
+  document.getElementById("compare-listen-a-btn").addEventListener("click", () => {
+    compareListening = "a";
+    compareApplyListening();
+  });
+  document.getElementById("compare-listen-b-btn").addEventListener("click", () => {
+    compareListening = "b";
+    compareApplyListening();
+  });
+  document.getElementById("compare-seek").addEventListener("input", (e) => {
+    const t = parseFloat(e.target.value);
+    document.getElementById("compare-video-a").currentTime = t;
+    document.getElementById("compare-video-b").currentTime = t;
+  });
 }
 
 function loadTakeIntoPlayer(take) {
@@ -609,6 +854,13 @@ function wireRecorderControls() {
   });
   document.getElementById("rec-quality-select").addEventListener("change", (e) => { Recorder.quality = e.target.value; });
   document.getElementById("rec-toggle-btn").addEventListener("click", toggleRecording);
+  document.getElementById("rec-practice-toggle").addEventListener("change", (e) => {
+    if (e.target.checked) {
+      if (!practiceStart()) e.target.checked = false;
+    } else {
+      practiceStop();
+    }
+  });
   document.getElementById("rec-pill").addEventListener("click", () => {
     document.getElementById("playalong-open-btn").click();
   });
@@ -621,6 +873,7 @@ function wireRecorderControls() {
   document.getElementById("takes-trim-start").addEventListener("input", updateTrimLabels);
   document.getElementById("takes-trim-end").addEventListener("input", updateTrimLabels);
   document.getElementById("takes-trim-btn").addEventListener("click", trimCurrentTake);
+  wireCompareControls();
   drawFramingOverlay();
   updateFramingOverlayVisibility();
   loadAvOffset();

@@ -39,7 +39,7 @@ anywhere until now** — see §2 · ⛔ Superseded/dead.
 | BT-11 | Per-stem EQ & pan | ✅ | |
 | BT-12 | Gain automation (volume ramps) | 🔜 | Listed "deferred, not dead" in release-v4-spec.md §3 |
 | BT-13 | Next-gen separation models | ✅ | Shipped (`bs_roformer_sw`) |
-| BT-14 | Real lead/rhythm guitar split | 🟡 | See §2.1 — the near-term (non-ML) half of this item was never actually re-run; the ML half is properly tracked in [lead-rhythm-split-research.md](lead-rhythm-split-research.md) |
+| BT-14 | Real lead/rhythm guitar split | 🟡 | See §2.1 — the near-term (non-ML) half of this item was never actually re-run; the ML half is properly tracked in [lead-rhythm-split-research.md](lead-rhythm-split-research.md). Option D (onset/beat-grid heuristic sharpening, guitar-separation-upgrade-spec.md §5.2) shipped v3.2 as `--method hybrid` — the 5-song re-validation in §2.1 still hasn't been done and should now cover all three methods |
 | BT-15 | Artifact cleanup pass | 🔜 | Picked as **V4-F6** (timeboxed) |
 | BT-16 | Off-pitch auto-detect | ✅ | "This song appears to be ±N¢ from A=440 — apply?" |
 | BT-17 | Waveform zoom | ✅ | |
@@ -157,19 +157,42 @@ feature, not a headless one.
 ### 2.6 The video/recording ideas nobody picked back up (VD-05/06/07/08)
 
 Four small-to-medium recording features from the original video spec
-were never revisited after VD-01 through VD-04 (and VD-09) shipped:
+were never revisited after VD-01 through VD-04 (and VD-09) shipped.
+**Update:** VD-05 and VD-08 shipped v3.2 (below); VD-06/07 are still open.
 
-- **VD-05 · Multi-take practice mode** — loop a section with auto-retake,
-  each pass saved as its own take, review and keep the best (needs
-  BT-05 + VD-02, both shipped — no longer blocked).
+- **VD-05 · Multi-take practice mode — ✅ SHIPPED v3.2.** A "Practice
+  mode: auto-retake each loop pass" checkbox in the Record card. Needs a
+  loop region set and Loop enabled first (BT-05); each pass through the
+  loop is stopped and saved as its own take the instant app.js's tick()
+  wraps the loop back to its start, and a fresh recording begins
+  immediately — backing track keeps running underneath the whole
+  session, only pausing when practice mode is turned off. Required a
+  correctness fix alongside the feature: the previous recorder.js design
+  kept the in-flight take's chunks/mimeType/audioOnly on shared `Recorder`
+  fields and reset `Recorder.state` unconditionally when a take's upload
+  finished — harmless for one-take-at-a-time manual recording, but
+  practice mode's back-to-back passes could start a new MediaRecorder
+  before the previous one's upload had captured its own chunks, corrupting
+  data across passes. Fixed by making each pass close over its own local
+  chunks/mimeType/audioOnly and by identity-checking which recorder a
+  finalize call belongs to before it's allowed to reset shared state
+  (recorder.js's beginRecordingPass/finalizeAndUpload).
 - **VD-06 · Recording overlays** — burned-in title/take-number lower
   third, live chord display (blocked on BT-04, which is now picked for
   v4 — natural pairing once that lands).
 - **VD-07 · Social export presets** — one-click re-crop to 9:16/1:1 and
   a normalized web-friendly H.264+AAC version of a take, pure ffmpeg
   presets over an existing file.
-- **VD-08 · Side-by-side take compare** — play two takes synced against
-  their shared backing track to compare (needs VD-02, shipped).
+- **VD-08 · Side-by-side take compare — ✅ SHIPPED v3.2.** Check the box
+  on two takes in the Takes card to open a Compare Takes card: both play
+  back together from the same start point via two `<video>` elements,
+  periodically re-synced against drift (>150ms triggers a snap-to-lead
+  correction), with a seek bar driving both and a "Listening: A/B" toggle
+  that mutes/unmutes without breaking sync (recorder.js's
+  wireCompareControls/updateCompareUI). No new backend work — both takes
+  already have the backing track baked into their own audio, so "synced"
+  only ever meant "started together and kept from drifting," not a
+  shared clock with the mixer.
 
 None of these are large; they were simply never re-surfaced once the
 core recording feature set (VD-01–04, VD-09) shipped and attention moved

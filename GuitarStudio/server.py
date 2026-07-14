@@ -337,10 +337,13 @@ def svc_split_guitar(source_path: str, model: str, stem: str, method: str) -> di
     else:
         correlation = 1.0
 
-    if method not in ("spectral", "midside"):
-        raise ApiError(400, f"Unknown split method '{method}' — use 'spectral' or 'midside'")
+    if method not in ("spectral", "midside", "hybrid"):
+        raise ApiError(400, f"Unknown split method '{method}' — use 'spectral', 'midside', or 'hybrid'")
     if method == "spectral":
         center_mono, sides_mono = engine.spectral_pan_split(left, right, sr)
+    elif method == "hybrid":
+        beats = engine.ensure_analysis(out_dir).get("beats", [])
+        center_mono, sides_mono = engine.hybrid_pan_split(left, right, sr, beats)
     else:
         center_mono, sides_mono = engine.midside_pan_split(left, right)
     center = engine.np.stack([center_mono, center_mono], axis=1)

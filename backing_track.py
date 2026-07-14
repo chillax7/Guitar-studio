@@ -105,6 +105,7 @@ DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness
 MUTE_RANGE_FADE_SECONDS = 0.03  # fade in/out at mute-range edges to avoid clicks
 SPECTRAL_SPLIT_NPERSEG = 4096  # STFT window for the frequency-adaptive guitar split
 DEFAULT_SPLIT_METHOD = "spectral"
+HYBRID_SHARPEN_STRENGTH = 0.6  # how hard onset-grid-alignment can push hybrid_pan_split's centeredness away from 0.5
 HASH_CHUNK_SIZE = 1 << 20  # 1 MB, for streaming the content hash
 
 # Known Demucs model -> stem names. Models not listed here fall back to the
@@ -753,6 +754,87 @@ def _match_length(signal: np.ndarray, target_len: int) -> np.ndarray:
     return signal[:target_len]
 
 
+def _onset_regularity_curve(mono: np.ndarray, samplerate: int, beat_times: list,
+                             frame_times: np.ndarray) -> np.ndarray:
+    """How tightly note onsets in `mono` cluster around the beat grid,
+    resampled onto `frame_times` (hybrid_pan_split's STFT time axis). 1.0 =
+    an onset lands right on a beat (strummed/chordal rhythm playing usually
+    looks like this over a whole passage); 0.0 = no onset nearby, or one
+    that lands well off the grid (sustained notes, bends, freer lead
+    lines). Purely a confidence signal for hybrid_pan_split to lean on —
+    not a lead/rhythm classifier by itself."""
+    import librosa
+    if not beat_times or len(mono) == 0:
+        return np.zeros(len(frame_times), dtype=np.float32)
+
+    onset_times = librosa.onset.onset_detect(y=mono, sr=samplerate, units="time")
+    if len(onset_times) == 0:
+        return np.zeros(len(frame_times), dtype=np.float32)
+
+    beats = np.asarray(beat_times, dtype=np.float64)
+    # Tolerance for "on the grid" is half the median beat spacing — roughly
+    # how far ahead of/behind the click a strum still reads as locked-in.
+    spacing = float(np.median(np.diff(beats))) if len(beats) > 1 else 0.5
+    tolerance = max(spacing / 2, 1e-3)
+
+    nearest_beat_dist = np.array([np.min(np.abs(beats - t)) for t in onset_times])
+    onset_grid_score = np.clip(1.0 - nearest_beat_dist / tolerance, 0.0, 1.0)
+
+    # Spread each onset's score across a tolerance-wide window around it and
+    # average onto the STFT frame grid, turning the sparse onset list into a
+    # continuous per-frame curve.
+    curve = np.zeros(len(frame_times), dtype=np.float32)
+    counts = np.zeros(len(frame_times), dtype=np.float32)
+    for onset_t, score in zip(onset_times, onset_grid_score):
+        mask = np.abs(frame_times - onset_t) <= tolerance
+        curve[mask] += score
+        counts[mask] += 1
+    return np.where(counts > 0, curve / np.maximum(counts, 1), 0.0).astype(np.float32)
+
+
+def hybrid_pan_split(left: np.ndarray, right: np.ndarray, samplerate: int,
+                      beat_times: list) -> tuple:
+    """Option D (research/guitar-separation-upgrade-spec.md,
+    research/post-v3-backlog-audit.md): spectral_pan_split sharpened using
+    onset-to-beat-grid alignment. Still no ML and no lead/rhythm
+    classification — the beat grid is BT-02's existing tempo/beat output,
+    reused rather than trained on. During passages where note onsets land
+    tightly on the beat (typically strummed/chordal rhythm playing), the
+    per-bin center/sides weighting gets pushed further toward whichever
+    side the panning read already favors, on the theory that rhythm
+    playing tends to sit at a more decisively fixed stereo position than
+    lead lines wandering under bends/vibrato. Falls back to plain
+    spectral_pan_split when there's no beat grid to work with (e.g. no
+    drums stem, or beat tracking failed) — same fallback spectral_pan_split
+    itself uses for a too-short signal."""
+    nperseg = min(SPECTRAL_SPLIT_NPERSEG, len(left))
+    if nperseg < 8 or not beat_times:
+        return spectral_pan_split(left, right, samplerate)
+
+    stft_kwargs = dict(fs=samplerate, nperseg=nperseg, noverlap=nperseg * 3 // 4)
+    _, frame_times, left_f = scipy.signal.stft(left, **stft_kwargs)
+    _, _, right_f = scipy.signal.stft(right, **stft_kwargs)
+
+    mag_l, mag_r = np.abs(left_f), np.abs(right_f)
+    total = mag_l + mag_r + 1e-9
+    balance = mag_l / total
+    centeredness = 1.0 - 2.0 * np.abs(balance - 0.5)
+
+    mono = (left + right) / 2
+    regularity = _onset_regularity_curve(mono, samplerate, beat_times, frame_times)
+    sharpen = HYBRID_SHARPEN_STRENGTH * regularity[np.newaxis, :]
+    centeredness = np.clip(centeredness + sharpen * (centeredness - 0.5), 0.0, 1.0)
+
+    mid_f = (left_f + right_f) / 2
+    side_f = (left_f - right_f) / 2
+
+    istft_kwargs = dict(fs=samplerate, nperseg=nperseg, noverlap=nperseg * 3 // 4)
+    _, center = scipy.signal.istft(centeredness * mid_f, **istft_kwargs)
+    _, sides = scipy.signal.istft((1.0 - centeredness) * side_f, **istft_kwargs)
+
+    return _match_length(center, len(left)), _match_length(sides, len(left))
+
+
 def cmd_split_guitar(args: argparse.Namespace) -> None:
     """Experimental: split a stereo guitar stem by panning position rather
     than timbre. This is NOT a real lead/rhythm separation model — no such
@@ -789,6 +871,9 @@ def cmd_split_guitar(args: argparse.Namespace) -> None:
 
     if args.method == "spectral":
         center_mono, sides_mono = spectral_pan_split(left, right, sr)
+    elif args.method == "hybrid":
+        beats = ensure_analysis(out_dir).get("beats", [])
+        center_mono, sides_mono = hybrid_pan_split(left, right, sr, beats)
     else:
         center_mono, sides_mono = midside_pan_split(left, right)
     center = np.stack([center_mono, center_mono], axis=1)
@@ -1010,11 +1095,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_split.add_argument("--model", default="htdemucs_6s", help=model_help("htdemucs_6s"))
     p_split.add_argument("--stem", default="guitar",
                           help="Name of the stereo stem to split (default: guitar)")
-    p_split.add_argument("--method", choices=["spectral", "midside"], default=DEFAULT_SPLIT_METHOD,
+    p_split.add_argument("--method", choices=["spectral", "midside", "hybrid"], default=DEFAULT_SPLIT_METHOD,
                           help="Split algorithm (default: spectral). 'spectral' adapts the "
                                "center/sides split per frequency bin, which can separate "
                                "partially- or inconsistently-panned mixes better than the "
-                               "blunt whole-track 'midside' split.")
+                               "blunt whole-track 'midside' split. 'hybrid' (Option D) further "
+                               "sharpens 'spectral' using onset-to-beat-grid alignment — falls "
+                               "back to plain 'spectral' if no beat grid is available.")
     p_split.set_defaults(func=cmd_split_guitar)
 
     p_mix = sub.add_parser("mix", help="Mix down a backing track with stems muted/gained")

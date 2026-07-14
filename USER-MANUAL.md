@@ -212,6 +212,24 @@ actually which varies by song and sometimes neither is clean. Solo each
 and judge by ear. The correlation number shown is diagnostic only; it does
 not reliably predict whether the split will sound good.
 
+Three split algorithms are offered:
+
+- **Spectral** (default) — adapts the center/sides split per frequency
+  bin, usually the best starting point.
+- **Mid-side** — the blunt whole-track version: one fixed 50/50 split
+  applied everywhere. Rarely beats Spectral, kept mainly for comparison.
+- **Hybrid** — Spectral, sharpened using how tightly the guitar's note
+  onsets line up with the song's detected beat grid. Still not a
+  lead/rhythm classifier — it's a confidence tweak on top of the same
+  panning read, on the theory that strummed/chordal playing sits at a
+  more decisively fixed stereo position than a lead line wandering under
+  bends and vibrato. Needs a detected beat grid to do anything (falls
+  back to plain Spectral without one — instrumental-only tracks or ones
+  where tempo detection failed won't see a difference from Spectral).
+
+None of the three is guaranteed to beat the others on a given song —
+try more than one and judge by ear, same as always.
+
 ## 8. Export
 
 The **Export** section is always visible in the right-hand inspector once a
@@ -544,6 +562,35 @@ With a take loaded in the player, **Trim start/end** sliders plus **Trim
 (lossless copy, new file)** cut the top/tail off losslessly (stream copy,
 no re-encode) and save the result as a new file — your original is never
 touched.
+
+### 10.4 Practice mode: auto-retake on loop
+Below the count-in checkbox, **Practice mode: auto-retake each loop
+pass** turns the loop into a repeat-and-review drill: set a loop region
+and turn on **Loop** first (§6), then check this box. It starts the
+backing track from the top of the loop, records the first pass, and the
+instant playback wraps back to the loop start it saves that pass as its
+own take and starts recording the next one — automatically, for as many
+passes as you play, with the backing track never stopping in between.
+Uncheck the box (or just stop playback) to end the session; whatever pass
+was in progress is saved as a normal take like any other, ready to star,
+play, or delete in the Takes list above. The manual **● Record** button
+is disabled for the duration — practice mode owns the record cycle
+itself, so it doesn't compete with a manual click.
+
+Nothing here changes what a take *is* — passes are numbered and stored
+exactly like a normal take (§10.3), so you review and cull them the same
+way: play a few back, star the good ones, delete the rest.
+
+### 10.5 Compare two takes side by side
+Check the box on any two rows in the Takes list to open a **Compare
+Takes** card: both takes play back together from the same starting point,
+kept in sync automatically (a drift check runs every half-second, so two
+independent players don't slowly pull apart). The **Listening: A/B**
+toggle switches which one you actually hear without breaking that sync or
+restarting either — useful for A/B-ing two practice-mode passes, or a
+keeper take against an earlier attempt. A shared seek bar scrubs both at
+once. Only two can be selected at a time; uncheck one before picking a
+different third.
 
 ## 11. Projects (autosave)
 

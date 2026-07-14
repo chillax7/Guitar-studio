@@ -73,7 +73,7 @@ derived stems become usable in `mix` immediately, alongside the original
 `guitar` stem (don't mix all three together, or you'll triple up the
 guitar content).
 
-Two split algorithms are available via `--method`:
+Three split algorithms are available via `--method`:
 
 - `spectral` (default) — estimates how centered vs. panned each
   time/frequency bin is, and weights the center/sides split per-bin. Can
@@ -82,6 +82,14 @@ Two split algorithms are available via `--method`:
 - `midside` — the original blunt version: one fixed 50/50 mid/side split
   applied across the whole track. Simpler, but can't adapt if the panning
   isn't clean and consistent throughout.
+- `hybrid` — `spectral`, sharpened using how tightly the guitar's note
+  onsets line up with the song's detected beat grid (Option D in
+  research/guitar-separation-upgrade-spec.md). No ML, no lead/rhythm
+  classification — it reuses the existing tempo/beat-tracking output to
+  push the per-bin center/sides weighting further toward whichever side
+  the panning read already favors during rhythmically-regular
+  (strummed/chordal) passages. Falls back to plain `spectral` when there's
+  no beat grid to work with (no drums stem, or beat tracking failed).
 
 It prints an inter-channel correlation figure, but in testing across 5
 real songs this **did not reliably predict** which tracks would split
@@ -155,7 +163,7 @@ Each cut gets a short (~30ms) fade in/out so it doesn't click.
 | `--target-lufs` | mix | Target integrated loudness for the export (default `-14`) |
 | `-o, --output` | mix | Output path, `.wav` or `.mp3` |
 | `--stem` | split-guitar | Name of the stereo stem to split (default `guitar`) |
-| `--method` | split-guitar | Split algorithm: `spectral` (default, per-frequency-bin) or `midside` (whole-track, blunt) |
+| `--method` | split-guitar | Split algorithm: `spectral` (default, per-frequency-bin), `midside` (whole-track, blunt), or `hybrid` (`spectral` sharpened by beat-grid onset alignment) |
 
 ## Notes
 

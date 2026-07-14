@@ -65,7 +65,12 @@ Mostly no, with two developments worth knowing:
   turnkey lead/rhythm splitter, but a genuinely interesting fallback UX
   for us: "play 4 bars of the part you want isolated" is something a
   guitarist — our exact user — can do trivially. Worth a weekend
-  evaluation on its released checkpoint.
+  evaluation on its released checkpoint. **Update (v3.2 diligence pass):**
+  see [guidesep-evaluation.md](guidesep-evaluation.md) — the "play 4 bars"
+  pitch undersells it: it also wants a hand-sketched mel-spectrogram mask
+  per separation via a Jupyter notebook UI, not a turnkey checkpoint run.
+  Narrowed to "worth an afternoon of env setup + one listening test," not
+  a weekend, and gated before any real UI-integration work is scoped.
 - Still **no open role-labeled dataset** and no open lead/rhythm model.
   MoisesDB remains timbre-labeled (acoustic/clean/distorted), not
   role-labeled.
