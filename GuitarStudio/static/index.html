@@ -260,11 +260,17 @@
         </section>
 
         <!-- V3-U1: the rig, pedalboard order left-to-right — Input/Gate ->
-             Amp -> Cab IR -> EQ -> Comp -> Delay/Reverb -> Output. Every
-             card is collapsible (wirePedalboardCollapse in playalong.js);
-             collapse state persists in localStorage today and will move
-             into the project file once XC-01 (project format v2) lands. -->
+             Amp -> [12 reorderable stages] -> Output. Every card is
+             collapsible (wirePedalboardCollapse in playalong.js); collapse
+             state persists in localStorage today and will move into the
+             project file once XC-01 (project format v2) lands.
+             v3.1 §3: pa-flow-svg is an absolutely-positioned overlay (see
+             styles.css) that paRedrawSignalFlow() (playalong.js) draws
+             chain-order arrows into, computed from each card's live
+             getBoundingClientRect() since the masonry layout below doesn't
+             put cards in predictable rows/columns. -->
         <div id="pa-pedalboard">
+          <svg id="pa-flow-svg"></svg>
           <section class="pa-card pa-rig-card" data-card-id="gate">
             <div class="pa-card-head">
               <h3>Noise Gate</h3>
@@ -357,6 +363,16 @@
                 <div class="model-browser-list" id="pa-ir-list"></div>
               </div>
               <p class="hint" id="pa-ir-status"></p>
+
+              <!-- v3.1 §2: IR tone shaper (GP-05's missing piece) — a
+                   low/high-cut pair on the IR's wet path only, independent
+                   of the general EQ card further down the chain. Flat by
+                   default (80Hz/20000Hz = wide open, no-op). -->
+              <div class="row"><label>Tone shape bypass</label><input type="checkbox" id="pa-ir-tone-bypass" checked></div>
+              <label>Low cut <span id="pa-ir-lowcut-val">80 Hz</span></label>
+              <input type="range" id="pa-ir-lowcut" min="20" max="500" step="5" value="80">
+              <label>High cut <span id="pa-ir-highcut-val">20000 Hz</span></label>
+              <input type="range" id="pa-ir-highcut" min="2000" max="20000" step="100" value="20000">
             </div>
           </section>
 
@@ -411,6 +427,149 @@
               <input type="range" id="pa-reverb-size" min="0.2" max="5" step="0.1" value="1.5">
               <label>Reverb mix <span id="pa-reverb-mix-val">15%</span></label>
               <input type="range" id="pa-reverb-mix" min="0" max="100" step="1" value="15">
+            </div>
+          </section>
+
+          <!-- v3.1 §1: the eight new pedal cards GP-03 originally asked for
+               and never got (research/post-v3-backlog-audit.md §2.2). Each
+               is a stage exactly like ir/eq/comp/fx above: draggable,
+               collapsible, with its own PA.pedalStages entry. -->
+
+          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="wah">
+            <div class="pa-card-head">
+              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
+              <h3>Auto-Wah</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Auto-Wah" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-wah-bypass" checked></div>
+              <p class="hint">LFO-driven sweep, not a treadle-controlled wah — there's no expression-pedal/MIDI input yet (that's GP-11).</p>
+              <label>Rate <span id="pa-wah-rate-val">1.0 Hz</span></label>
+              <input type="range" id="pa-wah-rate" min="0.1" max="5" step="0.1" value="1.0">
+              <label>Depth <span id="pa-wah-depth-val">50%</span></label>
+              <input type="range" id="pa-wah-depth" min="0" max="100" step="1" value="50">
+              <label>Center freq <span id="pa-wah-center-val">800 Hz</span></label>
+              <input type="range" id="pa-wah-center" min="200" max="2000" step="10" value="800">
+              <label>Mix <span id="pa-wah-mix-val">100%</span></label>
+              <input type="range" id="pa-wah-mix" min="0" max="100" step="1" value="100">
+            </div>
+          </section>
+
+          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="octaver">
+            <div class="pa-card-head">
+              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
+              <h3>Octaver</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Octaver" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-octaver-bypass" checked></div>
+              <p class="hint">Rectify-and-filter sub-octave coloration, not a true pitch tracker — cleanest on single monophonic notes, breaks up on chords.</p>
+              <label>Blend <span id="pa-octaver-blend-val">40%</span></label>
+              <input type="range" id="pa-octaver-blend" min="0" max="100" step="1" value="40">
+            </div>
+          </section>
+
+          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="boost">
+            <div class="pa-card-head">
+              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
+              <h3>Boost / Overdrive</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Boost / Overdrive" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-boost-bypass" checked></div>
+              <label>Drive <span id="pa-boost-drive-val">30%</span></label>
+              <input type="range" id="pa-boost-drive" min="0" max="100" step="1" value="30">
+              <label>Level <span id="pa-boost-level-val">0 dB</span></label>
+              <input type="range" id="pa-boost-level" min="-24" max="24" step="1" value="0">
+            </div>
+          </section>
+
+          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="geq">
+            <div class="pa-card-head">
+              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
+              <h3>Graphic EQ</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Graphic EQ" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-geq-bypass"></div>
+              <label>100 Hz <span id="pa-geq-100-val">0 dB</span></label>
+              <input type="range" id="pa-geq-100" min="-12" max="12" step="1" value="0">
+              <label>300 Hz <span id="pa-geq-300-val">0 dB</span></label>
+              <input type="range" id="pa-geq-300" min="-12" max="12" step="1" value="0">
+              <label>1 kHz <span id="pa-geq-1000-val">0 dB</span></label>
+              <input type="range" id="pa-geq-1000" min="-12" max="12" step="1" value="0">
+              <label>3 kHz <span id="pa-geq-3000-val">0 dB</span></label>
+              <input type="range" id="pa-geq-3000" min="-12" max="12" step="1" value="0">
+              <label>8 kHz <span id="pa-geq-8000-val">0 dB</span></label>
+              <input type="range" id="pa-geq-8000" min="-12" max="12" step="1" value="0">
+            </div>
+          </section>
+
+          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="chorus">
+            <div class="pa-card-head">
+              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
+              <h3>Chorus</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Chorus" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-chorus-bypass" checked></div>
+              <label>Rate <span id="pa-chorus-rate-val">1.2 Hz</span></label>
+              <input type="range" id="pa-chorus-rate" min="0.1" max="5" step="0.1" value="1.2">
+              <label>Depth <span id="pa-chorus-depth-val">50%</span></label>
+              <input type="range" id="pa-chorus-depth" min="0" max="100" step="1" value="50">
+              <label>Mix <span id="pa-chorus-mix-val">35%</span></label>
+              <input type="range" id="pa-chorus-mix" min="0" max="100" step="1" value="35">
+            </div>
+          </section>
+
+          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="phaser">
+            <div class="pa-card-head">
+              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
+              <h3>Phaser</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Phaser" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-phaser-bypass" checked></div>
+              <label>Rate <span id="pa-phaser-rate-val">0.5 Hz</span></label>
+              <input type="range" id="pa-phaser-rate" min="0.05" max="3" step="0.05" value="0.5">
+              <label>Depth <span id="pa-phaser-depth-val">60%</span></label>
+              <input type="range" id="pa-phaser-depth" min="0" max="100" step="1" value="60">
+              <label>Mix <span id="pa-phaser-mix-val">50%</span></label>
+              <input type="range" id="pa-phaser-mix" min="0" max="100" step="1" value="50">
+            </div>
+          </section>
+
+          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="flanger">
+            <div class="pa-card-head">
+              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
+              <h3>Flanger</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Flanger" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-flanger-bypass" checked></div>
+              <label>Rate <span id="pa-flanger-rate-val">0.3 Hz</span></label>
+              <input type="range" id="pa-flanger-rate" min="0.05" max="3" step="0.05" value="0.3">
+              <label>Depth <span id="pa-flanger-depth-val">60%</span></label>
+              <input type="range" id="pa-flanger-depth" min="0" max="100" step="1" value="60">
+              <label>Feedback <span id="pa-flanger-feedback-val">40%</span></label>
+              <input type="range" id="pa-flanger-feedback" min="0" max="90" step="1" value="40">
+              <label>Mix <span id="pa-flanger-mix-val">50%</span></label>
+              <input type="range" id="pa-flanger-mix" min="0" max="100" step="1" value="50">
+            </div>
+          </section>
+
+          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="tremolo">
+            <div class="pa-card-head">
+              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
+              <h3>Tremolo</h3>
+              <button class="pa-collapse-btn" aria-label="Collapse Tremolo" title="Collapse">▾</button>
+            </div>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-tremolo-bypass" checked></div>
+              <label>Rate <span id="pa-tremolo-rate-val">4.0 Hz</span></label>
+              <input type="range" id="pa-tremolo-rate" min="0.5" max="12" step="0.1" value="4.0">
+              <label>Depth <span id="pa-tremolo-depth-val">50%</span></label>
+              <input type="range" id="pa-tremolo-depth" min="0" max="100" step="1" value="50">
             </div>
           </section>
 

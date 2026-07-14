@@ -43,9 +43,9 @@ anywhere until now** — see §2 · ⛔ Superseded/dead.
 | BT-18 | Batch operations | 🔜 | Listed "deferred, not dead" in release-v4-spec.md §3 |
 | GP-01 | Chromatic tuner | ✅ | |
 | GP-02 | Rig presets, per-song recall | ✅ | |
-| GP-03 | Expanded pedalboard + reorder | 🟡 | Drag-to-reorder shipped for IR/EQ/Comp/Delay-Reverb — see §2.2, the actual new *effect types* this item specified were not built |
+| GP-03 | Expanded pedalboard + reorder | ✅ | v3.1: the eight new effect types (§2.2) shipped — Boost/Overdrive, Graphic EQ, Chorus, Flanger, Phaser, Tremolo, Auto-Wah, Octaver — as reorderable cards alongside the original four |
 | GP-04 | WaveNet .nam (WASM) | ✅ | |
-| GP-05 | IR library & management | 🟡 | Mostly shipped (folder-scanned picker, presets remember the loaded IR) — see §2.3 for the one small piece still missing |
+| GP-05 | IR library & management | ✅ | v3.1: the IR tone shaper (§2.3, low/high-cut on the wet path) shipped |
 | GP-06 | Looper pedal | 🔜 | Picked as **V4-F2** |
 | GP-07 | Riff capture buffer | ✅ | |
 | GP-08 | Audio-only takes | ✅ | |
@@ -70,8 +70,11 @@ anywhere until now** — see §2 · ⛔ Superseded/dead.
 | XC-05 | Native macOS app | 🔜 | Fully superseded by [appstore-plan.md](../appstore-plan.md) — a much more detailed, tiered plan than this backlog item ever was |
 | XC-06 | Windows parity | 🔜 | Superseded by release-v4-spec.md §5's compatibility-phase plan, which is more detailed than this backlog item |
 
-**Score: 30 shipped, 6 already correctly tracked in release-v4-spec.md,
-2 superseded by better docs, 6 genuine survivors below.**
+**Score (at the time this audit was written): 30 shipped, 6 already
+correctly tracked in release-v4-spec.md, 2 superseded by better docs, 6
+genuine survivors below.** Since then, v3.1 shipped two of those six
+(§2.2, §2.3) — see their sections for what changed; the table above
+reflects the current (post-v3.1) status.
 
 ---
 
@@ -90,28 +93,33 @@ just re-running the existing heuristic against the better stem and
 updating the honesty notes in USER-MANUAL.md §7 with whatever the result
 actually is.
 
-### 2.2 GP-03's actual expanded effect palette was never built
+### 2.2 GP-03's actual expanded effect palette — ✅ SHIPPED v3.1
 
 What shipped under "GP-03" was drag-to-reorder for the *existing* four
 post-amp cards (Cab IR, EQ, Compressor, Delay/Reverb) — genuinely useful,
 but not what GP-03 originally specified. The actual ask — **chorus,
 flanger, phaser, tremolo, wah/auto-wah, octaver, a dedicated boost/
-overdrive pedal, and a graphic EQ** as real Web Audio pedal cards — was
-never built. None of these effect types exist anywhere in the app today.
-**Size: M/L** — each modulation effect is a small, well-understood Web
-Audio node (LFO + delay/allpass for chorus/flanger/phaser, a gain-staged
-waveshaper for boost/OD, a bandpass sweep for wah); the real work is
-making each one a proper pedalboard card (bypass, controls, drag-order
-slot) consistent with the existing four.
+overdrive pedal, and a graphic EQ** as real Web Audio pedal cards — is now
+built: all eight are reorderable pedalboard cards alongside the original
+four (twelve total between Gate/Amp and Output), each with its own
+bypass, controls, and rig-preset round-trip. Auto-Wah is named that (not
+"Wah") since it's LFO-swept, not expression-pedal controlled — there's
+still no MIDI/expression input (GP-11, still open). Octaver is a
+rectify-and-filter sub-octave approximation, not a true pitch tracker —
+flagged honestly in its own card hint, same spirit as the chord-detection
+and off-pitch-detect honesty notes elsewhere. v3.1 also added a
+signal-flow visualization (arrows between pedalboard cards, following
+chain order) that wasn't part of the original GP-03 ask but was requested
+alongside it.
 
-### 2.3 GP-05's one missing piece: IR-specific tone shaping
+### 2.3 GP-05's one missing piece: IR-specific tone shaping — ✅ SHIPPED v3.1
 
 The folder-scanned IR picker, search, and per-preset recall all shipped.
-The one specific piece of the original ask that didn't: **an optional
-high/low-cut filter placed right after the loaded IR**, for shaping a
-cab sim's extreme top/bottom end independently of the general-purpose
-EQ card further down the chain. **Size: S** — two biquad filters on the
-existing IR card.
+The one specific piece of the original ask that didn't, until now: **an
+optional high/low-cut filter placed right after the loaded IR**, for
+shaping a cab sim's extreme top/bottom end independently of the
+general-purpose EQ card further down the chain — two biquad filters on
+the existing IR card's wet path, wide open (no-op) by default.
 
 ### 2.4 GP-12: bounce your live performance into the normal export
 
@@ -160,10 +168,15 @@ to Play Along and practice intelligence.
 
 ## 3. Recommendation
 
-None of these six are release-blocking, and several are natural fits
+None of these six were release-blocking, and several are natural fits
 alongside work release-v4-spec.md already has scheduled — 2.1 pairs with
 the artifact-cleanup pass (V4-F6), 2.6's VD-06 pairs with chords (V4-F1).
-Suggested treatment: fold 2.1 and 2.3 into whichever v4 milestone touches
-the same area as a small bonus item, and leave 2.2/2.4/2.5/2.6 as a
-genuine "v5 or whenever it's wanted" pile — this document is their
-record so they don't need re-discovering from scratch later.
+**Update:** 2.2 and 2.3 shipped as v3.1, ahead of v4 — they turned out
+self-contained enough (both scoped entirely within the existing
+reorderable-pedal-chain architecture, no dependency on v4's Rate My Take
+or guitar-only-thesis work) to pull forward rather than wait. Remaining
+suggested treatment, unchanged for 2.1/2.4/2.5/2.6: fold 2.1 into
+whichever v4 milestone touches the artifact-cleanup pass (V4-F6) as a
+small bonus item, and leave 2.4/2.5/2.6 as a genuine "v5 or whenever it's
+wanted" pile — this document is their record so they don't need
+re-discovering from scratch later.

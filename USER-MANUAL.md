@@ -337,19 +337,52 @@ this off to avoid doubling up; it's there for the Analog/Clean paths or if
 you want to experiment. Picking an IR automatically turns bypass off, so
 you actually hear it.
 
-### 9.5 EQ, Compressor, Delay/Reverb, Output
-A standard post-amp chain: 3-band EQ, a compressor (threshold/ratio),
-delay (time/feedback/mix), and reverb (size/mix) — each independently
-bypassable — then a final output level with a meter.
+**Tone shaper:** a low-cut and high-cut filter on the loaded IR's wet
+signal only (the dry bypass path is never touched), for trimming a cab
+sim's extreme top/bottom independently of the general EQ card further down
+the chain — e.g. cutting sub-bass rumble a real mic'd cab wouldn't
+reproduce, or taming fizz above where a guitar speaker rolls off. Wide
+open (no-op) by default; "Tone shape bypass" turns it off entirely without
+losing your slider positions.
 
-**Drag-to-reorder:** Cab IR, EQ, Compressor, and Delay/Reverb
-can be rearranged into any order — drag a card by the **⠿** handle in its
-header and drop it where you want it. Compression before the cab IR
-instead of after, EQ before compression, whatever your ears want. Gate and
-Amp stay fixed at the front of the chain and Output stays fixed at the
-end; the four effects between them are the reorderable part. Order
-persists across reloads and is captured/recalled as part of a rig preset
-(§9.3b) — save your whole rig, pedal order included.
+### 9.5 The pedalboard: EQ, Compressor, Delay/Reverb, Output, and more
+A standard post-amp chain — 3-band EQ, a compressor (threshold/ratio),
+delay (time/feedback/mix), and reverb (size/mix), each independently
+bypassable — plus eight further pedal cards, then a final output level
+with a meter:
+
+- **Boost/Overdrive** — Drive + Level, a gain-staged waveshaper (the same
+  distortion curve the Analog amp uses), true hard bypass.
+- **Graphic EQ** — 5 bands (100Hz/300Hz/1kHz/3kHz/8kHz), ±12dB each,
+  distinct from the 3-band EQ card.
+- **Chorus**, **Flanger** — modulated short delays (Rate/Depth/Mix, plus
+  Feedback on the Flanger for its resonant edge).
+- **Phaser** — a 4-stage sweep (Rate/Depth/Mix).
+- **Tremolo** — amplitude modulation (Rate/Depth), no dry/wet mix since
+  there's nothing to blend.
+- **Auto-Wah** — an LFO-swept bandpass (Rate/Depth/Center/Mix). Named
+  "Auto-Wah," not "Wah," on purpose: this sweeps on its own timer, it
+  doesn't track an expression pedal — there's no MIDI/expression input
+  wired up yet.
+- **Octaver** — a rectify-and-filter sub-octave coloration (Blend knob).
+  This is **not** a true pitch tracker; it's cleanest on single
+  monophonic notes and breaks up on chords, same honesty-note spirit as
+  the guitar-split and chord-detection features elsewhere in this app.
+
+**Drag-to-reorder:** all twelve of the above (Cab IR, EQ, Compressor,
+Delay/Reverb, and the eight new pedals) can be rearranged into any order —
+drag a card by the **⠿** handle in its header and drop it where you want
+it. Wah before the amp's drive, chorus after, whatever your ears want.
+Gate and Amp stay fixed at the front of the chain and Output stays fixed
+at the end; everything between them is reorderable. Order persists across
+reloads and is captured/recalled as part of a rig preset (§9.3b) — save
+your whole rig, pedal order included.
+
+**Signal-flow arrows:** the pedalboard draws a faint arrow from each card
+to the next in chain order, redrawn live as you drag-reorder, collapse
+cards, or resize the window — a quick visual answer to "what feeds what"
+now that the board runs twelve-plus cards deep. Purely a visual aid; it
+has no effect on the actual audio routing.
 
 ### 9.6 Adding amp models & cab IRs
 Drop `.nam` files into `GuitarStudio/models/nam/` and `.wav` impulse

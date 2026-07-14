@@ -204,7 +204,16 @@ async function ensurePAGraph() {
   PA.convolver = Audio.ctx.createConvolver();
   PA.irDryGain = Audio.ctx.createGain(); PA.irDryGain.gain.value = 1;
   PA.irWetGain = Audio.ctx.createGain(); PA.irWetGain.gain.value = 0;
-  PA.convolver.connect(PA.irWetGain);
+  // v3.1 §2 (post-v3-backlog-audit.md §2.3): IR tone shaper — low/high-cut
+  // on the wet (convolved) path only, so the dry bypass path is never
+  // touched. Initialized wide open (20Hz/20000Hz = transparent), matching
+  // the "Tone shape bypass" checkbox's default-checked state; the bypass
+  // handler in wirePAControls swaps in the slider values when unbypassed.
+  PA.irLowCut = Audio.ctx.createBiquadFilter();
+  PA.irLowCut.type = "highpass"; PA.irLowCut.frequency.value = 20;
+  PA.irHighCut = Audio.ctx.createBiquadFilter();
+  PA.irHighCut.type = "lowpass"; PA.irHighCut.frequency.value = 20000;
+  PA.convolver.connect(PA.irLowCut).connect(PA.irHighCut).connect(PA.irWetGain);
   PA.irMerge = Audio.ctx.createGain();
   PA.irDryGain.connect(PA.irMerge);
   PA.irWetGain.connect(PA.irMerge);
@@ -243,6 +252,142 @@ async function ensurePAGraph() {
   PA.delayMerge.connect(PA.reverbMerge);
   PA.reverbWet.connect(PA.reverbMerge);
 
+  // ---------------------------------------------------------------------
+  // v3.1 §1 (post-v3-backlog-audit.md §2.2): the eight new pedal stages.
+  // Same two bypass idioms already used above: a dry/wet GAIN PAIR for
+  // stages with no neutral "off" state (Boost, Octaver — true hard bypass
+  // or blend-to-zero), and a WET-GAIN-ONLY additive send for stages with a
+  // Mix knob (Chorus/Flanger/Phaser/Auto-Wah, exactly like Delay/Reverb
+  // above: the previous stage's output feeds the merge node directly as
+  // the dry contribution AND feeds the effect chain as the wet source).
+  // ---------------------------------------------------------------------
+
+  // Boost/Overdrive — reuses paMakeDistortionCurve (same curve fn as the
+  // Analog amp) as a standalone pedal. True hard bypass (dry/wet pair).
+  PA.boostShaper = Audio.ctx.createWaveShaper();
+  PA.boostShaper.curve = paMakeDistortionCurve(0.3);
+  PA.boostShaper.oversample = "4x";
+  PA.boostLevel = Audio.ctx.createGain();
+  PA.boostShaper.connect(PA.boostLevel);
+  PA.boostDryGain = Audio.ctx.createGain(); PA.boostDryGain.gain.value = 1;
+  PA.boostWetGain = Audio.ctx.createGain(); PA.boostWetGain.gain.value = 0;
+  PA.boostLevel.connect(PA.boostWetGain);
+  PA.boostMerge = Audio.ctx.createGain();
+  PA.boostDryGain.connect(PA.boostMerge);
+  PA.boostWetGain.connect(PA.boostMerge);
+
+  // Graphic EQ — 5-band peaking chain, distinct from the 3-band EQ card
+  // further down. Bypass = zero all gains (same as that 3-band EQ).
+  PA.geqNodes = {};
+  const geqFreqs = [100, 300, 1000, 3000, 8000];
+  let geqPrev = null;
+  for (const freq of geqFreqs) {
+    const f = Audio.ctx.createBiquadFilter();
+    f.type = "peaking"; f.frequency.value = freq; f.Q.value = 1.0;
+    PA.geqNodes[freq] = f;
+    if (geqPrev) geqPrev.connect(f);
+    geqPrev = f;
+  }
+
+  // Chorus — short modulated delay (LFO -> depth gain -> delayTime).
+  PA.chorusDelay = Audio.ctx.createDelay(0.05);
+  PA.chorusDelay.delayTime.value = 0.02;
+  PA.chorusLfo = Audio.ctx.createOscillator();
+  PA.chorusLfo.type = "sine"; PA.chorusLfo.frequency.value = 1.2;
+  PA.chorusDepthGain = Audio.ctx.createGain(); PA.chorusDepthGain.gain.value = 0.005;
+  PA.chorusLfo.connect(PA.chorusDepthGain).connect(PA.chorusDelay.delayTime);
+  PA.chorusLfo.start();
+  PA.chorusWetGain = Audio.ctx.createGain(); PA.chorusWetGain.gain.value = 0;
+  PA.chorusDelay.connect(PA.chorusWetGain);
+  PA.chorusMerge = Audio.ctx.createGain();
+  PA.chorusWetGain.connect(PA.chorusMerge);
+
+  // Flanger — same shape as Chorus but a much shorter base delay plus a
+  // feedback loop for the classic resonant sweep.
+  PA.flangerDelay = Audio.ctx.createDelay(0.02);
+  PA.flangerDelay.delayTime.value = 0.004;
+  PA.flangerLfo = Audio.ctx.createOscillator();
+  PA.flangerLfo.type = "sine"; PA.flangerLfo.frequency.value = 0.3;
+  PA.flangerDepthGain = Audio.ctx.createGain(); PA.flangerDepthGain.gain.value = 0.002;
+  PA.flangerLfo.connect(PA.flangerDepthGain).connect(PA.flangerDelay.delayTime);
+  PA.flangerLfo.start();
+  PA.flangerFeedback = Audio.ctx.createGain(); PA.flangerFeedback.gain.value = 0.4;
+  PA.flangerDelay.connect(PA.flangerFeedback).connect(PA.flangerDelay);
+  PA.flangerWetGain = Audio.ctx.createGain(); PA.flangerWetGain.gain.value = 0;
+  PA.flangerDelay.connect(PA.flangerWetGain);
+  PA.flangerMerge = Audio.ctx.createGain();
+  PA.flangerWetGain.connect(PA.flangerMerge);
+
+  // Phaser — 4 cascaded allpass filters, all swept by one shared LFO.
+  PA.phaserStages = [];
+  let phaserPrev = null;
+  for (let i = 0; i < 4; i++) {
+    const f = Audio.ctx.createBiquadFilter();
+    f.type = "allpass"; f.frequency.value = 800; f.Q.value = 0.7;
+    if (phaserPrev) phaserPrev.connect(f);
+    PA.phaserStages.push(f);
+    phaserPrev = f;
+  }
+  PA.phaserLfo = Audio.ctx.createOscillator();
+  PA.phaserLfo.type = "sine"; PA.phaserLfo.frequency.value = 0.5;
+  PA.phaserDepthGain = Audio.ctx.createGain(); PA.phaserDepthGain.gain.value = 600;
+  PA.phaserLfo.connect(PA.phaserDepthGain);
+  for (const stage of PA.phaserStages) PA.phaserDepthGain.connect(stage.frequency);
+  PA.phaserLfo.start();
+  PA.phaserWetGain = Audio.ctx.createGain(); PA.phaserWetGain.gain.value = 0;
+  PA.phaserStages[3].connect(PA.phaserWetGain);
+  PA.phaserMerge = Audio.ctx.createGain();
+  PA.phaserWetGain.connect(PA.phaserMerge);
+
+  // Tremolo — pure amplitude modulation in place (no dry/wet split
+  // needed): the LFO's depth-scaled output additively modulates a gain
+  // node sitting at baseline 1. Bypass disconnects the LFO from the gain
+  // param instead of zeroing a wet send, since there's nothing to mix —
+  // see updateTremoloBypass in wirePAControls.
+  PA.tremoloGain = Audio.ctx.createGain(); PA.tremoloGain.gain.value = 1;
+  PA.tremoloLfo = Audio.ctx.createOscillator();
+  PA.tremoloLfo.type = "sine"; PA.tremoloLfo.frequency.value = 4.0;
+  PA.tremoloDepthGain = Audio.ctx.createGain(); PA.tremoloDepthGain.gain.value = 0.25;
+  PA.tremoloLfo.start();
+  // Deliberately NOT connected to PA.tremoloGain.gain here — the Bypass
+  // checkbox defaults to checked, and updateTremoloBypass makes that
+  // connection only when the pedal is actually engaged.
+
+  // Auto-Wah — LFO-swept bandpass (not treadle-controlled: there's no
+  // expression-pedal/MIDI input yet, that's GP-11 — named "Auto-Wah" in
+  // the UI to say so honestly).
+  PA.wahFilter = Audio.ctx.createBiquadFilter();
+  PA.wahFilter.type = "bandpass"; PA.wahFilter.frequency.value = 800; PA.wahFilter.Q.value = 3;
+  PA.wahLfo = Audio.ctx.createOscillator();
+  PA.wahLfo.type = "sine"; PA.wahLfo.frequency.value = 1.0;
+  PA.wahDepthGain = Audio.ctx.createGain(); PA.wahDepthGain.gain.value = 300;
+  PA.wahLfo.connect(PA.wahDepthGain).connect(PA.wahFilter.frequency);
+  PA.wahLfo.start();
+  PA.wahWetGain = Audio.ctx.createGain(); PA.wahWetGain.gain.value = 0;
+  PA.wahFilter.connect(PA.wahWetGain);
+  PA.wahMerge = Audio.ctx.createGain();
+  PA.wahWetGain.connect(PA.wahMerge);
+
+  // Octaver — full-wave rectification + lowpass, an approximate sub-octave
+  // coloration (not a true pitch tracker — see the card's own hint text
+  // and USER-MANUAL.md). Blend knob crossfades dry/wet.
+  const octRectifyCurve = new Float32Array(2048);
+  for (let i = 0; i < 2048; i++) {
+    const x = (i * 2) / 2048 - 1;
+    octRectifyCurve[i] = Math.abs(x) * 2 - 1;
+  }
+  PA.octaverShaper = Audio.ctx.createWaveShaper();
+  PA.octaverShaper.curve = octRectifyCurve;
+  PA.octaverLowpass = Audio.ctx.createBiquadFilter();
+  PA.octaverLowpass.type = "lowpass"; PA.octaverLowpass.frequency.value = 300;
+  PA.octaverShaper.connect(PA.octaverLowpass);
+  PA.octaverDryGain = Audio.ctx.createGain(); PA.octaverDryGain.gain.value = 1;
+  PA.octaverWetGain = Audio.ctx.createGain(); PA.octaverWetGain.gain.value = 0;
+  PA.octaverLowpass.connect(PA.octaverWetGain);
+  PA.octaverMerge = Audio.ctx.createGain();
+  PA.octaverDryGain.connect(PA.octaverMerge);
+  PA.octaverWetGain.connect(PA.octaverMerge);
+
   PA.outputGain = Audio.ctx.createGain();
   // V3-E2: dedicated mute node, separate from PA.outputGain (the level
   // slider owns that one outright now — see paSetTunerEnabled).
@@ -253,11 +398,20 @@ async function ensurePAGraph() {
 
   // GP-03: each stage's fan-in nodes (what the PREVIOUS stage's output must
   // connect to) and its single fan-out node (what feeds the NEXT stage).
+  // v3.1: extended from 4 to 12 stages (post-v3-backlog-audit.md §2.2).
   PA.pedalStages = {
     ir: { inputs: [PA.irDryGain, PA.convolver], output: PA.irMerge },
     eq: { inputs: [eqBass], output: eqTreble },
     comp: { inputs: [PA.compBypassDry, PA.compressor], output: PA.compMerge },
     fx: { inputs: [PA.delayNode, PA.delayMerge], output: PA.reverbMerge },
+    boost: { inputs: [PA.boostDryGain, PA.boostShaper], output: PA.boostMerge },
+    geq: { inputs: [PA.geqNodes[100]], output: PA.geqNodes[8000] },
+    chorus: { inputs: [PA.chorusDelay, PA.chorusMerge], output: PA.chorusMerge },
+    flanger: { inputs: [PA.flangerDelay, PA.flangerMerge], output: PA.flangerMerge },
+    phaser: { inputs: [PA.phaserStages[0], PA.phaserMerge], output: PA.phaserMerge },
+    tremolo: { inputs: [PA.tremoloGain], output: PA.tremoloGain },
+    wah: { inputs: [PA.wahFilter, PA.wahMerge], output: PA.wahMerge },
+    octaver: { inputs: [PA.octaverDryGain, PA.octaverShaper], output: PA.octaverMerge },
   };
   PA.pedalOrder = paLoadPedalOrder();
   rewirePedalChain();
@@ -275,7 +429,15 @@ async function ensurePAGraph() {
 // paApplyRigState) for the "save the whole rig" case.
 // ---------------------------------------------------------------------------
 const PA_PEDAL_ORDER_KEY = "gs_pa_pedal_order";
-const PA_DEFAULT_PEDAL_ORDER = ["ir", "eq", "comp", "fx"];
+// v3.1: grew from 4 to 12 stages (post-v3-backlog-audit.md §2.2). A stored
+// order that isn't a permutation of ALL 12 (e.g. an old 4-item order from
+// before this release) fails paLoadPedalOrder's validation below and falls
+// back to this default — no migration code needed, same self-healing
+// behavior the 4-stage version already had.
+const PA_DEFAULT_PEDAL_ORDER = [
+  "wah", "octaver", "boost", "comp", "ir", "geq",
+  "eq", "chorus", "phaser", "flanger", "tremolo", "fx",
+];
 
 function paLoadPedalOrder() {
   try {
@@ -1240,6 +1402,39 @@ function updateReverbWet() {
   PA.reverbWet.gain.value = bypassed ? 0 : mix;
 }
 
+// v3.1: same wet-gain-only bypass idiom as updateDelayWet/updateReverbWet
+// above, for the four new Mix-knob pedals (dry always flows through the
+// merge node itself, per PA.pedalStages' inputs list for each).
+function updateChorusWet() {
+  const bypassed = document.getElementById("pa-chorus-bypass").checked;
+  const mix = parseFloat(document.getElementById("pa-chorus-mix").value) / 100;
+  PA.chorusWetGain.gain.value = bypassed ? 0 : mix;
+}
+function updateFlangerWet() {
+  const bypassed = document.getElementById("pa-flanger-bypass").checked;
+  const mix = parseFloat(document.getElementById("pa-flanger-mix").value) / 100;
+  PA.flangerWetGain.gain.value = bypassed ? 0 : mix;
+}
+function updatePhaserWet() {
+  const bypassed = document.getElementById("pa-phaser-bypass").checked;
+  const mix = parseFloat(document.getElementById("pa-phaser-mix").value) / 100;
+  PA.phaserWetGain.gain.value = bypassed ? 0 : mix;
+}
+function updateWahWet() {
+  const bypassed = document.getElementById("pa-wah-bypass").checked;
+  const mix = parseFloat(document.getElementById("pa-wah-mix").value) / 100;
+  PA.wahWetGain.gain.value = bypassed ? 0 : mix;
+}
+// Tremolo has no Mix knob (pure in-place amplitude modulation) — bypass
+// disconnects the LFO from the gain param entirely rather than zeroing a
+// wet send, since there's no dry/wet split to begin with.
+function updateTremoloBypass() {
+  const bypassed = document.getElementById("pa-tremolo-bypass").checked;
+  try { PA.tremoloDepthGain.disconnect(PA.tremoloGain.gain); } catch (e) { /* wasn't connected */ }
+  if (bypassed) { PA.tremoloGain.gain.value = 1; }
+  else { PA.tremoloDepthGain.connect(PA.tremoloGain.gain); }
+}
+
 function wirePAControls() {
   document.getElementById("playalong-open-btn").addEventListener("click", openPlayAlong);
   document.getElementById("playalong-close-btn").addEventListener("click", closePlayAlong);
@@ -1322,6 +1517,27 @@ function wirePAControls() {
     PA.irWetGain.gain.value = bypassed ? 0 : 1;
   });
 
+  // v3.1 §2.3: IR tone shaper — bypass forces both filters wide open
+  // (transparent) rather than removing them from the graph, same idiom as
+  // the 3-band EQ card's own bypass (zero the gains instead of unwiring).
+  document.getElementById("pa-ir-tone-bypass").addEventListener("change", (e) => {
+    if (e.target.checked) {
+      PA.irLowCut.frequency.value = 20;
+      PA.irHighCut.frequency.value = 20000;
+    } else {
+      PA.irLowCut.frequency.value = parseFloat(document.getElementById("pa-ir-lowcut").value);
+      PA.irHighCut.frequency.value = parseFloat(document.getElementById("pa-ir-highcut").value);
+    }
+  });
+  document.getElementById("pa-ir-lowcut").addEventListener("input", (e) => {
+    if (!document.getElementById("pa-ir-tone-bypass").checked) PA.irLowCut.frequency.value = parseFloat(e.target.value);
+    document.getElementById("pa-ir-lowcut-val").textContent = e.target.value + " Hz";
+  });
+  document.getElementById("pa-ir-highcut").addEventListener("input", (e) => {
+    if (!document.getElementById("pa-ir-tone-bypass").checked) PA.irHighCut.frequency.value = parseFloat(e.target.value);
+    document.getElementById("pa-ir-highcut-val").textContent = e.target.value + " Hz";
+  });
+
   document.getElementById("pa-eq-bypass").addEventListener("change", (e) => {
     if (e.target.checked) {
       PA.eqNodes.bass.gain.value = 0; PA.eqNodes.mid.gain.value = 0; PA.eqNodes.treble.gain.value = 0;
@@ -1376,6 +1592,124 @@ function wirePAControls() {
     document.getElementById("pa-reverb-size-val").textContent = e.target.value + " s";
   });
 
+  // v3.1 §2.2: the eight new pedal cards' controls.
+
+  document.getElementById("pa-boost-bypass").addEventListener("change", (e) => {
+    const bypassed = e.target.checked;
+    PA.boostDryGain.gain.value = bypassed ? 1 : 0;
+    PA.boostWetGain.gain.value = bypassed ? 0 : 1;
+  });
+  document.getElementById("pa-boost-drive").addEventListener("input", (e) => {
+    PA.boostShaper.curve = paMakeDistortionCurve(parseFloat(e.target.value) / 100);
+    document.getElementById("pa-boost-drive-val").textContent = e.target.value + "%";
+  });
+  document.getElementById("pa-boost-level").addEventListener("input", (e) => {
+    PA.boostLevel.gain.value = dbToLin(parseFloat(e.target.value));
+    document.getElementById("pa-boost-level-val").textContent = e.target.value + " dB";
+  });
+
+  const geqFreqs = [100, 300, 1000, 3000, 8000];
+  document.getElementById("pa-geq-bypass").addEventListener("change", (e) => {
+    for (const freq of geqFreqs) {
+      PA.geqNodes[freq].gain.value = e.target.checked ? 0 : parseFloat(document.getElementById("pa-geq-" + freq).value);
+    }
+  });
+  for (const freq of geqFreqs) {
+    document.getElementById("pa-geq-" + freq).addEventListener("input", (e) => {
+      if (!document.getElementById("pa-geq-bypass").checked) PA.geqNodes[freq].gain.value = parseFloat(e.target.value);
+      document.getElementById("pa-geq-" + freq + "-val").textContent = e.target.value + " dB";
+    });
+  }
+
+  document.getElementById("pa-chorus-bypass").addEventListener("change", updateChorusWet);
+  document.getElementById("pa-chorus-mix").addEventListener("input", (e) => {
+    document.getElementById("pa-chorus-mix-val").textContent = e.target.value + "%";
+    updateChorusWet();
+  });
+  document.getElementById("pa-chorus-rate").addEventListener("input", (e) => {
+    PA.chorusLfo.frequency.value = parseFloat(e.target.value);
+    document.getElementById("pa-chorus-rate-val").textContent = e.target.value + " Hz";
+  });
+  document.getElementById("pa-chorus-depth").addEventListener("input", (e) => {
+    PA.chorusDepthGain.gain.value = (parseFloat(e.target.value) / 100) * 0.01;
+    document.getElementById("pa-chorus-depth-val").textContent = e.target.value + "%";
+  });
+
+  document.getElementById("pa-flanger-bypass").addEventListener("change", updateFlangerWet);
+  document.getElementById("pa-flanger-mix").addEventListener("input", (e) => {
+    document.getElementById("pa-flanger-mix-val").textContent = e.target.value + "%";
+    updateFlangerWet();
+  });
+  document.getElementById("pa-flanger-rate").addEventListener("input", (e) => {
+    PA.flangerLfo.frequency.value = parseFloat(e.target.value);
+    document.getElementById("pa-flanger-rate-val").textContent = e.target.value + " Hz";
+  });
+  document.getElementById("pa-flanger-depth").addEventListener("input", (e) => {
+    PA.flangerDepthGain.gain.value = (parseFloat(e.target.value) / 100) * 0.004;
+    document.getElementById("pa-flanger-depth-val").textContent = e.target.value + "%";
+  });
+  document.getElementById("pa-flanger-feedback").addEventListener("input", (e) => {
+    PA.flangerFeedback.gain.value = parseFloat(e.target.value) / 100;
+    document.getElementById("pa-flanger-feedback-val").textContent = e.target.value + "%";
+  });
+
+  document.getElementById("pa-phaser-bypass").addEventListener("change", updatePhaserWet);
+  document.getElementById("pa-phaser-mix").addEventListener("input", (e) => {
+    document.getElementById("pa-phaser-mix-val").textContent = e.target.value + "%";
+    updatePhaserWet();
+  });
+  document.getElementById("pa-phaser-rate").addEventListener("input", (e) => {
+    PA.phaserLfo.frequency.value = parseFloat(e.target.value);
+    document.getElementById("pa-phaser-rate-val").textContent = e.target.value + " Hz";
+  });
+  document.getElementById("pa-phaser-depth").addEventListener("input", (e) => {
+    PA.phaserDepthGain.gain.value = (parseFloat(e.target.value) / 100) * 1200;
+    document.getElementById("pa-phaser-depth-val").textContent = e.target.value + "%";
+  });
+
+  document.getElementById("pa-tremolo-bypass").addEventListener("change", updateTremoloBypass);
+  document.getElementById("pa-tremolo-rate").addEventListener("input", (e) => {
+    PA.tremoloLfo.frequency.value = parseFloat(e.target.value);
+    document.getElementById("pa-tremolo-rate-val").textContent = e.target.value + " Hz";
+  });
+  document.getElementById("pa-tremolo-depth").addEventListener("input", (e) => {
+    PA.tremoloDepthGain.gain.value = (parseFloat(e.target.value) / 100) * 0.5;
+    document.getElementById("pa-tremolo-depth-val").textContent = e.target.value + "%";
+  });
+
+  document.getElementById("pa-wah-bypass").addEventListener("change", updateWahWet);
+  document.getElementById("pa-wah-mix").addEventListener("input", (e) => {
+    document.getElementById("pa-wah-mix-val").textContent = e.target.value + "%";
+    updateWahWet();
+  });
+  document.getElementById("pa-wah-rate").addEventListener("input", (e) => {
+    PA.wahLfo.frequency.value = parseFloat(e.target.value);
+    document.getElementById("pa-wah-rate-val").textContent = e.target.value + " Hz";
+  });
+  document.getElementById("pa-wah-depth").addEventListener("input", (e) => {
+    PA.wahDepthGain.gain.value = (parseFloat(e.target.value) / 100) * 600;
+    document.getElementById("pa-wah-depth-val").textContent = e.target.value + "%";
+  });
+  document.getElementById("pa-wah-center").addEventListener("input", (e) => {
+    PA.wahFilter.frequency.value = parseFloat(e.target.value);
+    document.getElementById("pa-wah-center-val").textContent = e.target.value + " Hz";
+  });
+
+  document.getElementById("pa-octaver-bypass").addEventListener("change", (e) => {
+    const bypassed = e.target.checked;
+    const blend = parseFloat(document.getElementById("pa-octaver-blend").value) / 100;
+    PA.octaverDryGain.gain.value = bypassed ? 1 : 1 - blend;
+    PA.octaverWetGain.gain.value = bypassed ? 0 : blend;
+  });
+  document.getElementById("pa-octaver-blend").addEventListener("input", (e) => {
+    const blend = parseFloat(e.target.value) / 100;
+    if (!document.getElementById("pa-octaver-bypass").checked) {
+      PA.octaverDryGain.gain.value = 1 - blend;
+      PA.octaverWetGain.gain.value = blend;
+    }
+    document.getElementById("pa-octaver-blend-val").textContent = e.target.value + "%";
+  });
+
   document.getElementById("pa-output-level").addEventListener("input", (e) => {
     document.getElementById("pa-output-val").textContent = e.target.value + " dB";
     // V3-E2: mute lives on PA.outputMute now, so this slider owns
@@ -1425,6 +1759,7 @@ function wirePedalboardCollapse() {
       if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
       applyState();
       paSaveCollapsedCards(collapsed);
+      paRedrawSignalFlow(); // v3.1 §3: card height just changed, arrows need to follow
     });
   });
 }
@@ -1437,6 +1772,62 @@ function paSyncPedalOrderFromDom() {
     .map((el) => el.dataset.cardId);
   paSavePedalOrder();
   rewirePedalChain();
+  paRedrawSignalFlow(); // v3.1 §3: order just changed, arrows need to follow
+}
+
+// ---------------------------------------------------------------------------
+// v3.1 §3 (post-v3-backlog-audit.md's requester asked for "a line with an
+// arrow between cards"): draws chain-order arrows into #pa-flow-svg, an
+// absolutely-positioned overlay sized to #pa-pedalboard (styles.css). Reads
+// each card's LIVE getBoundingClientRect() rather than assuming any grid —
+// #pa-pedalboard is CSS multi-column masonry (styles.css, deliberately not
+// a grid — see its own comment), so a card's visual position isn't
+// derivable from PA.pedalOrder's array order alone: consecutive cards in
+// chain order can be visually adjacent, stacked in the same column, or
+// scattered across columns depending on how tall each card is.
+//
+// Falls back to paLoadPedalOrder() when PA.pedalOrder isn't set yet (the
+// audio graph builds lazily on first "Enable Input" in ensurePAGraph, but
+// the cards themselves — and drag-reorder — are live from page load) so
+// the visual is correct even before a player has enabled their input.
+// ---------------------------------------------------------------------------
+function paRedrawSignalFlow() {
+  const svg = document.getElementById("pa-flow-svg");
+  const board = document.getElementById("pa-pedalboard");
+  if (!svg || !board) return;
+
+  const order = PA.pedalOrder || paLoadPedalOrder();
+  const chainIds = ["gate", "amp", ...order, "output"];
+  const cards = chainIds.map((id) => board.querySelector(`:scope > [data-card-id="${id}"]`));
+  const boardRect = board.getBoundingClientRect();
+
+  let paths = "";
+  for (let i = 0; i < cards.length - 1; i++) {
+    const a = cards[i], b = cards[i + 1];
+    if (!a || !b) continue; // defensive — shouldn't happen, but never worth a crash over a decoration
+    const ar = a.getBoundingClientRect(), br = b.getBoundingClientRect();
+    const x1 = ar.left - boardRect.left + ar.width / 2;
+    const y1 = ar.top - boardRect.top + ar.height;
+    const x2 = br.left - boardRect.left + br.width / 2;
+    const y2 = br.top - boardRect.top;
+    // Control points bow along the axis that actually separates the two
+    // cards, with a floor so same-row/adjacent cards still get a visible
+    // curve instead of a razor-straight line indistinguishable from a ruler.
+    const dx = x2 - x1, dy = y2 - y1;
+    const bow = Math.max(Math.abs(dy) * 0.5, 20) * (dy < 0 ? -1 : 1);
+    paths += `<path d="M${x1},${y1} C${x1 + dx * 0.15},${y1 + bow} ${x2 - dx * 0.15},${y2 - bow} ${x2},${y2}" marker-end="url(#pa-flow-arrow)"></path>`;
+  }
+
+  svg.innerHTML = `<defs><marker id="pa-flow-arrow" viewBox="0 0 10 10" refX="8" refY="5"
+    markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" style="fill: var(--text-dim); opacity: 0.7;"></path>
+  </marker></defs>${paths}`;
+}
+
+let paFlowRedrawTimer = null;
+function paScheduleFlowRedraw() {
+  clearTimeout(paFlowRedrawTimer);
+  paFlowRedrawTimer = setTimeout(paRedrawSignalFlow, 80);
 }
 
 // GP-03: HTML5 drag-and-drop reorder for the four post-amp effect cards
@@ -1511,7 +1902,10 @@ function paCaptureRigState() {
         treble: v("pa-namtone-treble"), presence: v("pa-namtone-presence"),
       },
     },
-    ir: { bypass: c("pa-ir-bypass"), loaded: PA.irLoaded || null },
+    ir: {
+      bypass: c("pa-ir-bypass"), loaded: PA.irLoaded || null,
+      toneBypass: c("pa-ir-tone-bypass"), lowCut: v("pa-ir-lowcut"), highCut: v("pa-ir-highcut"), // v3.1 §2.3
+    },
     eq: { bypass: c("pa-eq-bypass"), bass: v("pa-eq-bass"), mid: v("pa-eq-mid"), treble: v("pa-eq-treble") },
     comp: { bypass: c("pa-comp-bypass"), threshold: v("pa-comp-threshold"), ratio: v("pa-comp-ratio") },
     fx: {
@@ -1519,6 +1913,24 @@ function paCaptureRigState() {
       delayFeedback: v("pa-delay-feedback"), delayMix: v("pa-delay-mix"),
       reverbBypass: c("pa-reverb-bypass"), reverbSize: v("pa-reverb-size"), reverbMix: v("pa-reverb-mix"),
     },
+    // v3.1 §2.2: the eight new pedal cards.
+    boost: { bypass: c("pa-boost-bypass"), drive: v("pa-boost-drive"), level: v("pa-boost-level") },
+    geq: {
+      bypass: c("pa-geq-bypass"), b100: v("pa-geq-100"), b300: v("pa-geq-300"),
+      b1000: v("pa-geq-1000"), b3000: v("pa-geq-3000"), b8000: v("pa-geq-8000"),
+    },
+    chorus: { bypass: c("pa-chorus-bypass"), rate: v("pa-chorus-rate"), depth: v("pa-chorus-depth"), mix: v("pa-chorus-mix") },
+    flanger: {
+      bypass: c("pa-flanger-bypass"), rate: v("pa-flanger-rate"), depth: v("pa-flanger-depth"),
+      feedback: v("pa-flanger-feedback"), mix: v("pa-flanger-mix"),
+    },
+    phaser: { bypass: c("pa-phaser-bypass"), rate: v("pa-phaser-rate"), depth: v("pa-phaser-depth"), mix: v("pa-phaser-mix") },
+    tremolo: { bypass: c("pa-tremolo-bypass"), rate: v("pa-tremolo-rate"), depth: v("pa-tremolo-depth") },
+    wah: {
+      bypass: c("pa-wah-bypass"), rate: v("pa-wah-rate"), depth: v("pa-wah-depth"),
+      center: v("pa-wah-center"), mix: v("pa-wah-mix"),
+    },
+    octaver: { bypass: c("pa-octaver-bypass"), blend: v("pa-octaver-blend") },
     output: { level: v("pa-output-level") },
     pedalOrder: [...PA.pedalOrder], // GP-03
   };
@@ -1574,6 +1986,13 @@ async function paApplyRigState(state) {
       paHighlightBrowserSelection("ir", state.ir.loaded);
     }
     paSetControlChecked("pa-ir-bypass", state.ir.bypass);
+    // v3.1 §2.3: tone-shaper fields are additive to older saved rigs — a
+    // preset saved before this release simply won't have them, and the
+    // sliders/checkbox just stay at their HTML defaults (bypassed, wide
+    // open) in that case.
+    paSetControlValue("pa-ir-lowcut", state.ir.lowCut);
+    paSetControlValue("pa-ir-highcut", state.ir.highCut);
+    paSetControlChecked("pa-ir-tone-bypass", state.ir.toneBypass);
   }
   if (state.eq) {
     paSetControlValue("pa-eq-bass", state.eq.bass);
@@ -1594,6 +2013,57 @@ async function paApplyRigState(state) {
     paSetControlValue("pa-reverb-size", state.fx.reverbSize);
     paSetControlValue("pa-reverb-mix", state.fx.reverbMix);
     paSetControlChecked("pa-reverb-bypass", state.fx.reverbBypass);
+  }
+  // v3.1 §2.2: the eight new pedal cards — same "additive, absent = HTML
+  // defaults" tolerance as the IR tone-shaper fields above, for presets
+  // saved before this release.
+  if (state.boost) {
+    paSetControlValue("pa-boost-drive", state.boost.drive);
+    paSetControlValue("pa-boost-level", state.boost.level);
+    paSetControlChecked("pa-boost-bypass", state.boost.bypass);
+  }
+  if (state.geq) {
+    paSetControlValue("pa-geq-100", state.geq.b100);
+    paSetControlValue("pa-geq-300", state.geq.b300);
+    paSetControlValue("pa-geq-1000", state.geq.b1000);
+    paSetControlValue("pa-geq-3000", state.geq.b3000);
+    paSetControlValue("pa-geq-8000", state.geq.b8000);
+    paSetControlChecked("pa-geq-bypass", state.geq.bypass);
+  }
+  if (state.chorus) {
+    paSetControlValue("pa-chorus-rate", state.chorus.rate);
+    paSetControlValue("pa-chorus-depth", state.chorus.depth);
+    paSetControlValue("pa-chorus-mix", state.chorus.mix);
+    paSetControlChecked("pa-chorus-bypass", state.chorus.bypass);
+  }
+  if (state.flanger) {
+    paSetControlValue("pa-flanger-rate", state.flanger.rate);
+    paSetControlValue("pa-flanger-depth", state.flanger.depth);
+    paSetControlValue("pa-flanger-feedback", state.flanger.feedback);
+    paSetControlValue("pa-flanger-mix", state.flanger.mix);
+    paSetControlChecked("pa-flanger-bypass", state.flanger.bypass);
+  }
+  if (state.phaser) {
+    paSetControlValue("pa-phaser-rate", state.phaser.rate);
+    paSetControlValue("pa-phaser-depth", state.phaser.depth);
+    paSetControlValue("pa-phaser-mix", state.phaser.mix);
+    paSetControlChecked("pa-phaser-bypass", state.phaser.bypass);
+  }
+  if (state.tremolo) {
+    paSetControlValue("pa-tremolo-rate", state.tremolo.rate);
+    paSetControlValue("pa-tremolo-depth", state.tremolo.depth);
+    paSetControlChecked("pa-tremolo-bypass", state.tremolo.bypass);
+  }
+  if (state.wah) {
+    paSetControlValue("pa-wah-rate", state.wah.rate);
+    paSetControlValue("pa-wah-depth", state.wah.depth);
+    paSetControlValue("pa-wah-center", state.wah.center);
+    paSetControlValue("pa-wah-mix", state.wah.mix);
+    paSetControlChecked("pa-wah-bypass", state.wah.bypass);
+  }
+  if (state.octaver) {
+    paSetControlValue("pa-octaver-blend", state.octaver.blend);
+    paSetControlChecked("pa-octaver-bypass", state.octaver.bypass);
   }
   if (state.output) paSetControlValue("pa-output-level", state.output.level);
   // GP-03: reorder the actual DOM to match (not just PA.pedalOrder +
@@ -1842,3 +2312,14 @@ wirePedalDragReorder();
 wireRigPresets();
 wireRiffCapture();
 document.getElementById("playalong-open-btn").addEventListener("click", paShowLatencyEstimate);
+
+// v3.1 §3: initial draw + redraw on anything that can move a card — window
+// resize (covers the 900px single-column breakpoint) and a ResizeObserver
+// on the board itself (covers a card growing/shrinking for any other
+// reason, e.g. switching Amp to Neural mode, without needing every such
+// site to remember to call paRedrawSignalFlow directly).
+paRedrawSignalFlow();
+window.addEventListener("resize", paScheduleFlowRedraw);
+if (typeof ResizeObserver !== "undefined") {
+  new ResizeObserver(paScheduleFlowRedraw).observe(document.getElementById("pa-pedalboard"));
+}
