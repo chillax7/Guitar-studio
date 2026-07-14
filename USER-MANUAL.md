@@ -235,45 +235,54 @@ Exported files land in `output/<song name>/`, alongside a model-prefixed
 copy of every stem you've separated for that song. After a successful
 export you get a **Reveal in Finder** shortcut straight to it.
 
-## 9. Play Along
+## 9. Tone Lab & Play Along
 
-Click **🎸 Play Along** in the sidebar. This opens a rig that shares the
-exact same audio engine as the mixer (not a second, separate audio
-session) — so backing-track playback and your live guitar mix together
-naturally, with no added round-trip latency from the recording or mixing
-side.
+The rig used to be one screen; it's now two, plus the mixer you started
+in and Help — four equally-reachable buttons in the top-left of the
+sidebar (**🎚 Mixer**, **🎛 Tone Lab**, **🎸 Play Along**, **❓ Help**).
+Both rig screens share the exact same audio engine as the mixer (not a
+second, separate audio session) — backing-track playback and your live
+guitar mix together naturally, with no added round-trip latency from the
+recording or mixing side. The split is by *task*, not by feature: **Tone
+Lab** is where you build/tweak the sound (input, amp, cab, all 12 pedal
+cards, rig presets); **Play Along** is where you practice and record with
+a rig you've already dialed in (backing track, tuner, riff capture,
+recording, takes) — a quick rig-preset picker on Play Along means you
+don't have to bounce back to Tone Lab just to switch rigs mid-session.
+Selecting a track in the Library always drops you back to the Mixer,
+closing whichever of the two rig screens was open.
 
-**Layout:** a top strip (Backing Track / Tuner / Input) stays visible
-at all times — the "am I in tune, am I clipping, where's the song" glance
-row. Below it, the rig itself runs left-to-right in actual signal-chain
-order: Input/Gate → Amp → Cab IR → EQ → Compressor → Delay/Reverb → Output.
-Every rig card has a collapse arrow (▾) in its header if you want to hide
-one you're not touching this session — collapse state is remembered
-between visits. The **Record performance** and **Takes** cards sit
-below the rig, always visible with their setup controls expanded — no
-mode switch needed to get to them.
+Every rig card, on either screen, has a collapse arrow (▾) in its header
+if you want to hide one you're not touching this session — collapse
+state is remembered between visits. A faint arrow between cards on Tone
+Lab traces the signal-chain order live as you drag cards around.
 
-### 9.0 Backing Track (top strip)
+### 9.0 Backing Track (Play Along, top strip)
 The full transport from the main mixer — Play/Stop, Loop, Count-in, BPM,
 Speed, Tune, Volume — is mirrored here too, so you never need to leave Play
 Along to control the backing track while you're actually playing. It's the
 exact same state as the main transport; adjusting either one updates both.
 
-### 9.1 Input (top strip)
+### 9.1 Input (Tone Lab, top strip)
 The input meter, clip light, and a **Setup: device & calibration**
-disclosure sit in the top strip. Expand **Setup**, pick your audio
+disclosure sit in Tone Lab's top strip. Expand **Setup**, pick your audio
 interface/microphone, and click **Enable input** — the browser will ask
-for microphone permission once. Switching the device dropdown while
-already enabled re-enables input on the new device automatically. The
-Setup disclosure stays open once expanded — collapse it yourself if you
-want the space back. The meter shows input level with too-cold/good/too-hot zones; a **clip** light
-latches on if a transient clips (it doesn't self-clear — click **Clear**,
-or start a new input session, once you've noted it and fixed your gain
-staging). **Calibrate (play your loudest chord)**, inside Setup, listens
-for 3 seconds and suggests an output trim so your loudest playing lands
-safely below clipping.
+for microphone permission once. "Enable Input" now prefers a remembered
+device (whichever you used last time) or, failing that, any input that
+doesn't look like a built-in microphone — a Mac's built-in mic monitored
+through speakers into an amp/distortion chain is a feedback loop, so
+guessing an external interface first matters. Switching the device
+dropdown while already enabled re-enables input on the new device
+automatically. The Setup disclosure stays open once expanded — collapse
+it yourself if you want the space back. The meter shows input level with
+too-cold/good/too-hot zones; a **clip** light latches on if a transient
+clips (it doesn't self-clear — click **Clear**, or start a new input
+session, once you've noted it and fixed your gain staging). **Calibrate
+(play your loudest chord)**, inside Setup, listens for 3 seconds and
+suggests an output trim so your loudest playing lands safely below
+clipping.
 
-### 9.2 Tuner (top strip)
+### 9.2 Tuner (Play Along, top strip)
 Click **Tuner: Off** to switch it on — the button label and the panel
 update to show note name, cents off, and a needle (green when within 5
 cents of true). **Turning the tuner on mutes the backing track and your
@@ -283,7 +292,7 @@ pedal muting its through signal, since tuning by ear against either fights
 the point of a tuner. The tuner needs a single, sustained note — chords
 won't read cleanly.
 
-### 9.3 Amp — three modes
+### 9.3 Amp — three modes (Tone Lab)
 - **Clean:** dry signal, no coloration — just gate → EQ → comp → delay/reverb.
 - **Analog:** a drive stage (soft-clip waveshaper) plus a 3-band tone
   stack (bass/mid/treble).
@@ -320,17 +329,23 @@ plugin does:
   honest "not yet supported" message instead of a confusing generic
   failure or silently misreading the weights.
 
-### 9.3b Rig presets
-The **Rig Presets** card (above the pedalboard) saves the *entire* rig —
-amp mode, NAM capture + Tweaker knobs (or Analog's tone stack), Cab IR,
-EQ, Compressor, Delay/Reverb, and Output level — as a named preset.
-Presets are shared across every song (stored server-side, not per-track).
-**Attach to this song** writes the preset's name into the current song's
-saved project, so reopening that song automatically recalls the rig the
-next time you open Play Along — build the tone once, never rebuild it by
-hand again for that song.
+### 9.3b Rig presets (Tone Lab, plus a quick picker on Play Along)
+The **Rig Presets** card (above the pedalboard, on Tone Lab) saves the
+*entire* rig — amp mode, NAM capture + Tweaker knobs (or Analog's tone
+stack), Cab IR, EQ, Compressor, Delay/Reverb, all the pedals, and Output
+level — as a named preset. Presets are shared across every song (stored
+server-side, not per-track). **Attach to this song** writes the preset's
+name into the current song's saved project, so reopening that song
+automatically recalls the rig the next time you open either rig screen —
+build the tone once, never rebuild it by hand again for that song.
 
-### 9.4 Cab IR
+Play Along carries a lighter **Rig Preset** picker in its own top strip —
+just a dropdown, no Save/Delete/Attach controls, for switching between
+rigs you've already built (e.g. Clean/Rhythm/Solo for one song) without
+leaving the practice screen. Picking a name there applies it immediately;
+both dropdowns always show the same selection.
+
+### 9.4 Cab IR (Tone Lab)
 Loads a cabinet impulse response (`.wav`) via convolution. Simple on/off —
 if your NAM capture already includes cabinet coloration (many do), leave
 this off to avoid doubling up; it's there for the Analog/Clean paths or if
@@ -345,7 +360,7 @@ reproduce, or taming fizz above where a guitar speaker rolls off. Wide
 open (no-op) by default; "Tone shape bypass" turns it off entirely without
 losing your slider positions.
 
-### 9.5 The pedalboard: EQ, Compressor, Delay/Reverb, Output, and more
+### 9.5 The pedalboard: EQ, Compressor, Delay/Reverb, Output, and more (Tone Lab)
 A standard post-amp chain — 3-band EQ, a compressor (threshold/ratio),
 delay (time/feedback/mix), and reverb (size/mix), each independently
 bypassable — plus eight further pedal cards, then a final output level
@@ -385,7 +400,7 @@ cards, or resize the window — a quick visual answer to "what feeds what"
 now that the board runs twelve-plus cards deep. Purely a visual aid; it
 has no effect on the actual audio routing.
 
-### 9.6 Adding amp models & cab IRs
+### 9.6 Adding amp models & cab IRs (Tone Lab)
 Drop `.nam` files into `GuitarStudio/models/nam/` and `.wav` impulse
 responses into `GuitarStudio/models/ir/` — subfolders are fine (a large
 library organized into pack folders is scanned recursively) and they show
@@ -397,7 +412,7 @@ starter NAM captures ship with the app so there's something to try
 immediately. [TONE3000](https://www.tone3000.com) hosts a large free
 library of community `.nam` captures if you want more.
 
-### 9.7 Suggest a tone
+### 9.7 Suggest a tone (Tone Lab)
 If the loaded song has a guitar stem, a **Suggest from this track's
 guitar stem** button appears — only in Neural (NAM) mode, just below the
 Output trim slider. It compares that isolated guitar stem against your
@@ -408,8 +423,8 @@ starting point, not a guaranteed match** — always finish by ear; an exact
 anywhere, not just here. Suggest automatically skips any capture too
 heavy to run live (§9.9).
 
-### 9.8 Latency
-The panel shows an estimated round-trip latency figure. It's **read from
+### 9.8 Latency (Tone Lab)
+The Output card shows an estimated round-trip latency figure. It's **read from
 the browser's own reported numbers, not independently measured** — treat
 it as a rough indicator, not a lab result. If playing feels laggy, try a
 smaller audio-interface buffer size in your interface's own control panel
@@ -436,9 +451,10 @@ machine right now, not a bug to work around.
 
 ## 10. Recording a performance
 
-Scroll to the **Record performance** card below the rig. It lets you record
-yourself playing along — the exact audio mix you're hearing (backing
-track + your processed guitar), with or without camera video.
+On the **Play Along** screen, the **Record performance** card sits below
+the top strip. It lets you record yourself playing along — the exact
+audio mix you're hearing (backing track + your processed guitar), with or
+without camera video.
 
 1. **Camera is optional.** A hint above the Record button
    says which you'll get: enable a camera (Expand **Setup: camera, quality
@@ -474,9 +490,10 @@ you hear is what gets recorded, from the same graph, not a room-mic
 capture of your speakers.
 
 ### 10.1 Riff capture — "Save that!"
-The **Riff Capture** card in the top strip is always quietly rolling
-whenever Play Along is open — no button to start it, nothing to forget.
-It keeps the last ~20 seconds of the same live mix a real take captures
+The **Riff Capture** card, in Play Along's top strip, is always quietly
+rolling once your rig is active — opening either Tone Lab or Play Along
+starts it, no button to start it, nothing to forget. It keeps the last
+~20 seconds of the same live mix a real take captures
 (backing track + your processed guitar) in memory. Play something you
 didn't plan to keep, realize afterward it was good, click **🎸 Save
 that!** within that window and it's saved as a WAV file alongside your

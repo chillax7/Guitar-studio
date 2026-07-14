@@ -615,9 +615,10 @@ async function selectTrack(name) {
   const epoch = ++selectTrackEpoch;
 
   // Picking a track from the library is a clear intent to work on the
-  // mixer — if Play Along is open over it, close it rather than leaving
-  // the newly-selected track loaded silently behind the overlay.
-  if (typeof closePlayAlong === "function") closePlayAlong();
+  // mixer — if Tone Lab or Play Along is open over it, close whichever one
+  // rather than leaving the newly-selected track loaded silently behind
+  // the overlay.
+  if (typeof closeAllScreens === "function") closeAllScreens();
 
   State.track = name;
   renderTrackList();

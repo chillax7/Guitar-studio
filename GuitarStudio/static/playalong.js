@@ -1402,23 +1402,66 @@ function paUpdateSuggestVisibility() {
 }
 
 // ---------------------------------------------------------------------------
-// Panel open/close + control wiring
+// Screen open/close + control wiring
+//
+// Split into Tone Lab (rig setup: input, amp/IR/pedals) and Play Along
+// (practice/record with a rig you've already built) — both need the same
+// underlying rig session (audio graph, rig presets, riff capture) ready
+// regardless of which one is opened first, so that bootstrap is factored
+// into paEnsureRigSessionReady() and called from both. Tone-Lab-only
+// refreshes (device list, NAM/IR browsers, Suggest button) stay exclusive
+// to openToneLab().
 // ---------------------------------------------------------------------------
 
-async function openPlayAlong() {
+async function paEnsureRigSessionReady() {
   await ensurePAGraph();
-  document.getElementById("playalong-overlay").classList.add("show");
-  paRefreshDevices();
-  paRefreshNamModels();
-  paRefreshIrModels();
-  paUpdateSuggestVisibility();
   await paRefreshRigPresets();
   await paApplyAttachedRigPreset(); // GP-02 — no-op if this track has none, or it's already been applied
   await ensureRiffCapture(); // GP-07 — starts rolling as soon as the rig exists; no-op if already running
 }
 
+// Toggles which of the 3 persistent-screen nav buttons reads as "current."
+// Help is deliberately excluded — it's a transient modal, not a screen.
+function paSetActiveScreen(id) {
+  document.querySelectorAll(".nav-screen-row .nav-screen-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.id === id);
+  });
+}
+
+async function openToneLab() {
+  await paEnsureRigSessionReady();
+  document.getElementById("tonelab-overlay").classList.add("show");
+  document.getElementById("playalong-overlay").classList.remove("show");
+  paRefreshDevices();
+  paRefreshNamModels();
+  paRefreshIrModels();
+  paUpdateSuggestVisibility();
+  paSetActiveScreen("tonelab-open-btn");
+}
+
+function closeToneLab() {
+  document.getElementById("tonelab-overlay").classList.remove("show");
+}
+
+async function openPlayAlong() {
+  await paEnsureRigSessionReady();
+  document.getElementById("playalong-overlay").classList.add("show");
+  document.getElementById("tonelab-overlay").classList.remove("show");
+  paSetActiveScreen("playalong-open-btn");
+}
+
 function closePlayAlong() {
   document.getElementById("playalong-overlay").classList.remove("show");
+}
+
+// The "return to Mixer" action: Mixer isn't a real overlay, it's just
+// whatever's visible once both of the above are closed. Also the one place
+// selectTrack() (app.js) hooks into, so picking a track from the Library
+// always drops back to the mixer regardless of which screen was open.
+function closeAllScreens() {
+  closeToneLab();
+  closePlayAlong();
+  paSetActiveScreen("mixer-open-btn");
 }
 
 function updateDelayWet() {
@@ -1467,6 +1510,9 @@ function updateTremoloBypass() {
 }
 
 function wirePAControls() {
+  document.getElementById("mixer-open-btn").addEventListener("click", closeAllScreens);
+  document.getElementById("tonelab-open-btn").addEventListener("click", openToneLab);
+  document.getElementById("tonelab-close-btn").addEventListener("click", closeToneLab);
   document.getElementById("playalong-open-btn").addEventListener("click", openPlayAlong);
   document.getElementById("playalong-close-btn").addEventListener("click", closePlayAlong);
   document.getElementById("pa-enable-btn").addEventListener("click", paEnableInput);
@@ -2156,6 +2202,7 @@ async function paRefreshRigPresets() {
   }
   if (names.includes(prev)) sel.value = prev;
   paUpdateAttachCheckbox();
+  paSyncPresetQuickpick();
 }
 
 async function paSaveRigPresetsToServer() {
@@ -2166,6 +2213,25 @@ function paUpdateAttachCheckbox() {
   const sel = document.getElementById("pa-preset-select");
   const attachEl = document.getElementById("pa-preset-attach");
   attachEl.checked = !!(sel.value && State.rigPreset === sel.value);
+}
+
+// v3.2: Play Along carries a lighter "quick pick" dropdown for rig presets
+// (#pa-preset-quickpick) alongside Tone Lab's full management card
+// (#pa-preset-select, the canonical element every function above already
+// targets). This mirrors the option list AND value from the canonical
+// select onto the quick-pick one, rebuilding its options fresh each time
+// (cheap — the list is at most a few dozen names) rather than diffing.
+function paSyncPresetQuickpick() {
+  const src = document.getElementById("pa-preset-select");
+  const qp = document.getElementById("pa-preset-quickpick");
+  if (!src || !qp) return;
+  qp.innerHTML = "";
+  for (const opt of src.options) {
+    const clone = document.createElement("option");
+    clone.value = opt.value; clone.textContent = opt.textContent;
+    qp.appendChild(clone);
+  }
+  qp.value = src.value;
 }
 
 // GP-02: applied once per track load, the first time Play Along opens for
@@ -2187,12 +2253,27 @@ async function paApplyAttachedRigPreset() {
     // attach whatever preset the dropdown happened to be on instead.
     const sel = document.getElementById("pa-preset-select");
     if ([...sel.options].some((o) => o.value === State.rigPreset)) sel.value = State.rigPreset;
+    paSyncPresetQuickpick();
   }
   paUpdateAttachCheckbox();
 }
 
 function wireRigPresets() {
-  document.getElementById("pa-preset-select").addEventListener("change", paUpdateAttachCheckbox);
+  document.getElementById("pa-preset-select").addEventListener("change", () => {
+    paUpdateAttachCheckbox();
+    paSyncPresetQuickpick();
+  });
+
+  // Play Along's quick-picker has no separate Load button — selecting a
+  // name applies it immediately, mirroring the choice back onto Tone
+  // Lab's dropdown so the two never disagree about which preset is live.
+  document.getElementById("pa-preset-quickpick").addEventListener("change", async (e) => {
+    const name = e.target.value;
+    document.getElementById("pa-preset-select").value = name;
+    paUpdateAttachCheckbox();
+    if (!name) return;
+    await paApplyRigState(paRigPresets[name]);
+  });
 
   document.getElementById("pa-preset-load-btn").addEventListener("click", async () => {
     const name = document.getElementById("pa-preset-select").value;
@@ -2213,6 +2294,7 @@ function wireRigPresets() {
     nameEl.value = "";
     await paRefreshRigPresets();
     document.getElementById("pa-preset-select").value = name;
+    paSyncPresetQuickpick();
     statusEl.textContent = `Saved rig preset "${name}".`;
   });
 
@@ -2342,7 +2424,9 @@ wirePedalboardCollapse();
 wirePedalDragReorder();
 wireRigPresets();
 wireRiffCapture();
-document.getElementById("playalong-open-btn").addEventListener("click", paShowLatencyEstimate);
+// #pa-latency-hint lives on the Output card, which moved into Tone Lab
+// along with the rest of #pa-pedalboard — this listener moved with it.
+document.getElementById("tonelab-open-btn").addEventListener("click", paShowLatencyEstimate);
 
 // v3.1 §3: initial draw + redraw on anything that can move a card — window
 // resize (covers the 900px single-column breakpoint) and a ResizeObserver

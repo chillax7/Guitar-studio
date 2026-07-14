@@ -16,12 +16,21 @@
   </div>
 
   <div id="sidebar">
+    <!-- Screen nav — top-left corner, one shared .nav-screen-btn class so
+         all 4 (Help included) are identical in size/shape. Mixer isn't a
+         real overlay (it's just the base grid below), so its button just
+         closes whatever overlay is open; Help stays a modal, not a
+         persistent "screen," so it never gets .active highlighting. -->
+    <div class="nav-screen-row">
+      <button id="mixer-open-btn" class="nav-screen-btn">🎚 Mixer</button>
+      <button id="tonelab-open-btn" class="nav-screen-btn">🎛 Tone Lab</button>
+      <button id="playalong-open-btn" class="nav-screen-btn">🎸 Play Along</button>
+      <button id="help-open-btn" class="nav-screen-btn">❓ Help</button>
+    </div>
     <h2>Library</h2>
     <div id="track-list"></div>
     <div id="import-drop">Drop an audio file here<br>or click to import</div>
     <input type="file" id="import-input" accept="audio/*" style="display:none">
-    <button id="playalong-open-btn">🎸 Play Along</button>
-    <button id="help-open-btn">❓ Help</button>
   </div>
 
   <div id="canvas">
@@ -165,23 +174,21 @@
     </section>
   </div>
 
-  <div id="playalong-overlay">
-    <div id="playalong-panel">
-      <div id="playalong-header">
+  <div id="playalong-overlay" class="screen-overlay">
+    <div id="playalong-panel" class="screen-panel">
+      <div id="playalong-header" class="screen-header">
         <h2>Play Along</h2>
         <button id="playalong-close-btn">✕ Close</button>
       </div>
-      <div id="playalong-body">
+      <div id="playalong-body" class="screen-body">
 
         <!-- V3-U1: top strip, always visible — the "am I in tune, am I
              clipping, where's the song" glance row. Backing Track mirrors
              the mixer transport (same data-transport IDs); Tuner is an
              inline readout, not a card, since it mutes anyway and doesn't
-             need one; Input surfaces the meter/clip light up front and
-             folds its setup-once controls (device pick, Calibrate) into a
-             disclosure that closes itself after the first successful
-             enable (see paEnableInput). -->
-        <div id="pa-top-strip">
+             need one. Input (device pick, Enable, Calibrate) moved to Tone
+             Lab — that's rig setup, not practice/recording. -->
+        <div id="pa-top-strip" class="top-strip-grid">
           <section class="pa-card pa-top-card">
             <h3>Backing Track</h3>
             <div class="row">
@@ -209,6 +216,109 @@
             <p class="hint" id="pa-tuner-cents">Enable input and play a single note.</p>
           </section>
 
+          <!-- v3.2: quick rig-preset picker — full save/load/delete/attach
+               management lives on the Tone Lab screen (#pa-preset-select);
+               this is just a fast switch for a rig you've already built,
+               auto-applying on selection (no separate Load button). Kept
+               in sync with the Tone Lab dropdown by paSyncPresetQuickpick
+               in playalong.js. -->
+          <section class="pa-card pa-top-card">
+            <h3>Rig Preset</h3>
+            <select id="pa-preset-quickpick"></select>
+            <p class="hint">Full preset management is in Tone Lab.</p>
+          </section>
+
+          <section class="pa-card pa-top-card">
+            <h3>Riff Capture</h3>
+            <p class="hint">Always rolling in the background once your rig is active — hit Save that! any time within ~20s of playing something worth keeping.</p>
+            <button id="riff-save-btn" class="primary">🎸 Save that!</button>
+            <p class="hint" id="riff-status"></p>
+          </section>
+        </div>
+
+        <!-- Record + Takes: always visible below the rig (a Perform/Record
+             tab was tried and found unintuitive in hardware testing — the
+             record controls were too hidden). The camera preview still only
+             renders once a camera is actually enabled (see recStartCamera/
+             #rec-preview-wrap), so the always-visible cards stay compact
+             until video is in play. -->
+        <div id="pa-session-record" class="pa-session-panel">
+          <section class="pa-card" id="rec-card">
+            <h3>Record performance</h3>
+            <div id="rec-preview-wrap" style="display:none">
+              <video id="rec-preview" muted playsinline></video>
+              <canvas id="rec-framing-overlay"></canvas>
+            </div>
+            <p class="hint" id="rec-mode-hint"></p>
+            <div class="row">
+              <button id="rec-toggle-btn" class="primary">● Record</button>
+              <span id="rec-elapsed">0:00</span>
+            </div>
+            <div class="row">
+              <label style="margin:0">Start backing track with recording</label>
+              <input type="checkbox" id="rec-start-with-playback" checked>
+            </div>
+            <div class="row">
+              <label style="margin:0">Start with count-in</label>
+              <input type="checkbox" id="rec-count-in">
+            </div>
+            <div id="rec-result" class="hint"></div>
+
+            <details id="rec-setup" open>
+              <summary>Setup: camera, quality &amp; sync</summary>
+              <div class="row">
+                <label style="margin:0">Show framing guides</label>
+                <input type="checkbox" id="rec-framing-toggle" checked>
+              </div>
+              <div class="row">
+                <select id="rec-camera-select"></select>
+                <button id="rec-camera-enable-btn">Enable camera</button>
+              </div>
+              <div class="row">
+                <label style="margin:0">Quality</label>
+                <select id="rec-quality-select">
+                  <option value="720p" selected>720p · 30fps</option>
+                  <option value="1080p">1080p · 30fps</option>
+                </select>
+              </div>
+              <p class="hint" id="rec-camera-hint"></p>
+              <label>A/V offset (ms) <span class="hint">delays audio to match a late camera — see manual</span></label>
+              <input type="number" id="rec-av-offset" value="0" step="10">
+              <button id="rec-auto-calibrate-btn">Auto-calibrate (wait a beat, then strum once, ~5s)</button>
+              <p class="hint" id="rec-calibrate-result"></p>
+            </details>
+          </section>
+
+          <section class="pa-card" id="takes-card">
+            <h3>Takes</h3>
+            <div id="takes-list"></div>
+            <div id="takes-player-wrap" style="display:none">
+              <video id="takes-player" controls></video>
+              <label>Trim start <span id="takes-trim-start-val">0:00</span></label>
+              <input type="range" id="takes-trim-start" min="0" max="100" step="0.1" value="0">
+              <label>Trim end <span id="takes-trim-end-val">0:00</span></label>
+              <input type="range" id="takes-trim-end" min="0" max="100" step="0.1" value="100">
+              <button id="takes-trim-btn" class="primary">Trim (lossless copy, new file)</button>
+              <p class="hint" id="takes-trim-result"></p>
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div id="tonelab-overlay" class="screen-overlay">
+    <div id="tonelab-panel" class="screen-panel">
+      <div id="tonelab-header" class="screen-header">
+        <h2>Tone Lab</h2>
+        <button id="tonelab-close-btn">✕ Close</button>
+      </div>
+      <div id="tonelab-body" class="screen-body">
+
+        <!-- Input device enable/calibration — rig setup, so it lives here
+             rather than on Play Along. -->
+        <div id="tl-top-strip" class="top-strip-grid">
           <section class="pa-card pa-top-card">
             <h3>Input</h3>
             <div class="pa-meter"><div id="pa-input-meter-fill"></div></div>
@@ -227,13 +337,6 @@
               <button id="pa-calibrate-btn">Calibrate (play your loudest chord)</button>
               <p class="hint" id="pa-calibrate-result"></p>
             </details>
-          </section>
-
-          <section class="pa-card pa-top-card">
-            <h3>Riff Capture</h3>
-            <p class="hint">Always rolling in the background while Play Along is open — hit Save that! any time within ~20s of playing something worth keeping.</p>
-            <button id="riff-save-btn" class="primary">🎸 Save that!</button>
-            <p class="hint" id="riff-status"></p>
           </section>
         </div>
 
@@ -259,7 +362,7 @@
           <p class="hint" id="pa-preset-status"></p>
         </section>
 
-        <!-- V3-U1: the rig, pedalboard order left-to-right — Input/Gate ->
+        <!-- V3-U1: the rig, pedalboard order left-to-right — Gate ->
              Amp -> [12 reorderable stages] -> Output. Every card is
              collapsible (wirePedalboardCollapse in playalong.js); collapse
              state persists in localStorage today and will move into the
@@ -583,74 +686,6 @@
               <input type="range" id="pa-output-level" min="-24" max="12" step="1" value="0">
               <div class="pa-meter"><div id="pa-output-meter-fill"></div></div>
               <p class="hint" id="pa-latency-hint"></p>
-            </div>
-          </section>
-        </div>
-
-        <!-- Record + Takes: always visible below the rig (a Perform/Record
-             tab was tried and found unintuitive in hardware testing — the
-             record controls were too hidden). The camera preview still only
-             renders once a camera is actually enabled (see recStartCamera/
-             #rec-preview-wrap), so the always-visible cards stay compact
-             until video is in play. -->
-        <div id="pa-session-record" class="pa-session-panel">
-          <section class="pa-card" id="rec-card">
-            <h3>Record performance</h3>
-            <div id="rec-preview-wrap" style="display:none">
-              <video id="rec-preview" muted playsinline></video>
-              <canvas id="rec-framing-overlay"></canvas>
-            </div>
-            <p class="hint" id="rec-mode-hint"></p>
-            <div class="row">
-              <button id="rec-toggle-btn" class="primary">● Record</button>
-              <span id="rec-elapsed">0:00</span>
-            </div>
-            <div class="row">
-              <label style="margin:0">Start backing track with recording</label>
-              <input type="checkbox" id="rec-start-with-playback" checked>
-            </div>
-            <div class="row">
-              <label style="margin:0">Start with count-in</label>
-              <input type="checkbox" id="rec-count-in">
-            </div>
-            <div id="rec-result" class="hint"></div>
-
-            <details id="rec-setup" open>
-              <summary>Setup: camera, quality &amp; sync</summary>
-              <div class="row">
-                <label style="margin:0">Show framing guides</label>
-                <input type="checkbox" id="rec-framing-toggle" checked>
-              </div>
-              <div class="row">
-                <select id="rec-camera-select"></select>
-                <button id="rec-camera-enable-btn">Enable camera</button>
-              </div>
-              <div class="row">
-                <label style="margin:0">Quality</label>
-                <select id="rec-quality-select">
-                  <option value="720p" selected>720p · 30fps</option>
-                  <option value="1080p">1080p · 30fps</option>
-                </select>
-              </div>
-              <p class="hint" id="rec-camera-hint"></p>
-              <label>A/V offset (ms) <span class="hint">delays audio to match a late camera — see manual</span></label>
-              <input type="number" id="rec-av-offset" value="0" step="10">
-              <button id="rec-auto-calibrate-btn">Auto-calibrate (wait a beat, then strum once, ~5s)</button>
-              <p class="hint" id="rec-calibrate-result"></p>
-            </details>
-          </section>
-
-          <section class="pa-card" id="takes-card">
-            <h3>Takes</h3>
-            <div id="takes-list"></div>
-            <div id="takes-player-wrap" style="display:none">
-              <video id="takes-player" controls></video>
-              <label>Trim start <span id="takes-trim-start-val">0:00</span></label>
-              <input type="range" id="takes-trim-start" min="0" max="100" step="0.1" value="0">
-              <label>Trim end <span id="takes-trim-end-val">0:00</span></label>
-              <input type="range" id="takes-trim-end" min="0" max="100" step="0.1" value="100">
-              <button id="takes-trim-btn" class="primary">Trim (lossless copy, new file)</button>
-              <p class="hint" id="takes-trim-result"></p>
             </div>
           </section>
         </div>

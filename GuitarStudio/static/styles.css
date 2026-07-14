@@ -480,11 +480,44 @@ button:disabled:hover { filter: none; }
 #export-result { margin-top: 8px; font-size: 11px; color: var(--text-dim); }
 #export-result.error { color: var(--danger); }
 
-/* ---------- Play Along ---------- */
+/* ---------- Screen nav (Mixer / Tone Lab / Play Along / Help) ---------- */
 
-#playalong-open-btn { margin: 0 10px 10px; width: calc(100% - 20px); }
+/* Top-left corner of the sidebar: 4 equally-sized buttons for the app's
+   screens. One shared class for all 4 (Help included) so they're
+   identical in size/shape by construction rather than styled separately
+   and hoping they stay in sync. */
+.nav-screen-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 10px;
+}
+.nav-screen-btn {
+  width: 100%;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Same idiom as .pa-tabs .active elsewhere: solid accent = "this is the
+   current screen." Help doesn't get this — it's a transient modal, not a
+   persistent screen, so it never has an "active" state. */
+.nav-screen-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  filter: brightness(1.15);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4);
+}
 
-#playalong-overlay {
+/* ---------- Tone Lab / Play Along (shared full-screen overlay chrome) ---------- */
+
+/* Both screens are structurally identical panels (Tone Lab: rig setup;
+   Play Along: practice/record) — one set of classes instead of two
+   near-duplicate id-based rule blocks, so they stay visually identical by
+   construction. Nothing else in the app references the old
+   #playalong-panel/-header/-body ids (only #playalong-overlay itself is
+   ever touched by JS, via classList), so this rename is safe. */
+.screen-overlay {
   display: none;
   position: fixed;
   top: 0; left: 240px; right: 0; bottom: 0;
@@ -492,16 +525,16 @@ button:disabled:hover { filter: none; }
   z-index: 50;
   overflow-y: auto;
 }
-#playalong-overlay.show { display: block; }
+.screen-overlay.show { display: block; }
 
-#playalong-header {
+.screen-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 20px; border-bottom: 1px solid var(--border);
   position: sticky; top: 0; background: var(--bg); z-index: 1;
 }
-#playalong-header h2 { margin: 0; font-size: 16px; }
+.screen-header h2 { margin: 0; font-size: 16px; }
 
-#playalong-body {
+.screen-body {
   padding: 16px 20px;
   max-width: 1400px;
 }
@@ -537,9 +570,11 @@ button:disabled:hover { filter: none; }
 .pa-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
 .pa-tabs button { flex: 1; font-size: 11px; }
 
-/* V3-U1: top strip — Backing Track / Tuner / Input, always visible. Three
-   roughly-equal columns on desktop width, stacking on anything narrower. */
-#pa-top-strip {
+/* V3-U1: top strip — always-visible glance-row cards. Roughly-equal
+   columns on desktop width, stacking on anything narrower. Shared class so
+   both Play Along's strip (Backing Track/Tuner/Rig Preset/Riff Capture)
+   and Tone Lab's strip (Input) use the same layout. */
+.top-strip-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 14px;
