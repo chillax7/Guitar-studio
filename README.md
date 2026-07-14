@@ -1,162 +1,156 @@
-# Backing Track Creator (Step 1 prototype)
+# Orpheus Guitar Studio
 
-CLI tool that separates a song into stems (vocals/drums/bass/other, or
-guitar/piano too with the 6-stem model) using Demucs, then mixes down a
-backing track with chosen stems muted or gain-adjusted.
+Split any song into separate parts (vocals/drums/bass/guitar/piano/
+other), build your own backing track by muting whichever parts you don't
+want, then plug in a guitar and jam over the result with amp modeling, a
+tuner, effects, and the ability to record yourself playing. Everything
+runs locally in your browser, talking to a small Python server on your
+own Mac — nothing is uploaded anywhere.
 
-## Setup (once)
+No coding experience needed to set this up — the steps below are
+copy-paste commands into Terminal, one at a time.
+
+---
+
+## Setup
+
+**Before you start:** a Mac (Apple Silicon is faster for the song-splitting
+step, but an Intel Mac works too), about **10GB of free disk space** (the
+separation engine pulls down several GB of machine-learning libraries and
+model files), and **20–30 minutes**, mostly spent waiting on downloads.
+
+### 1. Open Terminal
+
+Press `Cmd + Space`, type **Terminal**, press Enter. Each command block
+below gets pasted in (`Cmd + V`) and run one at a time — wait for one to
+finish before starting the next.
+
+### 2. Install Homebrew (skip if you already have it)
+
+Homebrew is the standard way to install developer tools on a Mac. Not
+sure if you have it? Type `brew --version` — if that prints a version
+number, skip to step 3.
 
 ```bash
-python3 -m venv venv
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+It'll ask for your Mac password at some point (typing it shows nothing on
+screen — that's normal) and may print extra instructions at the end about
+adding Homebrew to your PATH. If it does, copy-paste and run whatever
+command it shows you before continuing.
+
+### 3. Install the tools the app needs
+
+```bash
+brew install python@3.12 ffmpeg git
+```
+
+### 4. Download the app
+
+This puts it on your Desktop — feel free to pick somewhere else.
+
+```bash
+cd ~/Desktop
+git clone https://github.com/chillax7/Guitar-studio.git
+cd Guitar-studio
+```
+
+### 5. One-time setup
+
+```bash
+python3.12 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-brew install ffmpeg   # if not already installed
 ```
 
-## Commands
+That last command is the slow one — it's installing the actual
+song-separation engine (a few GB) and can take 10–15 minutes. Let it run;
+it's normal for it to look like nothing is happening for stretches at a
+time.
 
-### 1. Separate a track into stems
+### 6. Build the launcher and start the app
 
 ```bash
-python3 backing_track.py separate path/to/song.mp3
+bash scripts/build_app.sh
 ```
 
-Writes stems to `separated/<model>/<track_name>/*.wav` (this is the cache
-used for staleness checks and to locate stems for `mix`), and also copies
-them to `output/<track_name>/`, prefixed with the model name (e.g.
-`htdemucs_bass.wav`, `htdemucs_6s_bass.wav`) so stems from multiple models
-for the same song don't collide. Skips re-running if stems already exist
-(add `--force` to redo). Warns if the source file has changed since the
-stems were made.
+This creates **Guitar Studio.app** inside the folder. Double-click it in
+Finder to launch — from now on, that's the only thing you need to do to
+open the app.
 
-Use the 6-stem model to also isolate guitar and piano:
+**First launch only:** macOS will block it because it isn't from the App
+Store. Right-click the app → **Open** → **Open** again to confirm. (Or:
+System Settings → Privacy & Security → scroll down → **Open Anyway**.)
+You only have to do this once. Your browser should then open on its own
+to the app.
 
-```bash
-python3 backing_track.py separate path/to/song.mp3 --model htdemucs_6s
-```
+### Starting it again later
 
-Or use `bs_roformer_sw` (BT-13) instead — a newer model (via the
-`audio-separator` package) with much better guitar-stem quality than
-`htdemucs_6s` (benchmarked ~9 dB vs. ~2.6 dB SDR on guitar specifically; see
-`research/guitar-separation-upgrade-spec.md`). Produces the same 6 stems. Kept
-alongside `htdemucs_6s`, not replacing it, so you can A/B the two on the same
-song — both get cached under `separated/<model>/` and copied into
-`output/<track>/` with a model-name prefix so nothing collides:
+Just double-click **Guitar Studio.app**. None of the setup steps need
+repeating.
 
-```bash
-python3 backing_track.py separate path/to/song.mp3 --model bs_roformer_sw
-```
+---
 
-First run downloads the model checkpoint (~700 MB, one-time); subsequent runs
-reuse it. Runs entirely locally like Demucs — no cloud dependency.
+## Using the app
 
-### 2. List the stems for a track
+A quick tour — see [USER-MANUAL.md](USER-MANUAL.md) for the full version
+of every feature below, plus keyboard shortcuts and troubleshooting.
 
-```bash
-python3 backing_track.py list path/to/song.mp3 [--model htdemucs_6s]
-```
+**Import a song.** Drag an MP3 or WAV onto the sidebar (or click it to
+pick a file). Click the song to select it.
 
-### 3. Experimental: split guitar into center/sides proxies
+**Separate it into stems.** Pick a model and click **Separate** — this
+runs entirely on your Mac and typically takes a fraction of the song's
+length. The first time you use a given model it also downloads its
+weights (up to ~700MB, one-time, needs internet), so your very first
+separation is slower than every one after it. `bs_roformer_sw` (the
+default) gives the cleanest guitar isolation.
 
-```bash
-python3 backing_track.py split-guitar path/to/song.mp3
-```
+**Mix.** Each stem gets its own lane: Mute/Solo, a volume fader, Pan, and
+a 3-band EQ. Paint over a waveform to mute just a section (e.g. a guitar
+solo). Set an A/B loop, add section markers, use the Speed Trainer to
+practice a hard passage slow and step it up to full tempo, and turn on
+the **Click** for a metronome synced to the song's actual beat. Whatever
+you set up is saved automatically per song.
 
-Splits the `guitar` stem (from `htdemucs_6s`) by stereo panning into
-`guitar_center.wav` (content mixed dead-center) and `guitar_sides.wav`
-(content that's hard-panned/stereo-spread). This is a heuristic, not a
-real lead/rhythm separation model — it only works to the extent a track
-was actually mixed with one part centered and the other panned. Both
-derived stems become usable in `mix` immediately, alongside the original
-`guitar` stem (don't mix all three together, or you'll triple up the
-guitar content).
+**Play Along.** Click **🎸 Play Along** to plug in a guitar (or use your
+Mac's built-in mic) and play over what you built — sharing the exact
+same audio engine as the mixer, so there's no extra latency. The rig
+runs Gate → Amp (Clean/Analog/Neural amp-modeling) → Cab IR → EQ →
+Compressor → Delay/Reverb → Output, with a tuner and input meter always
+visible. Save a whole rig setup as a named preset and recall it instantly,
+or attach one to a song so it loads automatically. A rolling ~20-second
+buffer is always capturing, so **Save that!** rescues a take you didn't
+plan to record.
 
-Two split algorithms are available via `--method`:
+**Record yourself.** With or without a camera — audio-only takes need no
+setup at all. Every take is saved and browsable, with lossless trimming.
 
-- `spectral` (default) — estimates how centered vs. panned each
-  time/frequency bin is, and weights the center/sides split per-bin. Can
-  separate mixes where panning is partial or inconsistent across the
-  frequency range.
-- `midside` — the original blunt version: one fixed 50/50 mid/side split
-  applied across the whole track. Simpler, but can't adapt if the panning
-  isn't clean and consistent throughout.
+**Export.** Bounces exactly your mute/gain choices (not Solo/Pan/EQ,
+which are for monitoring while you play) to WAV or MP3, with loudness
+normalization.
 
-It prints an inter-channel correlation figure, but in testing across 5
-real songs this **did not reliably predict** which tracks would split
-well — the lowest-correlation track failed while the highest-correlation
-one worked. Treat it as informational only; judge each track by listening
-to both `guitar_center` and `guitar_sides`.
+---
 
-```bash
-python3 backing_track.py split-guitar path/to/song.mp3 --method midside
-```
+## More
 
-### 4. Mix down a backing track
+- **[USER-MANUAL.md](USER-MANUAL.md)** — every feature, in full detail.
+- **[FIRST-SESSION-CHECKLIST.html](FIRST-SESSION-CHECKLIST.html)** — open
+  it directly in a browser for a tickable, first-time walkthrough.
+- **[TEST-PLAN.md](TEST-PLAN.md)** — a regression checklist for after any
+  change.
+- **[CLI.md](CLI.md)** — drive the separation/mixing engine directly from
+  a terminal, for scripting or batch work.
 
-A bare output filename (no `/`) is placed under `output/<track_name>/`
-automatically, alongside that song's stems — e.g. `-o backing_track.wav`
-for "song.mp3" writes to `output/song/backing_track.wav`. Give a path
-containing `/` to override this and write somewhere else.
+### If something goes wrong
 
-Mute whole stems:
-
-```bash
-python3 backing_track.py mix path/to/song.mp3 --mute vocals,drums -o backing_track.wav
-```
-
-Or use per-stem linear gain instead of a hard mute (`1.0` = unity, `0` = silent):
-
-```bash
-python3 backing_track.py mix path/to/song.mp3 --gain vocals=0,drums=0.4,other=1.2 -o backing_track.wav
-```
-
-`--gain` overrides `--mute` for any stem listed in both.
-
-Export as MP3 (requires ffmpeg):
-
-```bash
-python3 backing_track.py mix path/to/song.mp3 --mute vocals -o backing_track.mp3
-```
-
-Control target loudness (default `-14` LUFS):
-
-```bash
-python3 backing_track.py mix path/to/song.mp3 --mute vocals --target-lufs -16 -o backing_track.wav
-```
-
-Mute a stem only during specific time ranges, instead of for the whole
-track — e.g. cut just a guitar solo, leaving the guitar audible everywhere
-else:
-
-```bash
-python3 backing_track.py mix path/to/song.mp3 --model htdemucs_6s --mute-range guitar=1:15-1:45 -o backing_track.wav
-```
-
-Timestamps accept `M:SS`, `H:MM:SS`, or raw seconds. Repeat the stem for
-multiple ranges (e.g. two solos):
-
-```bash
-python3 backing_track.py mix path/to/song.mp3 --model htdemucs_6s --mute-range "guitar=1:15-1:45,guitar=3:00-3:20" -o backing_track.wav
-```
-
-Each cut gets a short (~30ms) fade in/out so it doesn't click.
-
-## Flags reference
-
-| Flag | Commands | Meaning |
-|---|---|---|
-| `--model` | separate, list, mix | Demucs model (`htdemucs`, `htdemucs_ft`, `htdemucs_6s`, `mdx`, `mdx_extra`) or the `audio-separator` model `bs_roformer_sw` (BT-13 — better guitar-stem quality). Default `htdemucs`. |
-| `--force` | separate | Re-run separation even if stems already exist |
-| `--mute` | mix | Comma-separated stems to silence, e.g. `vocals,drums` |
-| `--gain` | mix | Comma-separated `stem=value` linear gain overrides, e.g. `drums=0.4,other=1.2` |
-| `--mute-range` | mix | Comma-separated `stem=start-end` time ranges to mute within, e.g. `guitar=1:15-1:45`. Repeat the stem for multiple ranges. |
-| `--target-lufs` | mix | Target integrated loudness for the export (default `-14`) |
-| `-o, --output` | mix | Output path, `.wav` or `.mp3` |
-| `--stem` | split-guitar | Name of the stereo stem to split (default `guitar`) |
-| `--method` | split-guitar | Split algorithm: `spectral` (default, per-frequency-bin) or `midside` (whole-track, blunt) |
-
-## Notes
-
-- Valid stem names depend on `--model` — run `list` to see what's available for a given track/model.
-- Stems are cached by filename under `separated/`; re-separating an edited file with the same name requires `--force` (the tool will warn you if it detects the source changed).
-- `output/<track_name>/` is meant as a one-stop folder per song: it holds a copy of every stem you've separated (model-prefixed) plus every mix you've exported for that song. `separated/` remains the source of truth `mix` actually reads from — `output/` is just for browsing/listening.
+- **"command not found"** for `brew`, `python3.12`, or `git` — close
+  Terminal completely and reopen it, then try again.
+- **`pip install` fails partway through** — just run
+  `pip install -r requirements.txt` again; a dropped connection
+  mid-download is the most common cause, and it resumes sensibly.
+- **"Apple could not verify..." when opening the app** — see step 6
+  above, right-click → Open.
+- **Anything else** — see the Troubleshooting section in
+  [USER-MANUAL.md](USER-MANUAL.md).
