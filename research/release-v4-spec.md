@@ -71,14 +71,23 @@ the shared transport clock — no alignment problem.
 
 ## 3. Feature picks from the backlog
 
-**V4-F1 = BT-04 · Chord detection & chord lane — L**
+**V4-F1 = BT-04 · Chord detection & chord lane — L — ✅ SHIPPED (revised v4 build, 2026-07-15)**
 The #1 functional gap vs. Moises/Capo found in the competitive scan, and
 newly cheap: beat grid (BT-02) and chroma extraction (BT-03) already
 exist in `backing_track.py`. Beat-synchronous chroma → template matching
 (maj/min/7 to start) → chord lane above the ruler, transposing live with
 the Tune slider. Honesty note in the UI ("assistive, best on pop/rock").
-Guitar-only lens: template set and voicing display favour guitar keys and
-capo suggestions, not generic lead sheets.
+Shipped as `detect_chords()`/`CHORD_TEMPLATE_MATRIX` in `backing_track.py`
+(cosine similarity against 36 maj/min/7 templates, one guess per beat-grid
+interval, `ANALYSIS_VERSION` bumped to 3) and `#chord-lane`/`renderChordLane()`
+in app.js (chip-per-beat, `chordSymbol()` transposes live with Tune via the
+same `transposedKeyName()` BT-03's key hint already used). Low-confidence
+beats render as a dimmed "?" chip rather than a gap or a guess. Capo
+suggestions from the original guitar-only-lens ambition were **not**
+built — chord names only, scoped down to keep this a clean L rather than
+letting it grow into the AI Lab territory release-v5-spec.md §1 separately
+adopted this item into. That adoption note is now satisfied by this
+shipped version, not superseded by it.
 
 **V4-F2 = GP-06 · Looper pedal — L**
 Record/overdub/undo loop layers from the live rig, beat-synced via the
@@ -86,14 +95,25 @@ beat grid, or free-running with no song loaded. Big footswitch-friendly
 buttons; quantized start/stop when a grid exists. Complements Rate My
 Take: loop a section, practice against it, then score against the record.
 
-**V4-F3 = BT-09 · Playlists / setlists — M**
+**V4-F3 = BT-09 · Playlists / setlists — M — ✅ SHIPPED (revised v4 build, 2026-07-15)**
 Ordered song lists with per-song project auto-recall (projects + rig
-attach already exist, so this is mostly Library UI + a JSON blob).
+attach already exist, so this is mostly Library UI + a JSON blob). Shipped
+as `/api/playlists` (server.py, same shared-blob pattern as rig presets)
+plus a Playlists picker in the sidebar that repurposes `#track-list`
+itself as the playlist view (reorder/remove controls, Prev/Next setlist
+navigation, "+ Add current song") rather than building a second list
+widget — see `renderPlaylistTrackList` in app.js.
 
-**V4-F4 = BT-10 · Practice log — S/M**
+**V4-F4 = BT-10 · Practice log — S/M — ✅ SHIPPED (revised v4 build, 2026-07-15)**
 Per-song focused-playback time, last-practiced date in the Library,
 simple history. No gamification — honest numbers. Natural companion to
 Rate My Take scores (both are "how is my practice actually going?").
+Shipped as a periodic `Audio.playing` sampler (`practiceLogTick`, app.js)
+that flushes small increments to `/api/practice_log`, content-hash-keyed
+like projects so a rename doesn't reset the count; Library rows show a
+plain dim time readout, no streaks/badges/scores. "Simple history" beyond
+the running total (e.g. a day-by-day log) was **not** built — out of
+scope for this pass, flagged here for whoever picks it up next.
 
 **V4-F5 = GP-11 · MIDI foot controller — M**
 Web MIDI: map program/CC to rig-preset recall, looper transport, and
@@ -113,6 +133,15 @@ see appstore-plan.md — demands it).
 
 ## 4. Milestones
 
+**Note (2026-07-15):** the project never actually ran M1–M6 in order —
+v3.0 went straight to v3.1/v3.2 hardening and enhancement work instead
+(see post-v3-backlog-audit.md, release-v5-spec.md's status note). The
+"revised v4 build" that shipped V4-F1/F3/F4 above picked those three
+specifically because other backlog work (AI Lab, this doc's own §5
+compatibility phase) depends on them, out of milestone order — M1–M3
+(hardware pass, Rate My Take) were not prerequisites for that and remain
+exactly as scoped below, still open.
+
 - **M1 — v3 hardening:** full TEST-PLAN + FIRST-SESSION-CHECKLIST pass on
   real hardware; fix what falls out; push tag `v3.0` (blocked in the v3
   session by credential scope). *Gate:* checklist complete, no open
@@ -122,13 +151,17 @@ see appstore-plan.md — demands it).
 - **M3 — Rate My Take feature (V4-R1b/c).** *Gate:* score a real
   learn-a-solo session end to end; user agrees the numbers match their
   own ears.
-- **M4 — Practice depth:** V4-F1 chords, V4-F4 practice log.
-  *Gate:* chord lane useful on 3 real songs of different styles.
+- **M4 — Practice depth: ✅ V4-F1 chords, ✅ V4-F4 practice log** (shipped
+  out of order, see note above). *Gate met:* chord lane produces plausible
+  reads on real material (Highway to Hell's I-IV-V blues-rock progression);
+  not yet run against 3 songs of genuinely different styles — worth doing
+  before leaning on it hard.
 - **M5 — Live rig depth:** V4-F2 looper, V4-F5 MIDI.
   *Gate:* a full hands-free practice session (preset recall + looper by
   foot).
-- **M6 — Polish & release:** V4-F3 playlists, V4-F6 artifact pass
-  (timeboxed), USER-MANUAL + TEST-PLAN + checklist updates, tag v4.0.
+- **M6 — Polish & release:** ✅ V4-F3 playlists (shipped out of order, see
+  M4's note), V4-F6 artifact pass (timeboxed, still open), USER-MANUAL +
+  TEST-PLAN + checklist updates, tag v4.0.
 
 Each milestone ends the v3 way: update the docs for what shipped, commit
 with root-cause-style messages, push, user run-through before the next.

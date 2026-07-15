@@ -67,6 +67,31 @@ song's state:
 - **Source file changed since separation:** an amber banner offers
   **Re-separate** or **Dismiss** — nothing is ever silently thrown away.
 
+### 3.1 Playlists / setlists
+The **Playlists** section above the Library picks which set of songs
+`#track-list` shows and in what order. **— All songs —** (the default) is
+the normal alphabetical Library. Pick a playlist instead and the same list
+switches to that playlist's songs in playlist order, with **▲ / ▼** to
+reorder and **✕** to remove a song from the playlist (never deletes the
+song itself). **+ New** creates one (seeded with whatever song is
+currently loaded, if any); **Rename**/**Delete** act on whichever playlist
+is selected. While a playlist is active, a second row appears: **◀ Prev**
+/ **Next ▶** step through it relative to the currently loaded song (stops
+at either end — a setlist doesn't wrap around), and **+ Add current song**
+appends the loaded song to the end. Clicking any song, in either view,
+loads it exactly the same way — a playlist is only ever an ordering, never
+a copy of a song's mix/rig settings.
+
+### 3.2 Practice log
+Every song's Library row shows a small dim time readout (e.g. "1h 12m")
+once you've played it for at least a minute, with a tooltip giving the
+exact total and the last-practiced date. This counts actual elapsed time
+with the backing track playing — Mixer or Play Along, either counts, and
+it doesn't care why playback is happening (a loop, a speed-trainer pass,
+just listening) — paused/stopped time doesn't count. It's a plain running
+total, not a streak counter or a goal tracker: no gamification, just an
+honest "how much have I actually played this" number.
+
 ## 4. Separating into stems
 
 Pick a model, then **Separate** (styled the same blue as Export — it's the
@@ -187,6 +212,18 @@ a strip above the ruler:
 - Hover a marker to reveal a small **×** to delete it.
 
 Markers are saved per-song, same as everything else in §6.
+
+**Chord lane:** a row of chord chips above the ruler (only appears once
+chord analysis exists — it's computed automatically alongside BPM/beats/
+key, so older tracks pick it up the next time they're selected). Each chip
+spans one beat-grid interval; click one to jump the playhead there. This
+is a **maj/min/7-only heuristic** — beat-synchronous chroma matched
+against simple chord templates, not a real chord-recognition model —
+assistive and best on pop/rock, same honesty framing as §7's guitar split.
+A dimmed **?** chip means no confident read for that beat rather than a
+guess; zoom in (above) to actually read the chord names, since a whole
+song's worth of chips at full width just reads as a solid bar. Chord roots
+transpose live with the Tune slider, same as the Detected Key hint in §5.
 
 **Speed Trainer:** in the right-hand inspector — set a loop first
 (a marker double-click is the fastest way), then use **Start** / **Step

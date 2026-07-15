@@ -9,6 +9,10 @@ __pycache__/
 input/
 separated/
 output/
+# Per-user saved state (mixes, rig presets, playlists, practice history) —
+# same reasoning as the audio dirs above: personal data, not source, and
+# committing it would leak one user's library/practice habits into the repo.
+GuitarStudio/projects/
 GuitarStudio/models/*
 # ...except a couple of small MIT-licensed starter NAM captures (from
 # TONE3000's neural-amp-modeler-wasm repo) bundled so Play Along is

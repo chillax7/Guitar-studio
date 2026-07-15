@@ -32,6 +32,25 @@
       <button id="playalong-open-btn" class="nav-screen-btn">🎸 Play Along</button>
       <button id="help-open-btn" class="nav-screen-btn">❓ Help</button>
     </div>
+    <!-- V4-F3: a playlist is just an ordering over the same Library list —
+         picking one swaps #track-list's contents from "all songs,
+         alphabetical" to "this playlist's songs, in order" and adds
+         reorder/remove controls to each row (see renderTrackList). Nothing
+         about a song's own settings lives here; selecting a row still goes
+         through the normal selectTrack() -> /api/project auto-recall. -->
+    <h2>Playlists</h2>
+    <div id="playlist-bar">
+      <select id="playlist-select"><option value="">— All songs —</option></select>
+      <button id="playlist-new-btn" title="New playlist">+ New</button>
+      <button id="playlist-rename-btn" title="Rename this playlist">Rename</button>
+      <button id="playlist-delete-btn" title="Delete this playlist">Delete</button>
+    </div>
+    <div id="playlist-nav-bar" style="display:none">
+      <button id="playlist-prev-btn" title="Previous song in this playlist">◀ Prev</button>
+      <button id="playlist-add-current-btn" title="Add the loaded song to this playlist">+ Add current song</button>
+      <button id="playlist-next-btn" title="Next song in this playlist">Next ▶</button>
+    </div>
+
     <h2>Library</h2>
     <div id="track-list"></div>
     <div id="import-drop">Drop an audio file here<br>or click to import</div>
@@ -105,6 +124,13 @@
 
     <div id="workspace">
       <div id="markers-row"></div>
+      <!-- V4-F1: one chip per beat-grid interval, positioned/widthed via
+           timeToPct like every other ruler-aligned element — see
+           renderChordLane in app.js. Hidden entirely (display:none) when
+           the analysis has no chords key at all (older cache, or no
+           pitched stem to read), same graceful-omission contract as
+           key-hint/pitch-hint below. -->
+      <div id="chord-lane"></div>
       <div id="ruler"><div id="beat-grid"></div><div id="loop-region"><div class="loop-handle" id="loop-handle-a" style="left:0"></div><div class="loop-handle" id="loop-handle-b" style="left:0"></div></div></div>
       <div id="lanes"></div>
     </div>
@@ -116,6 +142,7 @@
       <p class="hint" id="pitch-hint"></p>
       <button id="pitch-apply-btn" style="display:none">Apply to Tune</button>
       <p class="hint" id="key-hint"></p>
+      <p class="hint" id="chord-hint"></p>
     </section>
 
     <section id="speed-trainer-panel">

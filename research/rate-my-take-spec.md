@@ -5,6 +5,30 @@
 GP-09 sketch ("Performance feedback vs. the record — XL / R&D") with a
 concrete, phased design that exploits what v3 already built.
 
+**Update (2026-07-15) — Phase R1a is built, not yet gated.** `backing_track.py
+rate <take.wav> <song>` exists (`score_take()`/`cmd_rate()`), matching §6's
+spec exactly: no UI, per-beat pitch (chroma cosine) + timing (onset
+cross-correlation, ±80ms) scores, confidence-weighted by reference RMS, a
+matplotlib heatmap PNG. Mechanically verified against synthetic self-take
+tests (an identical take scores 100%/raw 1.0 as it must; a take with an
+injected 150ms lag + noise + dropped notes scores 49.4%/raw 0.596, with
+the timing dimension specifically collapsing as expected) — this confirms
+the *code* is correct, not that the *metric* is good. One real bug was
+caught and fixed during that verification: onset cross-correlation was
+comparing two independently-quantized frame grids (take vs. reference),
+which read as a spurious constant ~11ms lag on genuinely simultaneous
+audio whenever `--offset` wasn't an exact multiple of the onset hop —
+fixed by interpolating both onset envelopes onto one shared time grid
+before correlating. `RATE_CALIBRATION_FLOOR`/`CEILING` (the raw→percent
+mapping) are explicitly placeholder values, not yet calibrated.
+
+**The actual §6 go/no-go gate is still open** and cannot be closed by
+further code work — it requires three real takes of a part the user
+knows (one tight, one deliberately sloppy, one tasteful variation),
+scored and judged by ear against the heatmap. That's a human judgment
+call this document's own §6 assigns to the user, not something to
+simulate with synthetic audio.
+
 **One-line pitch:** play a solo or rhythm part along to a song, hit stop,
 and get an honest "how close was that to the record?" readout — an
 overall percentage, per-section scores, and a timeline heatmap showing

@@ -26,6 +26,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -171,7 +172,9 @@ def svc_tracks() -> dict:
     trade-off the stem cache already makes per-track; if this library ever
     grows large enough for that to matter, cache the hash the same way a
     separated track's fingerprint already does instead of recomputing it
-    on every sidebar refresh."""
+    on every sidebar refresh. V4-F4: the same digest doubles as the
+    practice-log lookup key — one hash, two lookups, not two hashes."""
+    practice_log = _read_practice_log()
     tracks = []
     for path in sorted(INPUT_DIR.iterdir()):
         if path.is_file() and not path.name.startswith("."):
@@ -180,7 +183,13 @@ def svc_tracks() -> dict:
                 has_project = (PROJECTS_DIR / f"{digest}.json").exists() or legacy_project_path(path.name).exists()
             except OSError:
                 has_project = False
-            tracks.append({"name": path.name, "size": path.stat().st_size, "has_project": has_project})
+                digest = None
+            entry = practice_log.get(digest) if digest else None
+            tracks.append({
+                "name": path.name, "size": path.stat().st_size, "has_project": has_project,
+                "practice_seconds": (entry or {}).get("seconds", 0.0),
+                "last_practiced": (entry or {}).get("last_practiced"),
+            })
     return {"tracks": tracks}
 
 
@@ -775,6 +784,68 @@ def svc_save_rig_presets(presets: dict) -> dict:
     return {"ok": True}
 
 
+# V4-F3: playlists/setlists — same shared-blob pattern as rig presets above.
+# A playlist doesn't own the tracks it lists (just their filenames as they
+# appear in input/); per-song state (mix, rig, loop, markers) still lives
+# entirely in that song's own project (svc_load_project/svc_save_project) —
+# a playlist is just an ordering, never a copy of a song's settings. The
+# server doesn't validate that a listed track still exists in input/; a
+# renamed/deleted source file just makes that row fail to select, same as
+# a stale Library entry would.
+PLAYLISTS_FILE = PROJECTS_DIR / "_playlists.json"
+
+
+def svc_load_playlists() -> dict:
+    if not PLAYLISTS_FILE.exists():
+        return {"playlists": {}}
+    try:
+        return json.loads(PLAYLISTS_FILE.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ApiError(500, f"Could not read playlists file: {exc}")
+
+
+def svc_save_playlists(playlists: dict) -> dict:
+    PLAYLISTS_FILE.write_text(json.dumps({"playlists": playlists}, indent=2))
+    return {"ok": True}
+
+
+# V4-F4: practice log — honest numbers, no gamification (streaks, badges,
+# goals). Content-hash-keyed like projects/analysis, so a renamed song
+# keeps its history. The client (app.js's practice-time accumulator) sends
+# small periodic increments while the backing track is actually playing
+# rather than one lump sum at the end, so a crash or a closed tab loses at
+# most the last few seconds, not the whole session.
+PRACTICE_LOG_FILE = PROJECTS_DIR / "_practice_log.json"
+
+
+def _read_practice_log() -> dict:
+    if not PRACTICE_LOG_FILE.exists():
+        return {}
+    try:
+        return json.loads(PRACTICE_LOG_FILE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def svc_practice_log_add(track: str, seconds: float) -> dict:
+    if seconds <= 0:
+        raise ApiError(400, "seconds must be positive")
+    if seconds > 300:
+        # A single increment this large means the client-side accumulator
+        # logic is wrong (or being poked directly), not a real 5-minute-long
+        # animation-frame gap — refuse rather than silently trust it.
+        raise ApiError(400, "seconds increment too large — expected a short periodic tick")
+    digest = engine.content_hash(resolve_source_path(track))
+    log = _read_practice_log()
+    entry = log.get(digest, {"seconds": 0.0, "last_practiced": None, "track_name": track})
+    entry["seconds"] = entry.get("seconds", 0.0) + seconds
+    entry["last_practiced"] = time.time()
+    entry["track_name"] = track  # keeps the display name fresh across renames
+    log[digest] = entry
+    PRACTICE_LOG_FILE.write_text(json.dumps(log, indent=2))
+    return {"ok": True, "seconds": entry["seconds"], "last_practiced": entry["last_practiced"]}
+
+
 # ---------------------------------------------------------------------------
 # HTTP layer
 # ---------------------------------------------------------------------------
@@ -962,6 +1033,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(200, svc_recordings_list(query.get("track", "")))
             if path == "/api/rig_presets":
                 return self._send_json(200, svc_load_rig_presets())
+            if path == "/api/playlists":
+                return self._send_json(200, svc_load_playlists())
             if path.startswith("/api/"):
                 return self._send_json(404, {"error": f"Unknown route: {path}"})
             return self._serve_static(path)
@@ -1059,6 +1132,16 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/rig_presets":
                 body = self._read_json_body()
                 result = svc_save_rig_presets(body.get("presets", {}))
+                return self._send_json(200, result)
+
+            if path == "/api/playlists":
+                body = self._read_json_body()
+                result = svc_save_playlists(body.get("playlists", {}))
+                return self._send_json(200, result)
+
+            if path == "/api/practice_log":
+                body = self._read_json_body()
+                result = svc_practice_log_add(body.get("track", ""), float(body.get("seconds", 0)))
                 return self._send_json(200, result)
 
             return self._send_json(404, {"error": f"Unknown route: {path}"})

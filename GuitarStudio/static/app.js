@@ -36,6 +36,8 @@ const Api = {
 
 const State = {
   tracks: [],
+  playlists: {}, // V4-F3 — {name: {tracks: [trackName, ...]}}, shared cross-song (like rig presets)
+  currentPlaylist: "", // "" = viewing the full Library, not a playlist
   models: [],
   defaultModel: "htdemucs",
   track: null,
@@ -590,6 +592,12 @@ async function refreshTrackList() {
 function renderTrackList() {
   const el = document.getElementById("track-list");
   el.innerHTML = "";
+
+  if (State.currentPlaylist) {
+    renderPlaylistTrackList(el);
+    return;
+  }
+
   for (const t of State.tracks) {
     const row = document.createElement("div");
     row.className = "track-row" + (t.name === State.track ? " selected" : "");
@@ -597,15 +605,230 @@ function renderTrackList() {
     // keyed server-side now (server.py's project_path_for), so this stays
     // accurate even for a track that's been renamed since its mix was saved.
     row.innerHTML = `<span class="track-name">${escapeHtml(t.name)}</span>` +
+      (t.practice_seconds > 0
+        ? `<span class="track-practice-time" title="${escapeHtml(practiceLogTooltip(t))}">${escapeHtml(fmtPracticeTime(t.practice_seconds))}</span>`
+        : "") +
       (t.has_project ? '<span class="track-project-dot" title="Has a saved mix/project"></span>' : "");
     row.addEventListener("click", () => selectTrack(t.name));
     el.appendChild(row);
   }
 }
 
+// V4-F4: honest numbers, not gamified — a plain elapsed-time readout and a
+// last-practiced date, nothing scored or streak-tracked.
+function fmtPracticeTime(seconds) {
+  const totalMin = Math.round(seconds / 60);
+  if (totalMin < 1) return "<1m";
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function practiceLogTooltip(t) {
+  const last = t.last_practiced ? new Date(t.last_practiced * 1000).toLocaleDateString() : "never";
+  return `${fmtPracticeTime(t.practice_seconds)} practiced total — last practiced ${last}`;
+}
+
+// ---------------------------------------------------------------------------
+// V4-F4: practice log — a dumb periodic sampler, not hooked into every
+// playback-state transition. Every PRACTICE_TICK_MS it just asks "is the
+// backing track actually playing right now," and if so credits that
+// interval to whatever song is loaded. Seeks, speed changes, loop wraps,
+// and Play Along vs. Mixer playback all fall out for free since none of
+// them change what Audio.playing means. Increments are flushed to the
+// server periodically (not on every tick) and whenever the loaded track
+// changes (selectTrack calls flushPracticeLog before switching State.track)
+// — a crash or closed tab loses at most a few unflushed seconds, never a
+// whole session.
+// ---------------------------------------------------------------------------
+
+const PRACTICE_TICK_MS = 5000;
+const PRACTICE_FLUSH_THRESHOLD_SEC = 15;
+let practiceLogPendingSeconds = 0;
+let practiceLogAccumTrack = null;
+
+function practiceLogTick() {
+  if (!Audio.playing || !State.track) return;
+  if (practiceLogAccumTrack && practiceLogAccumTrack !== State.track) flushPracticeLog();
+  practiceLogAccumTrack = State.track;
+  practiceLogPendingSeconds += PRACTICE_TICK_MS / 1000;
+  if (practiceLogPendingSeconds >= PRACTICE_FLUSH_THRESHOLD_SEC) flushPracticeLog();
+}
+
+function flushPracticeLog() {
+  if (practiceLogPendingSeconds <= 0 || !practiceLogAccumTrack) {
+    practiceLogPendingSeconds = 0;
+    practiceLogAccumTrack = null;
+    return;
+  }
+  const track = practiceLogAccumTrack;
+  const seconds = practiceLogPendingSeconds;
+  practiceLogPendingSeconds = 0;
+  practiceLogAccumTrack = null;
+  Api.post("/api/practice_log", { track, seconds }).then((r) => {
+    const t = State.tracks.find((x) => x.name === track);
+    if (t) {
+      t.practice_seconds = r.seconds;
+      t.last_practiced = r.last_practiced;
+      if (!State.currentPlaylist) renderTrackList();
+    }
+  }).catch(() => { /* best-effort — a lost tick just under-counts slightly */ });
+}
+
+// V4-F3: the playlist view of the same #track-list — order comes from the
+// playlist itself (not alphabetical), and each row picks up reorder/remove
+// controls. Clicking a row still goes through the exact same selectTrack()
+// as the Library view, so per-song project auto-recall is unchanged.
+function renderPlaylistTrackList(el) {
+  const playlist = State.playlists[State.currentPlaylist];
+  const tracks = (playlist && playlist.tracks) || [];
+  if (!tracks.length) {
+    el.innerHTML = '<p class="hint">Empty — use "+ Add current song" below to build this playlist.</p>';
+    return;
+  }
+  tracks.forEach((name, i) => {
+    const row = document.createElement("div");
+    row.className = "track-row playlist-track-row" + (name === State.track ? " selected" : "");
+    row.innerHTML = `
+      <span class="track-name">${escapeHtml(name)}</span>
+      <button class="playlist-track-up-btn" title="Move up"${i === 0 ? " disabled" : ""}>▲</button>
+      <button class="playlist-track-down-btn" title="Move down"${i === tracks.length - 1 ? " disabled" : ""}>▼</button>
+      <button class="playlist-track-remove-btn" title="Remove from playlist">✕</button>`;
+    row.addEventListener("click", () => selectTrack(name));
+    row.querySelector(".playlist-track-up-btn").addEventListener("click", (e) => {
+      e.stopPropagation(); movePlaylistTrack(i, -1);
+    });
+    row.querySelector(".playlist-track-down-btn").addEventListener("click", (e) => {
+      e.stopPropagation(); movePlaylistTrack(i, 1);
+    });
+    row.querySelector(".playlist-track-remove-btn").addEventListener("click", (e) => {
+      e.stopPropagation(); removePlaylistTrack(i);
+    });
+    el.appendChild(row);
+  });
+}
+
+async function persistPlaylists() {
+  await Api.post("/api/playlists", { playlists: State.playlists }).catch(() => { /* best-effort */ });
+}
+
+function movePlaylistTrack(index, delta) {
+  const playlist = State.playlists[State.currentPlaylist];
+  if (!playlist) return;
+  const tracks = playlist.tracks;
+  const j = index + delta;
+  if (j < 0 || j >= tracks.length) return;
+  [tracks[index], tracks[j]] = [tracks[j], tracks[index]];
+  renderTrackList();
+  persistPlaylists();
+}
+
+function removePlaylistTrack(index) {
+  const playlist = State.playlists[State.currentPlaylist];
+  if (!playlist) return;
+  playlist.tracks.splice(index, 1);
+  renderTrackList();
+  persistPlaylists();
+}
+
+// Setlist-style traversal, not a carousel — running off either end just
+// stops rather than wrapping, since a real setlist has a start and an end.
+function stepPlaylist(delta) {
+  const playlist = State.playlists[State.currentPlaylist];
+  if (!playlist || !playlist.tracks.length) return;
+  const i = playlist.tracks.indexOf(State.track);
+  const next = i === -1 ? 0 : i + delta; // not on a song from this playlist — jump to its first
+  if (next < 0 || next >= playlist.tracks.length) return;
+  selectTrack(playlist.tracks[next]);
+}
+
+async function refreshPlaylists() {
+  try {
+    const r = await Api.get("/api/playlists");
+    State.playlists = r.playlists || {};
+  } catch (e) {
+    State.playlists = {};
+  }
+  renderPlaylistSelect();
+}
+
+function renderPlaylistSelect() {
+  const sel = document.getElementById("playlist-select");
+  const names = Object.keys(State.playlists).sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = '<option value="">— All songs —</option>';
+  for (const name of names) {
+    const opt = document.createElement("option");
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  }
+  if (!names.includes(State.currentPlaylist)) State.currentPlaylist = "";
+  sel.value = State.currentPlaylist;
+  document.getElementById("playlist-nav-bar").style.display = State.currentPlaylist ? "flex" : "none";
+}
+
+function wirePlaylists() {
+  document.getElementById("playlist-select").addEventListener("change", (e) => {
+    State.currentPlaylist = e.target.value;
+    document.getElementById("playlist-nav-bar").style.display = State.currentPlaylist ? "flex" : "none";
+    renderTrackList();
+  });
+
+  document.getElementById("playlist-new-btn").addEventListener("click", async () => {
+    const name = prompt("New playlist name:");
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    if (State.playlists[trimmed]) { alert(`A playlist named "${trimmed}" already exists.`); return; }
+    State.playlists[trimmed] = { tracks: State.track ? [State.track] : [] };
+    State.currentPlaylist = trimmed;
+    await persistPlaylists();
+    renderPlaylistSelect();
+    renderTrackList();
+  });
+
+  document.getElementById("playlist-rename-btn").addEventListener("click", async () => {
+    if (!State.currentPlaylist) return;
+    const newName = prompt("Rename playlist to:", State.currentPlaylist);
+    if (!newName || !newName.trim() || newName.trim() === State.currentPlaylist) return;
+    const trimmed = newName.trim();
+    if (State.playlists[trimmed]) { alert(`A playlist named "${trimmed}" already exists.`); return; }
+    State.playlists[trimmed] = State.playlists[State.currentPlaylist];
+    delete State.playlists[State.currentPlaylist];
+    State.currentPlaylist = trimmed;
+    await persistPlaylists();
+    renderPlaylistSelect();
+    renderTrackList();
+  });
+
+  document.getElementById("playlist-delete-btn").addEventListener("click", async () => {
+    if (!State.currentPlaylist) return;
+    if (!confirm(`Delete playlist "${State.currentPlaylist}"? This can't be undone (the songs themselves are untouched).`)) return;
+    delete State.playlists[State.currentPlaylist];
+    State.currentPlaylist = "";
+    await persistPlaylists();
+    renderPlaylistSelect();
+    renderTrackList();
+  });
+
+  document.getElementById("playlist-add-current-btn").addEventListener("click", async () => {
+    if (!State.currentPlaylist || !State.track) return;
+    const playlist = State.playlists[State.currentPlaylist];
+    if (!playlist || playlist.tracks.includes(State.track)) return;
+    playlist.tracks.push(State.track);
+    await persistPlaylists();
+    renderTrackList();
+  });
+
+  document.getElementById("playlist-prev-btn").addEventListener("click", () => stepPlaylist(-1));
+  document.getElementById("playlist-next-btn").addEventListener("click", () => stepPlaylist(1));
+}
+
 let selectTrackEpoch = 0;
 
 async function selectTrack(name) {
+  // V4-F4: flush whatever practice time accumulated against the track
+  // we're about to leave, before State.track points somewhere else.
+  flushPracticeLog();
+
   // Reentrancy guard: selectTrack awaits (setSpeedTune, /api/project,
   // stem load), and two quick library clicks would otherwise interleave —
   // the first click's continuation resuming after the second set State,
@@ -1354,6 +1577,7 @@ function rerenderTimeline() {
   renderLanes();
   renderMarkers();
   renderBeatGrid();
+  renderChordLane();
   updateLoopVisual();
   renderPlayhead(currentPosition());
 }
@@ -1428,6 +1652,7 @@ function wireSpeedTune() {
     setTransportText("tune-display", (cents >= 0 ? "+" : "") + cents + "¢");
     updateBpmDisplay();
     updateKeyHint(); // BT-03 — live as Tune moves
+    renderChordLane(); // V4-F1 — chord roots transpose live too
     setSpeedTune(speed, Math.pow(2, cents / 1200));
   }
   onTransportInput("speed-slider", apply);
@@ -1522,6 +1747,57 @@ function updateKeyHint() {
     (newKey ? ` → ${newKey} ${key.mode}.` : ".");
 }
 
+// V4-F1 (BT-04): "Am", "D7", "C" — quality names guitarists actually read,
+// not lead-sheet Roman-numeral or jazz-extended notation (the guitar-only
+// lens release-v4-spec.md's V4-F1 calls for). null means no confident
+// chord for this beat (backing_track.py's CHORD_CONFIDENCE_FLOOR), not "no
+// chord was ever computed" — renderChordLane tells those two apart itself.
+function chordSymbol(chord, semitones) {
+  if (!chord.root || chord.quality === "N") return null;
+  const root = transposedKeyName(chord.root, semitones) || chord.root;
+  const suffix = chord.quality === "maj" ? "" : chord.quality === "min" ? "m" : chord.quality;
+  return root + suffix;
+}
+
+// Same "always visible when data exists, no separate toggle" idiom as
+// renderBeatGrid — and the same viewWindow()/timeToPct() positioning BT-17
+// established, except chips have a real width (one beat interval), not a
+// single left position like a marker flag.
+function renderChordLane() {
+  const row = document.getElementById("chord-lane");
+  const chords = (State.analysis || {}).chords;
+  if (!chords || !chords.length || !Audio.duration) {
+    row.style.display = "none";
+    row.innerHTML = "";
+    return;
+  }
+  row.style.display = "block";
+  row.innerHTML = "";
+
+  const { start: viewStart, end: viewEnd } = viewWindow();
+  const tuneEl = transportEls("tune-slider")[0];
+  const cents = tuneEl ? parseFloat(tuneEl.value) : 0;
+  const semitones = Math.trunc(cents / 100);
+
+  const frag = document.createDocumentFragment();
+  chords.forEach((c, i) => {
+    const end = i + 1 < chords.length ? chords[i + 1].time : Audio.duration;
+    if (end < viewStart || c.time > viewEnd) return;
+    const symbol = chordSymbol(c, semitones);
+    const chip = document.createElement("div");
+    chip.className = "chord-chip" + (symbol ? "" : " chord-chip-unknown");
+    chip.style.left = timeToPct(c.time) + "%";
+    chip.style.width = Math.max(0, timeToPct(end) - timeToPct(c.time)) + "%";
+    chip.textContent = symbol || "?";
+    chip.title = symbol
+      ? `${symbol} (confidence ${c.confidence.toFixed(2)} — assistive, best on pop/rock; confirm by ear)`
+      : "No confident chord read for this beat.";
+    chip.addEventListener("click", () => seekTo(c.time));
+    frag.appendChild(chip);
+  });
+  row.appendChild(frag);
+}
+
 function renderInspector() {
   const a = State.analysis || {};
   updateBpmDisplay();
@@ -1541,6 +1817,12 @@ function renderInspector() {
     transportEls("tune-slider")[0].dispatchEvent(new Event("input"));
   };
   updateKeyHint();
+
+  const chordHintEl = document.getElementById("chord-hint");
+  chordHintEl.textContent = (a.chords && a.chords.length)
+    ? "Chord lane (above the ruler): assistive, best on pop/rock — dimmed chips mean no confident read. Confirm by ear."
+    : "";
+  renderChordLane();
 
   const hasGuitar = State.stems.some((s) => s.name === "guitar");
   document.getElementById("split-panel").style.display = hasGuitar ? "block" : "none";
@@ -1901,14 +2183,17 @@ async function init() {
   wireVolumeSlider();
   wireKeyboardShortcuts();
   wireHelp();
+  wirePlaylists();
 
   const modelsResp = await Api.get("/api/models");
   State.models = modelsResp.models;
   State.defaultModel = modelsResp.default;
   renderModelMenu();
 
+  await refreshPlaylists();
   await refreshTrackList();
   requestAnimationFrame(tick);
+  setInterval(practiceLogTick, PRACTICE_TICK_MS);
 }
 
 init();

@@ -97,8 +97,9 @@ ANALYSIS_FILE = "analysis.json"
 # Bump whenever analyze_track() learns a new reading, so tracks analyzed
 # under an older version get lazily re-analyzed (ensure_analysis) instead of
 # serving a cached result that's silently missing the new keys forever —
-# v1: bpm + pitch_offset_cents; v2: + key (BT-03) and beats (BT-02).
-ANALYSIS_VERSION = 2
+# v1: bpm + pitch_offset_cents; v2: + key (BT-03) and beats (BT-02);
+# v3: + chords (BT-04).
+ANALYSIS_VERSION = 3
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -413,14 +414,99 @@ def detect_key(y: "np.ndarray", sr: int) -> dict | None:
     return {"key": KEY_NOTE_NAMES[root], "mode": mode, "confidence": round(float(corr), 3)}
 
 
+# BT-04 (V4-F1): beat-synchronous chroma -> template matching. maj/min/7 is
+# the deliberate starter set (release-v4-spec.md's V4-F1 scoping) — the
+# chord lane's own UI carries an "assistive, best on pop/rock" honesty note
+# forward from here, same spirit as detect_key above. Not ML: a chord
+# template is just its notes' pitch classes as a binary chroma vector,
+# matched by cosine similarity, exactly like detect_key's rotated
+# major/minor profiles are matched by correlation.
+CHORD_QUALITY_INTERVALS = {
+    "maj": (0, 4, 7),
+    "min": (0, 3, 7),
+    "7": (0, 4, 7, 10),
+}
+CHORD_CONFIDENCE_FLOOR = 0.5  # below this, report "no chord" rather than a guess that's probably noise
+
+
+def _build_chord_templates() -> tuple[list[tuple[str, str]], "np.ndarray"]:
+    labels = []
+    rows = []
+    for root in range(12):
+        for quality, intervals in CHORD_QUALITY_INTERVALS.items():
+            vec = np.zeros(12)
+            for interval in intervals:
+                vec[(root + interval) % 12] = 1.0
+            vec /= np.linalg.norm(vec)
+            labels.append((KEY_NOTE_NAMES[root], quality))
+            rows.append(vec)
+    return labels, np.array(rows)
+
+
+CHORD_TEMPLATE_LABELS, CHORD_TEMPLATE_MATRIX = _build_chord_templates()
+
+
+def detect_chords(out_dir: Path, beats: list) -> list[dict] | None:
+    """One chord guess per beat-grid interval [beats[i], beats[i+1]).
+    Chroma source is the sum of every pitched, non-percussive, non-vocal
+    stem available (bass/other/guitar/piano) — deliberately excludes vocals
+    (a sung melody isn't the harmony backing it) and drums (no pitch
+    content, just chroma-bin noise). Returns None if there's no beat grid
+    to align to, or no pitched stem to analyze — same "a missing reading is
+    fine" contract as every other field in analyze_track."""
+    if not beats or len(beats) < 2:
+        return None
+
+    import librosa
+
+    sources = []
+    sr = None
+    for name in ("bass", "other", "guitar", "piano"):
+        stem_path = out_dir / f"{name}.wav"
+        if not stem_path.exists():
+            continue
+        y, sr = librosa.load(str(stem_path), sr=None, mono=True)
+        sources.append(y)
+    if not sources:
+        return None
+
+    max_len = max(len(y) for y in sources)
+    mono = np.zeros(max_len, dtype=np.float32)
+    for y in sources:
+        mono[:len(y)] += y
+
+    chroma = librosa.feature.chroma_cqt(y=mono, sr=sr)
+    frame_times = librosa.frames_to_time(np.arange(chroma.shape[1]), sr=sr)
+
+    chords = []
+    for start, end in zip(beats, beats[1:]):
+        mask = (frame_times >= start) & (frame_times < end)
+        window_chroma = chroma[:, mask].mean(axis=1) if np.any(mask) else np.zeros(12)
+        norm = np.linalg.norm(window_chroma)
+        if norm > 0:
+            window_chroma = window_chroma / norm
+        scores = CHORD_TEMPLATE_MATRIX @ window_chroma
+        best_idx = int(np.argmax(scores))
+        confidence = float(scores[best_idx])
+        if confidence < CHORD_CONFIDENCE_FLOOR:
+            root, quality = None, "N"
+        else:
+            root, quality = CHORD_TEMPLATE_LABELS[best_idx]
+        chords.append({"time": round(float(start), 3), "root": root, "quality": quality,
+                        "confidence": round(confidence, 3)})
+    return chords
+
+
 def analyze_track(out_dir: Path) -> dict:
-    """BT-01/BT-16/BT-03: best-effort tempo + reference-pitch + key
-    analysis. Tempo comes from the drums stem (present for every model) via
-    librosa's tempo estimator; pitch offset from A=440 (in cents) and
-    detected key both come from librosa run on the first harmonic-ish stem
-    available. Any figure is simply omitted from the result if its stem is
-    missing or the estimate fails — a missing reading is fine; this must
-    never be the reason a separation run fails."""
+    """BT-01/BT-16/BT-03/BT-04: best-effort tempo + reference-pitch + key +
+    chord analysis. Tempo comes from the drums stem (present for every
+    model) via librosa's tempo estimator; pitch offset from A=440 (in
+    cents) and detected key both come from librosa run on the first
+    harmonic-ish stem available; chords (see detect_chords) need the beat
+    grid computed just above them. Any figure is simply omitted from the
+    result if its stem is missing or the estimate fails — a missing
+    reading is fine; this must never be the reason a separation run
+    fails."""
     import librosa
     import librosa.feature.rhythm
 
@@ -481,6 +567,17 @@ def analyze_track(out_dir: Path) -> dict:
         except Exception:
             continue
 
+    # BT-04: needs the beat grid above it, so runs last and is skipped
+    # entirely if beat tracking didn't produce one — separate try so a
+    # chord-detection failure never costs the bpm/beats/key readings that
+    # already succeeded.
+    try:
+        chords = detect_chords(out_dir, result.get("beats"))
+        if chords:
+            result["chords"] = chords
+    except Exception:
+        pass
+
     return result
 
 
@@ -518,6 +615,126 @@ def ensure_analysis(out_dir: Path) -> dict:
         write_analysis(out_dir, analysis)
         return analysis
     return existing
+
+
+# V4-R1a (rate-my-take-spec.md §3/§6): the research spike's scoring core.
+# Confidence-weighted per-beat agreement between a dry take and the
+# isolated guitar stem it's meant to match — pitch via chroma cosine
+# similarity (octave/tone-blind, so a Strat take vs. a Les Paul record
+# compares fairly), timing via onset-envelope cross-correlation in a small
+# window, confidence via reference-stem RMS (a beat where the reference
+# guitar is nearly silent shouldn't be scored as if it were authoritative).
+RATE_ONSET_LAG_WINDOW_MS = 80  # per spec §3's "±80 ms" cross-correlation window
+RATE_PITCH_WEIGHT = 0.6
+RATE_TIMING_WEIGHT = 0.4
+RATE_CONFIDENCE_FLOOR = 0.02  # reference RMS below this = no real signal to score against, excluded from the aggregate
+
+# UNCALIBRATED. rate-my-take-spec.md §3 is explicit that finding a mapping
+# where "~60% reads rough and ~90% reads tight" is the spike's own job,
+# not something to guess at up front — this linear remap of the raw
+# pitch/timing blend onto [0, 100] is a starting point to test against
+# real takes, not a finished answer. Expect to replace these two numbers
+# once real recordings exist to judge against (see cmd_rate's printed
+# reminder of exactly that).
+RATE_CALIBRATION_FLOOR = 0.3   # raw blended score presumed to map to ~0%
+RATE_CALIBRATION_CEILING = 0.9  # raw blended score presumed to map to ~100%
+
+
+def score_take(take_path: Path, reference_path: Path, beats: list, offset_sec: float = 0.0) -> dict:
+    """offset_sec: take.wav's sample 0 corresponds to song-time offset_sec
+    — substitutes here for the shared-transport-clock alignment the real
+    in-app capture (R1b) will provide for free (see spec §1.2/§3); this
+    spike takes an already-recorded WAV with no such clock, so the caller
+    has to say where it starts. NOT auto-detected — get this wrong and
+    every score in the run is meaningless, not just off by a little."""
+    import librosa
+
+    take_y, sr = librosa.load(str(take_path), sr=None, mono=True)
+    ref_y, _ = librosa.load(str(reference_path), sr=sr, mono=True)  # resampled to the take's rate
+
+    if not beats or len(beats) < 2:
+        # No beat grid — fixed 0.5s windows, per spec §3's fallback.
+        duration = min(len(take_y) / sr - offset_sec, len(ref_y) / sr)
+        beats = list(np.arange(0, max(duration, 0), 0.5))
+        if len(beats) < 2:
+            return {"beats": [], "overall_pct": None, "overall_raw": None}
+
+    take_chroma = librosa.feature.chroma_cqt(y=take_y, sr=sr)
+    take_chroma_t = librosa.frames_to_time(np.arange(take_chroma.shape[1]), sr=sr) + offset_sec
+    ref_chroma = librosa.feature.chroma_cqt(y=ref_y, sr=sr)
+    ref_chroma_t = librosa.frames_to_time(np.arange(ref_chroma.shape[1]), sr=sr)
+
+    take_onset = librosa.onset.onset_strength(y=take_y, sr=sr)
+    take_onset_t = librosa.frames_to_time(np.arange(len(take_onset)), sr=sr) + offset_sec
+    ref_onset = librosa.onset.onset_strength(y=ref_y, sr=sr)
+    ref_onset_t = librosa.frames_to_time(np.arange(len(ref_onset)), sr=sr)
+    onset_hop_sec = librosa.frames_to_time(1, sr=sr)
+
+    lag_window_sec = RATE_ONSET_LAG_WINDOW_MS / 1000
+    beat_scores = []
+    for start, end in zip(beats, beats[1:]):
+        take_mask = (take_chroma_t >= start) & (take_chroma_t < end)
+        ref_mask = (ref_chroma_t >= start) & (ref_chroma_t < end)
+        if not np.any(take_mask) or not np.any(ref_mask):
+            beat_scores.append({"time": round(float(start), 3), "score": None, "confidence": 0.0})
+            continue
+
+        take_c = take_chroma[:, take_mask].mean(axis=1)
+        ref_c = ref_chroma[:, ref_mask].mean(axis=1)
+        take_norm, ref_norm = np.linalg.norm(take_c), np.linalg.norm(ref_c)
+        pitch_score = (float(np.dot(take_c, ref_c)) / (take_norm * ref_norm)) if take_norm > 0 and ref_norm > 0 else 0.0
+        pitch_score = max(0.0, min(1.0, pitch_score))
+
+        # Interpolate both onset envelopes onto one shared, fine time grid
+        # covering this beat + the lag search margin, rather than
+        # correlating each source's own independently-quantized frame
+        # grid directly. Without this, whenever offset_sec isn't an exact
+        # multiple of the onset hop (~11.6ms at typical sample rates —
+        # true for almost any real offset), the take's and reference's
+        # frame grids sit a fraction of a hop apart from each other, which
+        # cross-correlation reads as a spurious constant lag even for
+        # genuinely simultaneous audio. Caught by this spike's own
+        # self-take sanity check: an identical take scored ~0.855 timing
+        # agreement instead of 1.0, a systematic ~11ms "lag" on zero-lag
+        # audio, before this fix.
+        common_hop_sec = onset_hop_sec / 2  # oversample a bit for interpolation accuracy
+        grid = np.arange(start - lag_window_sec, end + lag_window_sec, common_hop_sec)
+        timing_score = 0.0
+        if len(grid) > 1:
+            take_seg = np.interp(grid, take_onset_t, take_onset, left=0.0, right=0.0)
+            ref_seg = np.interp(grid, ref_onset_t, ref_onset, left=0.0, right=0.0)
+            if np.any(take_seg) and np.any(ref_seg):
+                corr = np.correlate(take_seg - take_seg.mean(), ref_seg - ref_seg.mean(), mode="full")
+                best_lag_idx = int(np.argmax(corr)) - (len(ref_seg) - 1)
+                best_lag_ms = abs(best_lag_idx * common_hop_sec * 1000)
+                timing_score = max(0.0, 1.0 - best_lag_ms / RATE_ONSET_LAG_WINDOW_MS)
+
+        ref_start_sample, ref_end_sample = int(start * sr), min(int(end * sr), len(ref_y))
+        ref_segment = ref_y[ref_start_sample:ref_end_sample]
+        confidence = float(np.sqrt(np.mean(ref_segment ** 2))) if len(ref_segment) else 0.0
+
+        agreement = RATE_PITCH_WEIGHT * pitch_score + RATE_TIMING_WEIGHT * timing_score
+        beat_scores.append({
+            "time": round(float(start), 3), "score": round(agreement, 3),
+            "pitch": round(pitch_score, 3), "timing": round(timing_score, 3),
+            "confidence": round(confidence, 4),
+        })
+
+    confident = [b for b in beat_scores if b["score"] is not None and b["confidence"] >= RATE_CONFIDENCE_FLOOR]
+    if confident:
+        weights = np.array([b["confidence"] for b in confident])
+        scores = np.array([b["score"] for b in confident])
+        overall_raw = float(np.average(scores, weights=weights))
+        span = RATE_CALIBRATION_CEILING - RATE_CALIBRATION_FLOOR
+        overall_pct = max(0.0, min(100.0, (overall_raw - RATE_CALIBRATION_FLOOR) / span * 100)) if span > 0 else None
+    else:
+        overall_raw = overall_pct = None
+
+    return {
+        "beats": beat_scores,
+        "overall_raw": round(overall_raw, 3) if overall_raw is not None else None,
+        "overall_pct": round(overall_pct, 1) if overall_pct is not None else None,
+    }
 
 
 def cmd_separate(args: argparse.Namespace) -> None:
@@ -977,6 +1194,92 @@ def cmd_mix(args: argparse.Namespace) -> None:
     print(f"Backing track written to: {out_path}")
 
 
+def _render_rate_heatmap(beat_scores: list, out_path: Path, take_name: str, song_name: str) -> None:
+    import matplotlib
+    matplotlib.use("Agg")  # headless — no display server needed, this just writes a PNG
+    import matplotlib.pyplot as plt
+
+    times = [b["time"] for b in beat_scores]
+    scores = [b["score"] if b["score"] is not None else np.nan for b in beat_scores]
+    scores_arr = np.array(scores).reshape(1, -1)
+
+    cmap = plt.get_cmap("RdYlGn").copy()
+    cmap.set_bad(color="#888888")  # unscored beats (no reference/take signal) — visually distinct, not just missing
+
+    span = (times[-1] - times[-2]) if len(times) > 1 else 1.0
+    fig, ax = plt.subplots(figsize=(max(6, len(beat_scores) * 0.15), 2.2))
+    im = ax.imshow(scores_arr, aspect="auto", cmap=cmap, vmin=0, vmax=1,
+                    extent=[times[0], times[-1] + span, 0, 1])
+    ax.set_yticks([])
+    ax.set_xlabel("Song time (s)")
+    ax.set_title(f"Rate My Take spike — {take_name} vs. {song_name}\n"
+                 f"green = agreement, red = drift, gray = no confident read")
+    fig.colorbar(im, ax=ax, orientation="horizontal", pad=0.35, label="per-beat agreement (raw, uncalibrated)")
+    fig.tight_layout()
+    fig.savefig(str(out_path), dpi=150)
+    plt.close(fig)
+
+
+def cmd_rate(args: argparse.Namespace) -> None:
+    """Phase R1a (rate-my-take-spec.md §6): the go/no-go research spike.
+    No UI — prints per-beat scores and renders a heatmap PNG. The only
+    test that actually matters: record three real takes of a part you
+    know (one tight, one deliberately sloppy, one tasteful variation) and
+    check the scores rank tight > variation > sloppy, with the heatmap's
+    red zones landing where your own ears say the sloppy take fell apart.
+    This command cannot make that call for you — that judgment is the
+    entire point of a spike, not a formality on top of it."""
+    take_path = Path(args.take).resolve()
+    if not take_path.exists():
+        sys.exit(f"Take file not found: {take_path}")
+
+    song_path = Path(args.song).resolve()
+    out_dir = track_stem_dir(song_path, args.model)
+    if not has_cached_stems(out_dir):
+        sys.exit(f"No stems found for {song_path.name} with model '{args.model}'. Run 'separate' first.")
+    reference_path = out_dir / f"{args.stem}.wav"
+    if not reference_path.exists():
+        sys.exit(f"No '{args.stem}' stem found in {out_dir}. This needs a guitar stem — "
+                  f"try 'separate --model htdemucs_6s' or 'bs_roformer_sw' first.")
+
+    analysis = ensure_analysis(out_dir)
+    beats = analysis.get("beats")
+    if beats:
+        print(f"Using the detected beat grid ({len(beats)} beats).")
+    else:
+        print("No beat grid available — falling back to fixed 0.5s scoring windows (rate-my-take-spec.md §3).")
+
+    result = score_take(take_path, reference_path, beats, offset_sec=args.offset)
+    beat_scores = result["beats"]
+    scored = [b for b in beat_scores if b["score"] is not None]
+    if not scored:
+        sys.exit(f"No beats could be scored — check --offset (does take.wav's start really line up "
+                  f"with song time {args.offset}s?) and that both files have real audio in them.")
+
+    print(f"\nScored {len(scored)}/{len(beat_scores)} beats.")
+    if result["overall_pct"] is not None:
+        print(f"Overall closeness: {result['overall_pct']}% "
+              f"(raw blended score: {result['overall_raw']} — UNCALIBRATED, see "
+              f"RATE_CALIBRATION_FLOOR/CEILING in backing_track.py)")
+    else:
+        print("Overall closeness: -- (every scored beat was below the reference-confidence floor; "
+              "the reference guitar may be silent/very quiet throughout the scored range)")
+
+    print(f"\n{'time':>8}  {'score':>6}  {'pitch':>6}  {'timing':>6}  {'conf':>6}")
+    for b in beat_scores:
+        if b["score"] is None:
+            print(f"{b['time']:8.2f}  {'--':>6}  {'--':>6}  {'--':>6}  {'--':>6}")
+        else:
+            print(f"{b['time']:8.2f}  {b['score']:6.3f}  {b['pitch']:6.3f}  {b['timing']:6.3f}  {b['confidence']:6.4f}")
+
+    out_path = Path(args.out) if args.out else take_path.with_name(f"{take_path.stem}_rate_heatmap.png")
+    _render_rate_heatmap(beat_scores, out_path, take_path.name, song_path.name)
+    print(f"\nHeatmap written to: {out_path}")
+    print("\nGo/no-go call (rate-my-take-spec.md §6): does this ranking and heatmap match what your "
+          "ears say happened? That judgment call is the actual point of this command — nothing above "
+          "makes it for you.")
+
+
 def normalize_loudness(mix: np.ndarray, samplerate: int, target_lufs: float,
                        normalize: bool = True, max_boost_db: float = None) -> tuple:
     """Normalize to a target integrated loudness (LUFS) so backing tracks
@@ -1135,6 +1438,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_mix.add_argument("-o", "--output", default="backing_track.wav",
                         help="Output file path (.wav or .mp3)")
     p_mix.set_defaults(func=cmd_mix)
+
+    p_rate = sub.add_parser("rate", help="V4-R1a research spike: score a dry take against the song's guitar stem")
+    p_rate.add_argument("take", help="Path to the dry take WAV to score")
+    p_rate.add_argument("song", help="Path to the original song file (used to locate its guitar stem)")
+    p_rate.add_argument("--model", default="htdemucs_6s", help=model_help("htdemucs_6s"))
+    p_rate.add_argument("--stem", default="guitar", help="Reference stem to score against (default: guitar)")
+    p_rate.add_argument("--offset", type=float, default=0.0,
+                         help="Song-time (seconds) that take.wav's sample 0 corresponds to — "
+                              "get this wrong and every score is meaningless (default: 0.0, "
+                              "i.e. the take starts at the top of the song)")
+    p_rate.add_argument("--out", default=None,
+                         help="Heatmap PNG output path (default: <take>_rate_heatmap.png next to the take)")
+    p_rate.set_defaults(func=cmd_rate)
 
     return parser
 

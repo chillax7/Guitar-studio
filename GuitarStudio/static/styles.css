@@ -139,8 +139,32 @@ body {
   background: var(--accent);
 }
 
+/* V4-F4: practice log — a plain dim readout, not a badge/achievement look,
+   since the whole point is honest numbers, not gamification. */
+.track-practice-time {
+  flex: none;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
 .track-row:hover { background: var(--panel-2); }
 .track-row.selected { background: var(--accent-dim); border-left-color: var(--accent); }
+
+/* ---------- Playlists (V4-F3) — #track-list doubles as the playlist view;
+   see renderTrackList/renderPlaylistTrackList in app.js. ---------- */
+
+#playlist-bar { display: flex; gap: 4px; padding: 0 12px 8px; }
+#playlist-bar select {
+  flex: 1; min-width: 0;
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 6px; font-size: 12px;
+}
+#playlist-bar button { padding: 4px 7px; font-size: 11px; flex: none; }
+
+#playlist-nav-bar { display: flex; gap: 4px; padding: 0 12px 8px; }
+#playlist-nav-bar button { flex: 1; padding: 4px 6px; font-size: 11px; }
+
+.playlist-track-row button { padding: 2px 5px; font-size: 10px; flex: none; }
 
 #import-drop {
   margin: 10px;
@@ -415,6 +439,40 @@ button:disabled:hover { filter: none; }
   border-radius: 50%;
 }
 .marker-flag:hover .marker-delete { display: inline-block; }
+
+/* V4-F1: chord lane — one chip spanning [beats[i], beats[i+1]), unlike
+   marker-flags (a point-in-time click target) these have a real width.
+   Distinct color from marker-flag's amber so the two overlays never read
+   as the same kind of thing at a glance. */
+#chord-lane {
+  position: relative;
+  height: 16px;
+  margin: 0 0 2px 158px;
+  display: none; /* shown by renderChordLane only when the analysis has chords */
+}
+.chord-chip {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+.chord-chip:hover { background: var(--accent); color: #fff; }
+/* Low-confidence/no-chord beats stay visible (a gap would read as a
+   rendering bug) but dimmed, same "shown, honestly de-emphasized" idiom
+   as Rate My Take's planned low-confidence heatmap zones. */
+.chord-chip-unknown { opacity: 0.35; }
 
 #ruler {
   position: relative;
