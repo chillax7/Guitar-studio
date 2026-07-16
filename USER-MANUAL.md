@@ -171,9 +171,9 @@ And the two toolbar click features:
   automatically, at the honest cost of a few ms of animation-frame jitter
   versus a real hardware click. A faint beat grid also appears on the
   ruler itself (brighter tick = downbeat) for precise loop/marker
-  placement. If Click is grayed out, the track has no beat grid — this
-  is analyzed automatically when a track is (re)selected, so tracks
-  separated by older versions of the app pick it up on the next visit.
+  placement. If Click is grayed out, the track has no beat grid yet —
+  this is analyzed automatically when a track is (re)selected, so simply
+  reselecting it turns Click on.
 
 Speed and Tune reset to neutral whenever you switch tracks — a leftover
 half-speed setting silently carrying over to a new song would be a trap,
@@ -311,9 +311,9 @@ export you get a **Reveal in Finder** shortcut straight to it.
 
 ## 9. Tone Lab & Play Along
 
-The rig used to be one screen; it's now two, plus the mixer you started
-in and Help — four equally-reachable buttons in the top-left of the
-sidebar (**🎚 Mixer**, **🎛 Tone Lab**, **🎸 Play Along**, **❓ Help**).
+The rig lives across two screens, plus the mixer you started in and
+Help — four equally-reachable buttons in the top-left of the sidebar
+(**🎚 Mixer**, **🎛 Tone Lab**, **🎸 Play Along**, **❓ Help**).
 Both rig screens share the exact same audio engine as the mixer (not a
 second, separate audio session) — backing-track playback and your live
 guitar mix together naturally, with no added round-trip latency from the
@@ -341,7 +341,7 @@ exact same state as the main transport; adjusting either one updates both.
 The input meter, clip light, and a **Setup: device & calibration**
 disclosure sit in Tone Lab's top strip. Expand **Setup**, pick your audio
 interface/microphone, and click **Enable input** — the browser will ask
-for microphone permission once. "Enable Input" now prefers a remembered
+for microphone permission once. "Enable Input" prefers a remembered
 device (whichever you used last time) or, failing that, any input that
 doesn't look like a built-in microphone — a Mac's built-in mic monitored
 through speakers into an amp/distortion chain is a feedback loop, so
