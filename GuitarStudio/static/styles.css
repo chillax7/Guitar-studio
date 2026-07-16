@@ -203,6 +203,7 @@ body {
    actually showing — same condition as the transport row. */
 #toolbar-tools { display: none; align-items: center; gap: 8px; }
 #toolbar-tools.show { display: flex; }
+#timeline-zoom-slider { width: 90px; }
 
 /* House rule: any button available to click is solid blue with white text
    (Separate's look, and what Click/Count-in look like whether on or off) —
@@ -349,6 +350,16 @@ button:disabled:hover { filter: none; }
   flex-direction: column;
   gap: 4px;
   justify-content: center;
+  /* Continuous zoom: once .lane is wider than the viewport (see
+     applyZoomWidth in app.js), this keeps the label/controls column
+     pinned to the left edge of #workspace's scrolling viewport instead
+     of scrolling away with the waveform — the frozen-track-header
+     pattern every DAW uses. Opaque background + z-index so the waveform
+     scrolling underneath doesn't show through. */
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--bg);
 }
 .lane-name { font-size: 12px; display: flex; align-items: center; gap: 6px; }
 .lane-derived-badge { font-size: 9px; color: var(--text-dim); background: var(--panel-2); padding: 1px 4px; border-radius: 3px; }
@@ -400,12 +411,38 @@ button:disabled:hover { filter: none; }
   border-radius: 2px;
 }
 
+/* Continuous zoom: a sticky, blank 150px "gutter" — mirrors .lane-header's
+   width so #markers-row/#chord-lane/#ruler's timeline content lines up
+   with the waveforms below, and masks whatever scrolls underneath it as
+   the row's -content div (the actual timeToPct/pctToTime containing
+   block) scrolls past. No content of its own — these rows don't have a
+   per-row label the way a lane does. */
+.timeline-gutter {
+  position: sticky;
+  left: 0;
+  flex: none;
+  width: 150px;
+  z-index: 3;
+  background: var(--bg);
+}
+
 /* BT-08: section markers row, above the ruler — separate strip so a
    marker's label never overlaps the loop handles/playhead beneath it. */
 #markers-row {
-  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
   height: 16px;
-  margin: 0 0 2px 158px;
+  margin: 0 0 2px 0;
+}
+/* The actual timeToPct/pctToTime containing block — width set by
+   applyZoomWidth (app.js) to whatever the current zoom multiplier
+   implies; min-width:100% keeps today's "fills the row" look at zoom=1,
+   flex-shrink:0 stops it being compressed back down once explicitly widened. */
+#markers-row-content {
+  position: relative;
+  flex: 1 0 auto;
+  min-width: 100%;
 }
 .marker-flag {
   position: absolute;
@@ -445,10 +482,16 @@ button:disabled:hover { filter: none; }
    Distinct color from marker-flag's amber so the two overlays never read
    as the same kind of thing at a glance. */
 #chord-lane {
-  position: relative;
+  display: none; /* flipped to "flex" by renderChordLane only when the analysis has chords */
+  align-items: stretch;
+  gap: 8px;
   height: 16px;
-  margin: 0 0 2px 158px;
-  display: none; /* shown by renderChordLane only when the analysis has chords */
+  margin: 0 0 2px 0;
+}
+#chord-lane-content {
+  position: relative;
+  flex: 1 0 auto;
+  min-width: 100%;
 }
 .chord-chip {
   position: absolute;
@@ -475,9 +518,16 @@ button:disabled:hover { filter: none; }
 .chord-chip-unknown { opacity: 0.35; }
 
 #ruler {
-  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
   height: 22px;
-  margin: 0 0 4px 158px;
+  margin: 0 0 4px 0;
+}
+#ruler-content {
+  position: relative;
+  flex: 1 0 auto;
+  min-width: 100%;
   background: var(--panel-2);
   border-radius: 3px;
   cursor: pointer;

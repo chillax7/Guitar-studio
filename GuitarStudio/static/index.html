@@ -65,6 +65,13 @@
         <button id="add-marker-btn" title="Add a section marker at the current position">+ Marker</button>
         <button id="zoom-to-loop-btn" title="Zoom the waveform/ruler in to the current loop region">Zoom to loop</button>
         <button id="zoom-out-btn" title="Zoom back out to the whole track" style="display:none">Zoom out</button>
+        <!-- Continuous zoom (GarageBand-style) — independent of Zoom to
+             loop/Zoom out above: this widens whatever's currently showing
+             (whole song or a zoomed-to-loop region) beyond the viewport,
+             scrolling horizontally instead of narrowing the time window.
+             See applyZoomWidth/autoScrollToPlayhead in app.js. -->
+        <span class="transport-label">Zoom</span>
+        <input type="range" id="timeline-zoom-slider" min="0" max="1" step="0.01" value="0" title="Zoom the timeline in — scrolls to follow playback once zoomed in. Double-click to reset.">
         <button id="click-toggle" title="Metronome click synced to this track's detected beat grid">Click</button>
         <button id="count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
       </div>
@@ -122,16 +129,39 @@
       <p class="hint">The progress bar shows the progress of the processing, not necessarily how much time is left.</p>
     </div>
 
+    <!-- Continuous zoom: #ruler/#markers-row/#chord-lane each split into a
+         sticky "gutter" (blank — mirrors .lane-header's 150px column, kept
+         empty here since these rows have no per-row label of their own)
+         and a "-content" div that's the ACTUAL timeToPct/pctToTime
+         containing block, unchanged from before this split. .lane-header
+         itself is what carries real content and gets position:sticky
+         directly (see styles.css) — no gutter needed there. JS
+         (applyZoomWidth in app.js) sets each -content div's and each
+         .lane's width explicitly; CSS's overflow-propagation up to
+         #workspace (overflow:auto) is what makes it scrollable, no
+         separate scroll wrapper needed. -->
     <div id="workspace">
-      <div id="markers-row"></div>
+      <div id="markers-row">
+        <div class="timeline-gutter"></div>
+        <div id="markers-row-content"></div>
+      </div>
       <!-- V4-F1: one chip per beat-grid interval, positioned/widthed via
            timeToPct like every other ruler-aligned element — see
            renderChordLane in app.js. Hidden entirely (display:none) when
            the analysis has no chords key at all (older cache, or no
            pitched stem to read), same graceful-omission contract as
            key-hint/pitch-hint below. -->
-      <div id="chord-lane"></div>
-      <div id="ruler"><div id="beat-grid"></div><div id="loop-region"><div class="loop-handle" id="loop-handle-a" style="left:0"></div><div class="loop-handle" id="loop-handle-b" style="left:0"></div></div></div>
+      <div id="chord-lane">
+        <div class="timeline-gutter"></div>
+        <div id="chord-lane-content"></div>
+      </div>
+      <div id="ruler">
+        <div class="timeline-gutter"></div>
+        <div id="ruler-content">
+          <div id="beat-grid"></div>
+          <div id="loop-region"><div class="loop-handle" id="loop-handle-a" style="left:0"></div><div class="loop-handle" id="loop-handle-b" style="left:0"></div></div>
+        </div>
+      </div>
       <div id="lanes"></div>
     </div>
   </div>

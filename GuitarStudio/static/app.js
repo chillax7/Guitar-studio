@@ -117,6 +117,57 @@ function pctToTime(pct) {
   return start + clamp01(pct / 100) * (end - start);
 }
 
+// ---------------------------------------------------------------------------
+// Continuous zoom (GarageBand-style) — independent of and complementary to
+// BT-17's zoomWindow above. zoomWindow narrows WHAT TIME RANGE maps to
+// 0%-100%; zoomMultiplier controls how many PIXELS that 0%-100% span
+// actually occupies, widening #ruler-content/#markers-row-content/
+// #chord-lane-content/.lane past the visible viewport so #workspace's
+// existing overflow:auto scrolls horizontally. Deliberately doesn't touch
+// timeToPct/pctToTime/viewWindow at all — every existing %-based position
+// (playhead, loop handles, markers, beat grid, chord chips, mute regions)
+// keeps working unchanged, just resolving against a wider box now. Same
+// "session-only, not State.ui" reasoning as zoomWindow.
+// ---------------------------------------------------------------------------
+let zoomMultiplier = 1; // 1 = fit-to-viewport (today's behavior, no scrolling)
+const ZOOM_MAX_MULTIPLIER = 16;
+
+// Slider is 0..1, mapped exponentially — linear felt bad (all the useful
+// range bunched at the low end); this gives fine control near both ends.
+function zoomSliderToMultiplier(sliderValue) {
+  return Math.pow(ZOOM_MAX_MULTIPLIER, clamp01(sliderValue));
+}
+function zoomMultiplierToSlider(multiplier) {
+  return Math.log(Math.max(1, multiplier)) / Math.log(ZOOM_MAX_MULTIPLIER);
+}
+
+// Sets each zoomed row's actual pixel width from the current
+// zoomMultiplier. #lanes/#ruler/#markers-row/#chord-lane themselves stay
+// "fill available width" — only the -content divs and each .lane (the
+// timeToPct containing blocks) get an explicit width, which is enough for
+// the overflow to propagate up to #workspace's overflow:auto on its own.
+function applyZoomWidth() {
+  const lanesEl = document.getElementById("lanes");
+  if (!lanesEl) return 0;
+  // #lanes' own box stays at "natural fit width" even once its .lane
+  // children are overflowing it (block children overflowing their parent
+  // don't resize it) — so this stays a stable reference for "what fit-width
+  // looked like," not something that creeps upward as zoom increases.
+  const fitWidth = Math.max(1, lanesEl.clientWidth - 150 - 8);
+  const contentWidth = Math.round(fitWidth * zoomMultiplier);
+
+  const rulerContent = document.getElementById("ruler-content");
+  const markersContent = document.getElementById("markers-row-content");
+  const chordContent = document.getElementById("chord-lane-content");
+  if (rulerContent) rulerContent.style.width = contentWidth + "px";
+  if (markersContent) markersContent.style.width = contentWidth + "px";
+  if (chordContent) chordContent.style.width = contentWidth + "px";
+  document.querySelectorAll(".lane").forEach((lane) => {
+    lane.style.width = (contentWidth + 150 + 8) + "px";
+  });
+  return contentWidth;
+}
+
 // V3-E6: shared dB<->linear-gain conversions — playalong.js had two
 // independent Math.pow(10, db/20) call sites (the clip threshold constant
 // and the output-level slider) that had started drifting apart in spelling
@@ -849,6 +900,7 @@ async function selectTrack(name) {
   zoomWindow = null; // BT-17 — same reasoning as Speed/Tune resetting below: a leftover zoom from the last song would be a trap
   document.getElementById("zoom-to-loop-btn").style.display = "inline-block";
   document.getElementById("zoom-out-btn").style.display = "none";
+  resetTimelineZoom(); // continuous zoom — same "leftover from last song is a trap" reasoning
   // "Loading…" instead of the empty-state's "select a track" message —
   // a track WAS just selected, that message briefly re-showing while
   // stems load read as if the click hadn't registered.
@@ -965,6 +1017,16 @@ function renderLanes() {
   container.innerHTML = "";
   const playheads = [];
 
+  // Continuous zoom: #lanes' own box width doesn't depend on its children
+  // (block layout — overflowing .lane rows don't resize their parent), so
+  // this is safe to read before rebuilding them below. Roughly one peak
+  // bucket per rendered pixel so zooming in actually shows more waveform
+  // detail instead of the same fixed bar count stretched blocky — same
+  // reasoning BT-17 already established for the narrowed-viewWindow case,
+  // just driven by pixel width here instead of a narrower time range.
+  const fitWidth = Math.max(1, container.clientWidth - 150 - 8);
+  const bucketCount = Math.min(4000, Math.max(400, Math.round(fitWidth * zoomMultiplier)));
+
   for (const stem of orderedStems()) {
     const name = stem.name;
     const lane = document.createElement("div");
@@ -1063,9 +1125,11 @@ function renderLanes() {
     if (buf) {
       // BT-17: waveform zoom — slicing peaks to the current view window
       // (instead of always the whole buffer) is what makes zooming in
-      // actually show more DETAIL rather than the same 400 buckets stretched.
+      // actually show more DETAIL rather than the same fixed bucket count
+      // stretched; bucketCount (computed above) is the continuous-zoom
+      // half of that same idea.
       const { start, end } = viewWindow();
-      requestAnimationFrame(() => drawWaveform(canvas, computePeaks(buf, 400, start, end)));
+      requestAnimationFrame(() => drawWaveform(canvas, computePeaks(buf, bucketCount, start, end)));
     }
   }
 
@@ -1075,6 +1139,7 @@ function renderLanes() {
   // playhead position may not have, which would otherwise skip it.
   cachedPlayheadEls = playheads;
   lastPlayheadPct = null;
+  applyZoomWidth(); // sets each new .lane's width now that they actually exist in the DOM
 }
 
 function toggleMute(name) {
@@ -1189,15 +1254,19 @@ function wireMuteLane(el, stemName) {
 // ---------------------------------------------------------------------------
 
 function initRuler() {
-  const ruler = document.getElementById("ruler");
+  // Continuous zoom: #ruler is now the outer flex row (sticky gutter +
+  // #ruler-content); #ruler-content is the actual timeToPct/pctToTime
+  // containing block (unchanged math from before that split), so click/
+  // drag rect math and the playhead element both target it, not #ruler.
+  const rulerContent = document.getElementById("ruler-content");
   const rulerPh = document.createElement("div");
   rulerPh.id = "ruler-playhead";
   rulerPh.className = "playhead";
-  ruler.appendChild(rulerPh);
+  rulerContent.appendChild(rulerPh);
 
-  ruler.addEventListener("click", (e) => {
+  rulerContent.addEventListener("click", (e) => {
     if (e.target.classList.contains("loop-handle")) return;
-    const rect = ruler.getBoundingClientRect();
+    const rect = rulerContent.getBoundingClientRect();
     seekTo(pctToTime((e.clientX - rect.left) / rect.width * 100));
   });
 
@@ -1205,7 +1274,7 @@ function initRuler() {
     handleEl.addEventListener("mousedown", (e) => {
       e.stopPropagation();
       startDrag((me) => {
-        const rect = ruler.getBoundingClientRect();
+        const rect = rulerContent.getBoundingClientRect();
         const t = pctToTime((me.clientX - rect.left) / rect.width * 100);
         if (!State.ui.loop) State.ui.loop = { ...viewWindow() };
         if (key === "start") State.ui.loop.start = Math.min(t, State.ui.loop.end - 0.1);
@@ -1252,7 +1321,7 @@ function sortedMarkers() {
 }
 
 function renderMarkers() {
-  const row = document.getElementById("markers-row");
+  const row = document.getElementById("markers-row-content");
   row.innerHTML = "";
   if (!Audio.duration) return;
   // BT-17: "next marker" (for the loop-on-dblclick below) always means the
@@ -1424,8 +1493,31 @@ function tick() {
     renderPlayhead(pos);
     renderTimeDisplay(pos);
     updateClickStem(pos); // BT-02
+    if (Audio.playing) autoScrollToPlayhead(pos);
   }
   requestAnimationFrame(tick);
+}
+
+// Continuous zoom: GarageBand-style follow-scroll. The playhead moves
+// freely within the visible viewport up to its horizontal center; past
+// that (or if it's behind the visible area at all — a loop wrap, a marker
+// jump, a manual seek while zoomed in) the view re-centers on it instead
+// of letting it run off the edge or vanish off-screen. No-ops once
+// there's nothing to scroll (fits entirely, or not zoomed in).
+function autoScrollToPlayhead(pos) {
+  const workspace = document.getElementById("workspace");
+  const rulerContent = document.getElementById("ruler-content");
+  if (!workspace || !rulerContent || !Audio.duration) return;
+  const contentWidth = rulerContent.getBoundingClientRect().width;
+  const viewportWidth = workspace.clientWidth;
+  if (contentWidth <= viewportWidth + 1) return;
+
+  const playheadPx = (timeToPct(pos) / 100) * contentWidth;
+  const relativeX = playheadPx - workspace.scrollLeft;
+  const center = viewportWidth / 2;
+  if (relativeX > center || relativeX < 0) {
+    workspace.scrollLeft = Math.max(0, Math.min(playheadPx - center, contentWidth - viewportWidth));
+  }
 }
 
 // BT-06: 1-2 bars of click before playback starts. No audio file needed —
@@ -1588,13 +1680,55 @@ function wireZoomControls() {
     zoomWindow = { start: State.ui.loop.start, end: State.ui.loop.end };
     document.getElementById("zoom-to-loop-btn").style.display = "none";
     document.getElementById("zoom-out-btn").style.display = "inline-block";
+    // "Zoom to loop" is its own complete, always-fits-the-viewport view —
+    // the continuous slider resets so the two zoom mechanisms don't stack
+    // into "a narrowed window ALSO scrolled/widened," which would just be
+    // confusing (drag the slider afterward to zoom in further within it).
+    resetTimelineZoom();
     rerenderTimeline();
   });
   document.getElementById("zoom-out-btn").addEventListener("click", () => {
     zoomWindow = null;
     document.getElementById("zoom-out-btn").style.display = "none";
     document.getElementById("zoom-to-loop-btn").style.display = "inline-block";
+    resetTimelineZoom();
     rerenderTimeline();
+  });
+  wireTimelineZoomSlider();
+}
+
+// Shared by track-switch and both Zoom to loop/Zoom out buttons — resets
+// the continuous zoom back to fit-width and scrolls back to the start,
+// without touching zoomWindow (callers decide that part separately).
+function resetTimelineZoom() {
+  zoomMultiplier = 1;
+  const slider = document.getElementById("timeline-zoom-slider");
+  if (slider) slider.value = "0";
+  const workspace = document.getElementById("workspace");
+  if (workspace) workspace.scrollLeft = 0;
+  applyZoomWidth();
+}
+
+function wireTimelineZoomSlider() {
+  const slider = document.getElementById("timeline-zoom-slider");
+  // Cheap resize on every drag tick — every zoomed row is positioned by
+  // CSS % (timeToPct), which re-resolves against the new width for free;
+  // only the waveform's drawn bitmap doesn't auto-adapt, so it just
+  // stretches (a bit soft) until the drag settles.
+  slider.addEventListener("input", (e) => {
+    zoomMultiplier = zoomSliderToMultiplier(parseFloat(e.target.value));
+    applyZoomWidth();
+  });
+  // On release: redraw the waveforms at the new resolution (renderLanes
+  // calls applyZoomWidth again itself, redundant but harmless).
+  slider.addEventListener("change", () => {
+    if (State.track) renderLanes();
+  });
+  slider.addEventListener("dblclick", () => {
+    slider.value = "0";
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
+    slider.dispatchEvent(new Event("change", { bubbles: true }));
+    document.getElementById("workspace").scrollLeft = 0;
   });
 }
 
@@ -1764,14 +1898,15 @@ function chordSymbol(chord, semitones) {
 // established, except chips have a real width (a run of beats), not a
 // single left position like a marker flag.
 function renderChordLane() {
-  const row = document.getElementById("chord-lane");
+  const outer = document.getElementById("chord-lane");
+  const row = document.getElementById("chord-lane-content");
   const chords = (State.analysis || {}).chords;
   if (!chords || !chords.length || !Audio.duration) {
-    row.style.display = "none";
+    outer.style.display = "none";
     row.innerHTML = "";
     return;
   }
-  row.style.display = "block";
+  outer.style.display = "flex";
   row.innerHTML = "";
 
   const { start: viewStart, end: viewEnd } = viewWindow();
@@ -1836,7 +1971,7 @@ function renderInspector() {
 
   const chordHintEl = document.getElementById("chord-hint");
   chordHintEl.textContent = (a.chords && a.chords.length)
-    ? "Chord lane (above the ruler): assistive, best on pop/rock — dimmed chips mean no confident read. Confirm by ear."
+    ? "Chord lane (above the ruler): assistive, best on pop/rock — no confident read for palm muted chugs. Confirm by ear."
     : "";
   renderChordLane();
 

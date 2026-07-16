@@ -205,6 +205,20 @@ the zoomed range; markers/beat-grid ticks outside it simply don't draw.
 **Zoom out** returns to the whole track. Zoom is a per-session view aid,
 like Speed/Tune — it resets when you switch tracks.
 
+**Continuous zoom:** the **Zoom** slider next to Zoom to loop/Zoom out
+works independently of them — instead of narrowing the time range shown
+(what Zoom to loop does), it widens the ruler/waveforms/chord lane beyond
+the window, scrolling horizontally. Stem names and their mute/solo/fader/
+pan/EQ controls stay fixed on the left as you scroll, same idea as a
+DAW's frozen track headers. During playback, the view follows the
+playhead once it crosses the middle of the window (GarageBand-style) —
+it doesn't scroll before then, and it snaps straight to center on a big
+jump (a loop wrap, a marker double-click, a manual seek), rather than
+leaving the playhead stranded off-screen. The two zoom controls combine:
+zoom to a loop first, then drag the slider to zoom in further within
+just that region. Double-click the slider to reset to fit-width. Also a
+per-session view aid — resets on track switch, same as Zoom to loop.
+
 **Section markers:** click **+ Marker** in the toolbar to drop a
 named marker at the current playhead position (you'll be asked to name
 it — "Solo", "Chorus 2", whatever helps). Markers appear as small tags in
