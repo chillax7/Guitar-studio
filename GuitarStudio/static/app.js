@@ -1761,7 +1761,7 @@ function chordSymbol(chord, semitones) {
 
 // Same "always visible when data exists, no separate toggle" idiom as
 // renderBeatGrid — and the same viewWindow()/timeToPct() positioning BT-17
-// established, except chips have a real width (one beat interval), not a
+// established, except chips have a real width (a run of beats), not a
 // single left position like a marker flag.
 function renderChordLane() {
   const row = document.getElementById("chord-lane");
@@ -1779,20 +1779,36 @@ function renderChordLane() {
   const cents = tuneEl ? parseFloat(tuneEl.value) : 0;
   const semitones = Math.trunc(cents / 100);
 
-  const frag = document.createDocumentFragment();
+  // Consecutive beats sharing the same (root, quality) collapse into one
+  // wider run instead of one chip per beat — a chord held for several
+  // bars would otherwise render as a dozen slivers too narrow to read,
+  // and at full-song zoom hundreds of same-colored one-beat slivers just
+  // look like a single solid bar (indistinguishable from "nothing is
+  // being detected" even though the underlying data varies correctly).
+  const runs = [];
   chords.forEach((c, i) => {
     const end = i + 1 < chords.length ? chords[i + 1].time : Audio.duration;
-    if (end < viewStart || c.time > viewEnd) return;
-    const symbol = chordSymbol(c, semitones);
+    const last = runs[runs.length - 1];
+    if (last && last.root === c.root && last.quality === c.quality) {
+      last.end = end;
+    } else {
+      runs.push({ time: c.time, end, root: c.root, quality: c.quality, confidence: c.confidence });
+    }
+  });
+
+  const frag = document.createDocumentFragment();
+  runs.forEach((run) => {
+    if (run.end < viewStart || run.time > viewEnd) return;
+    const symbol = chordSymbol(run, semitones);
     const chip = document.createElement("div");
     chip.className = "chord-chip" + (symbol ? "" : " chord-chip-unknown");
-    chip.style.left = timeToPct(c.time) + "%";
-    chip.style.width = Math.max(0, timeToPct(end) - timeToPct(c.time)) + "%";
+    chip.style.left = timeToPct(run.time) + "%";
+    chip.style.width = Math.max(0, timeToPct(run.end) - timeToPct(run.time)) + "%";
     chip.textContent = symbol || "?";
     chip.title = symbol
-      ? `${symbol} (confidence ${c.confidence.toFixed(2)} — assistive, best on pop/rock; confirm by ear)`
-      : "No confident chord read for this beat.";
-    chip.addEventListener("click", () => seekTo(c.time));
+      ? `${symbol} (confidence ${run.confidence.toFixed(2)} — assistive, best on pop/rock; confirm by ear)`
+      : "No confident chord read for this section.";
+    chip.addEventListener("click", () => seekTo(run.time));
     frag.appendChild(chip);
   });
   row.appendChild(frag);

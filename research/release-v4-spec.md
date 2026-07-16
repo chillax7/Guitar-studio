@@ -89,6 +89,23 @@ letting it grow into the AI Lab territory release-v5-spec.md §1 separately
 adopted this item into. That adoption note is now satisfied by this
 shipped version, not superseded by it.
 
+**Follow-up fix (2026-07-16), from real usage:** two real bugs surfaced
+looking at an actual song ("Too Much, Too Young, Too Fast") — (1) the
+chord lane rendered one chip per beat, so a chord held for bars looked
+like a run of identical slivers, and at full-song zoom hundreds of them
+just read as one solid bar (indistinguishable from "nothing's being
+detected"); fixed by merging consecutive same-chord beats into one wider
+chip (417 chips → 211 runs on that song). (2) `detect_key`'s chroma-
+profile correlation confidently reported C# minor on a song that's
+straightforwardly in A (270/417 chord-lane beats were some form of A) —
+the classical Krumhansl major/minor profiles it correlates against fit
+blues/rock's dominant-7-heavy harmony poorly. Fixed by adding
+`key_from_chords()`, which overrides `detect_key`'s guess with "root of
+the most frequent confident chord" whenever the chord lane has confident
+data — same fix corrected Highway to Hell's key reading too (also C#
+minor before, also actually A), confirming this wasn't a one-song fluke.
+`ANALYSIS_VERSION` bumped to 4.
+
 **V4-F2 = GP-06 · Looper pedal — L**
 Record/overdub/undo loop layers from the live rig, beat-synced via the
 beat grid, or free-running with no song loaded. Big footswitch-friendly

@@ -151,7 +151,12 @@ has the playback essentials:
   ¢-value to reset to 0. The inspector
   panel shows a **detected key** (a heuristic — confirm by ear) and, once
   you move Tune off zero, what key that transposition actually lands you
-  in (e.g. "Transposed +2 semitones → A major").
+  in (e.g. "Transposed +2 semitones → A major"). Once the chord lane (§6)
+  has confident chords, the key reading is based on those (whichever
+  chord shows up most often, in practice usually the tonic) rather than
+  raw pitch-content correlation — noticeably more reliable on blues/rock,
+  where a lot of dominant-7 chords can otherwise fool a plain major/minor
+  match.
 - **Volume** — an overall listening-level slider for the backing track.
 
 And the two toolbar click features:

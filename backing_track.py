@@ -98,8 +98,10 @@ ANALYSIS_FILE = "analysis.json"
 # under an older version get lazily re-analyzed (ensure_analysis) instead of
 # serving a cached result that's silently missing the new keys forever —
 # v1: bpm + pitch_offset_cents; v2: + key (BT-03) and beats (BT-02);
-# v3: + chords (BT-04).
-ANALYSIS_VERSION = 3
+# v3: + chords (BT-04); v4: key now prefers key_from_chords over
+# detect_key's raw chroma-profile correlation whenever confident chords
+# exist (see key_from_chords' docstring for why).
+ANALYSIS_VERSION = 4
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -497,6 +499,34 @@ def detect_chords(out_dir: Path, beats: list) -> list[dict] | None:
     return chords
 
 
+def key_from_chords(chords: list) -> dict | None:
+    """A tonic-frequency key estimate from the chord lane (BT-04) itself,
+    used in analyze_track to override detect_key's raw chroma-profile
+    correlation when confident chords exist. Caught by a real song where
+    detect_key confidently reported C# minor while the chord lane clearly
+    showed A as the tonic (270/417 beats some form of A, next-most-common
+    barely a fifth of that) — the classical Krumhansl major/minor profiles
+    detect_key correlates against fit blues/rock's dominant-7-heavy
+    harmony poorly to begin with, where this song's chords are a much
+    more direct signal. 'Most frequent confident chord is the tonic' is a
+    naive heuristic (a real song can spend more beats on IV or vi than I),
+    but it's the same kind of standard, defensible starting point as every
+    other heuristic here — a 'min' quality reads as a minor key, 'maj'/'7'
+    as major (a '7' chord functioning as I is the ordinary blues/rock
+    reading, not a borrowed dominant)."""
+    counts = {}
+    for c in chords:
+        if not c.get("root") or c.get("quality") == "N":
+            continue
+        label = (c["root"], c["quality"])
+        counts[label] = counts.get(label, 0) + 1
+    if not counts:
+        return None
+    (root, quality), count = max(counts.items(), key=lambda kv: kv[1])
+    mode = "minor" if quality == "min" else "major"
+    return {"key": root, "mode": mode, "confidence": round(count / sum(counts.values()), 3)}
+
+
 def analyze_track(out_dir: Path) -> dict:
     """BT-01/BT-16/BT-03/BT-04: best-effort tempo + reference-pitch + key +
     chord analysis. Tempo comes from the drums stem (present for every
@@ -575,6 +605,9 @@ def analyze_track(out_dir: Path) -> dict:
         chords = detect_chords(out_dir, result.get("beats"))
         if chords:
             result["chords"] = chords
+            chord_key = key_from_chords(chords)
+            if chord_key:
+                result["key"] = chord_key  # overrides detect_key's chroma-profile guess — see key_from_chords' docstring
     except Exception:
         pass
 
