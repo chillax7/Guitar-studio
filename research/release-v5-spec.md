@@ -1,19 +1,19 @@
-# Orpheus Guitar Studio — Release v5 Spec & Plan: AI Lab
+# Orpheus Guitar Studio — Release v5 Spec & Plan: AI Lab + closing the v4 debt
 
-**Status:** planning document, written 2026-07-15 after v3.2 shipped (title
-bar consistency, practice mode, take compare, `split-guitar --method
-hybrid` — see [post-v3-backlog-audit.md](post-v3-backlog-audit.md) and the
-git history around that tag). **Note on sequencing:**
-[release-v4-spec.md](release-v4-spec.md) was written and never built — the
-project detoured into v3.1/v3.2 hardening and enhancement work instead of
-Rate My Take/chords/looper/playlists/practice log/MIDI. This doc does not
-silently supersede that plan. It specifically **adopts V4-F1 (chord
-detection & chord lane) and re-homes it here** as AI Lab's foundational
-prerequisite, because chord data is the one thing every feature below
-needs. The rest of v4 — Rate My Take, looper, playlists, practice log, MIDI
-foot controller — stays exactly where release-v4-spec.md left it: open,
-unbuilt, un-resequenced. Whether that work happens before, after, or
-interleaved with v5 AI Lab is a separate product call, not decided here.
+**Status:** §§0–8 are the original planning document, written 2026-07-15
+after v3.2 shipped (title bar consistency, practice mode, take compare,
+`split-guitar --method hybrid` — see
+[post-v3-backlog-audit.md](post-v3-backlog-audit.md) and the git history
+around that tag). Since then, v4.5 shipped chord detection/lane,
+playlists, and the practice log, and v4.6 shipped multi-stem import and
+Rip (see [post-v4-backlog-audit.md](post-v4-backlog-audit.md) §1/§3) — so
+AI Lab's prerequisite (§1, chord lane) is done, and most of the *other*
+things release-v4-spec.md left open are not. That audit's own closing
+note (§5) asked for "a V5 spec [that picks] a coherent subset of §4... the
+same way release-v4-spec.md picked V4-F1/F3/F4 out of a longer list, with
+real gates and milestones" — **§§9–10 below are that step**, folding AI
+Lab and the still-open backlog into one release plan rather than leaving
+them as two separate documents nobody sequences against each other.
 
 **Companion docs:** [release-v4-spec.md](release-v4-spec.md) (§3's V4-F1 —
 chord lane's original scoping, absorbed into §1 below),
@@ -22,7 +22,9 @@ pitch feedback" was explicitly punted — see §4's cross-reference),
 [backing-track-tone-match-spec.md](backing-track-tone-match-spec.md) (a
 sibling AI idea — NAM-library tone matching — that lives on the Play Along
 side, not AI Lab; not re-scoped here),
-[post-v3-backlog-audit.md](post-v3-backlog-audit.md).
+[post-v3-backlog-audit.md](post-v3-backlog-audit.md),
+[post-v4-backlog-audit.md](post-v4-backlog-audit.md) (source list for
+§9's picks).
 
 ---
 
@@ -214,10 +216,11 @@ everything else in this codebase.
 
 ---
 
-## 8. Milestones
+## 8. AI Lab milestones (original §8, kept as the feature-internal sequence)
 
 - **M1 — Chord detection & lane (§1 / V5-F1).** *Gate:* useful and
-  accurate on 3 real songs of different styles.
+  accurate on 3 real songs of different styles. **Shipped in v4.5** —
+  gate cleared; kept here for the record.
 - **M2 — AI Lab screen shell + Scale/Mode Advisor (§2 / V5-F2).** New
   fourth nav button, screen chrome matching the existing Mixer/Tone
   Lab/Play Along pattern. *Gate:* correct, useful scale suggestions for any
@@ -238,3 +241,97 @@ everything else in this codebase.
 Each milestone ends the usual way: update USER-MANUAL.md/CLI.md for
 whatever shipped, honest commit messages, push, user run-through before
 the next milestone starts.
+
+---
+
+## 9. Closing the pre-v5 debt: picks from post-v4-backlog-audit.md §4
+
+AI Lab is one screen's worth of work; it isn't the whole release. This
+section names what else v5 carries, chosen the same way release-v4-spec.md
+picked its four backlog items — weighing effort against payoff, favoring
+things that close long-open gaps or pair naturally with what's already
+shipping this release — and just as importantly, says what's *not* picked
+and why, so it doesn't get silently re-proposed next time.
+
+**V5-B1 = Rate My Take completion — S (gate) then L (build), oldest debt
+in the project.**
+The CLI scoring spike (`backing_track.py rate`) works and is verified, but
+per post-v4-backlog-audit.md §2 the actual go/no-go judgment — recording
+three real takes (tight / sloppy / tasteful-variation) of a part the user
+knows and checking the scores against their own ears — was never done.
+This is a near-zero engineering cost, user-shaded task that's been owed
+since v4.5, and it gates the biggest single feature left on any backlog:
+if it passes, R1b/c (capture pipeline + timeline heatmap UI,
+rate-my-take-spec.md §§3–4) is a real, scoped L build; if it fails, the
+honest outcome is to stop, not force it. Goes first in the milestone order
+below precisely because it's cheap to resolve and blocks a real
+prioritization decision either way.
+
+**V5-B2 = BT-15/V4-F6 · Artifact cleanup pass — M, timeboxed.**
+Post-separation cleanup on the guitar stem specifically. Picked *because*
+it's scheduled alongside Rate My Take completion this release — a
+cleaner reference stem directly raises RMT's scoring quality (the same
+link release-v4-spec.md §3 originally called out). Keeps its original
+timebox and exit clause: a week's effort, ship nothing if it doesn't
+audibly beat the raw stem.
+
+**V5-B3 = GP-11 + GP-14 · MIDI foot controller + multi-preset cycling —
+M each, paired.**
+Both "never started," both about the same thing — hands-free control of
+the live rig — and post-v4-backlog-audit.md §4 already notes they'd
+"pair naturally." This is the practice-workflow gap that's been open
+since the *original* v4 spec (release-v4-spec.md §3, V4-F5) and is a
+real, felt gap vs. AmpliTube/Neural DSP-class products, not a nice-to-have.
+GP-14's main open question (click-suppression on a live mid-song preset
+swap) gets scoped as part of this milestone, not assumed away.
+
+**V5-B4 = VD-07 · Social export presets — S.**
+Pure ffmpeg presets (9:16, 1:1, normalized web export) over an existing
+take file — cheap, self-contained, "just never picked up" per the audit.
+Included as the release's low-risk quick win, the same role BT-01/BT-05
+played in the v0.4 picklist.
+
+**Explicitly not picked for v5, and why (so it isn't re-proposed):**
+
+- **GP-06 Looper pedal (L)** — real gap, but big enough to deserve its own
+  milestone rather than being squeezed in alongside AI Lab and RMT
+  completion. First candidate for a v6 release, not dropped.
+- **BT-12 gain automation, BT-18 batch operations** — "deferred, not
+  dead" since the original backlog with no new urgency; still parked.
+- **TONE3000 community tone-matching (Option A/B/C)** — blocked on
+  confirming API terms; can't be scheduled until that's resolved, so
+  scheduling it now would just be aspirational.
+- **Custom lead/rhythm ML model** — post-v4-backlog-audit.md §4 already
+  says "leave it there," and multi-stem import (v4.6) reduces how often
+  it's even needed. No change here.
+- **Linux/Windows/LAN mode, native macOS app** — real, and Linux in
+  particular is "the cheapest item on this entire list by effort," but
+  it's a distribution-track decision (appstore-plan.md's territory), not
+  a feature-release one. Keeping it out of v5 keeps that separation clean
+  rather than letting platform work quietly become a feature-release
+  dependency.
+- **V5-F4 solo-skeleton generator, V5-F5 basic-pitch transcription** —
+  already correctly scoped by §8 as gated/independent; no change, just
+  not pulled forward into the committed list above.
+
+## 10. Unified v5 milestones (supersedes §8's ordering — §8's content is
+unchanged, this just sequences it against §9)
+
+- **M0 — Rate My Take go/no-go (V5-B1's gate).** Record and judge the
+  three takes. *Blocking-but-cheap: do this first.* Gate: honest
+  pass/fail per rate-my-take-spec.md §6.
+- **M1 — AI Lab: Scale/Mode Advisor (§8's M2 / V5-F2).** Chord lane
+  prerequisite already shipped; this is the first genuinely new v5 build.
+- **M2 — Rate My Take R1b/c (V5-B1's build) — only if M0 passed** — run
+  in parallel with M3 if effort allows, since neither depends on the
+  other.
+- **M3 — AI Lab: LLM spike + Explain-this chat (§8's M3/M4).** *Gate:*
+  §3's blind-comparison call.
+- **M4 — Hands-free rig: MIDI + multi-preset cycling (V5-B3).**
+- **M5 — Polish: Social export presets (V5-B4) + Artifact cleanup pass
+  (V5-B2, timeboxed).**
+- **Stretch, time-permitting, not committed:** basic-pitch transcription
+  spike (§8's M5 / V5-F5).
+
+Each milestone still ends the §8 way: docs updated, honest commit
+messages, push, user run-through before the next one starts.
