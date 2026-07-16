@@ -15,6 +15,15 @@ refer to it), [USER-MANUAL.md](../USER-MANUAL.md),
 [TEST-PLAN.md](../TEST-PLAN.md),
 [FIRST-SESSION-CHECKLIST.html](../FIRST-SESSION-CHECKLIST.html).
 
+**Version note (2026-07-16):** the on-screen version bumped straight to
+**v4.5**, not v4.0 — this build shipped V4-F1/F3/F4 (chords, playlists,
+practice log) plus real extras this doc never scoped (continuous timeline
+zoom, the key-detection fix, the Rate My Take CLI research spike) while
+V4-F2/F5/F6 and the full Rate My Take UI (R1b/c) are still open. "v4.5"
+reflects that mixed state honestly — meaningfully past a clean v4.0 cut in
+places, not a complete v4 in others — rather than mislabeling it either
+way.
+
 ---
 
 ## 0. The v4 thesis: guitar only

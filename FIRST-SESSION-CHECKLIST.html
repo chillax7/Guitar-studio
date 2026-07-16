@@ -285,7 +285,7 @@
         <rect x="64" y="64" width="896" height="896" rx="200" fill="var(--gold)"/>
         <path d="M336 612 L688 612 C700 612 706 622 700 634 L540 886 C528 906 496 906 484 886 L324 634 C318 622 324 612 336 612 Z" fill="var(--bg)"/>
       </svg>
-      Orpheus Guitar Studio &nbsp;·&nbsp; v3.0
+      Orpheus Guitar Studio &nbsp;·&nbsp; v4.5
     </div>
     <h1 class="display">First Session Checklist</h1>
     <p>Walk through the app exactly as someone opening it for the very first time would — import a song, split it into stems, mix, plug in a guitar, record a take, and save your work. Each box you tick stays ticked in this browser, so you can close the tab and pick back up later. This needs real audio in and out (a guitar, an interface or built-in mic, speakers or headphones) to mean anything — it's a hands-on pass, not a code review.</p>
@@ -308,8 +308,8 @@ const DATA = [
     title: "1. Launch & orientation",
     note: "Before touching any one feature, get your bearings.",
     items: [
-      "The app opens to a Library sidebar (empty, or showing tracks if you've imported before) and a version number reads <strong>v3.0</strong> in the top banner.",
-      "The <strong>🎸 Play Along</strong> and <strong>❓ Help</strong> buttons are visible in the toolbar even with nothing imported yet.",
+      "The app opens to a Library sidebar (empty, or showing tracks if you've imported before) and a version number reads <strong>v4.5</strong> in the top banner, centered screen name (Mixer/Tone Lab/Play Along) alongside it.",
+      "The <strong>🎚 Mixer</strong>, <strong>🎛 Tone Lab</strong>, <strong>🎸 Play Along</strong>, and <strong>❓ Help</strong> buttons are all visible in the sidebar even with nothing imported yet.",
       "Clicking <strong>❓ Help</strong> opens an overlay explaining the app; on a genuinely first-ever launch, it should already have opened itself once automatically.",
       "Closing Help (<strong>Got it</strong>) and reopening it works, and it does not auto-open again on a page reload.",
       "Pressing <kbd>?</kbd> opens a keyboard-shortcuts legend that matches what actually works elsewhere in the app.",
@@ -336,8 +336,22 @@ const DATA = [
     ]
   },
   {
+    id: "library",
+    title: "4. Library — playlists & practice log",
+    note: "Import a second or third song first if you only have one so far — playlists need at least two songs to be worth trying.",
+    items: [
+      "The <strong>Playlists</strong> picker above the Library defaults to <span class='mono'>— All songs —</span>, the normal alphabetical list.",
+      "<strong>+ New</strong> creates a playlist (seeded with whatever song is currently loaded, if any); it shows up in the picker immediately.",
+      "Selecting that playlist swaps the Library list to just its songs, in playlist order, with <strong>▲ / ▼</strong> reorder and <strong>✕</strong> remove buttons on each row.",
+      "With the playlist selected, <strong>+ Add current song</strong> appends the loaded song to the end, and <strong>◀ Prev</strong> / <strong>Next ▶</strong> step through the list — stopping at either end rather than wrapping around.",
+      "<strong>Rename</strong> and <strong>Delete</strong> act on the playlist itself, never on the songs inside it — deleting a playlist doesn't touch your Library.",
+      "Switching back to <span class='mono'>— All songs —</span> returns to the normal alphabetical Library.",
+      "After playing a song for at least a minute, its Library row shows a small dim time reading (e.g. <span class='mono'>1m</span>); hovering it shows the exact total and when you last practiced it.",
+    ]
+  },
+  {
     id: "mixer",
-    title: "4. Mixer basics",
+    title: "5. Mixer basics",
     note: "One stem lane per instrument, plus transport controls above them.",
     items: [
       "Each lane's Mute and Solo buttons work, and soloing one lane silences all the others without losing their individual mute states when you un-solo.",
@@ -350,7 +364,7 @@ const DATA = [
   },
   {
     id: "practice",
-    title: "5. Practice tools",
+    title: "6. Practice tools",
     note: "The features aimed at actually learning a song, not just listening to it.",
     items: [
       "Click-drag on the mute lane paints a muted region, and clicking an existing painted region removes it.",
@@ -358,11 +372,14 @@ const DATA = [
       "<strong>+ Marker</strong> drops a named marker at the playhead; clicking a marker later seeks straight to it.",
       "Double-clicking a marker loops from it to the next marker (or the end of the track) and turns Loop on automatically.",
       "With a loop region set, <strong>Zoom to loop</strong> visibly zooms the waveform in with real extra detail (not just a stretched blur), and <strong>Zoom out</strong> brings back the full view.",
+      "Dragging the <strong>Zoom</strong> slider (next to Zoom to loop) widens the ruler/waveforms and makes them horizontally scrollable, with the stem names and their controls staying put on the left as you scroll.",
+      "During playback with the timeline zoomed in, the view follows the playhead once it crosses the middle of the window rather than letting it run off the edge; double-clicking the Zoom slider resets it to fit-width.",
+      "A row of chord chips appears above the ruler once a track has chord analysis; clicking one jumps the playhead there, and zooming in (above) makes the individual chord names actually readable.",
       "Faint tick marks appear along the ruler in time with the beat, with a brighter tick on every downbeat.",
       "The toolbar's toggle buttons (Loop / Click / Count-in) light up blue when active — except Loop, which lights green while loop mode is engaged.",
       "Turning on <strong>Click</strong> (toolbar) plays an audible metronome in sync with those ticks, accenting the first beat of every bar; toggling it on mid-song joins cleanly (no burst of catch-up clicks). If Click is grayed out, reselecting the track re-analyzes and enables it.",
       "In the Speed Trainer panel, <strong>Start at Start%</strong> drops playback speed to the configured percentage, and repeated <strong>Step up</strong> clicks raise it in steps without overshooting the target percentage.",
-      "The inspector shows a detected musical key; moving the Tune slider previews the new (transposed) key live as you drag it.",
+      "The inspector shows a detected musical key that agrees with what the chord lane is showing (e.g. a song built on A/D/E chords reads as A, not some unrelated key); moving the Tune slider previews the new (transposed) key live as you drag it.",
       "Switching to a different track resets Speed and Tune back to normal, but leaves your Volume level alone.",
       "Double-clicking the Speed or Tune value resets that slider (1.00x / 0 cents); double-clicking a stem's volume percentage resets it to 100%.",
       "If a track's detected BPM looks like half or double the real tempo, the small ½×/2× buttons next to it fix it in one click, and the fix sticks when you come back to that song.",
@@ -370,17 +387,18 @@ const DATA = [
   },
   {
     id: "split",
-    title: "6. Guitar split (experimental)",
+    title: "7. Guitar split (experimental)",
     note: "Only relevant once a track has a combined guitar stem worth splitting into two takes.",
     items: [
       "The split panel appears once a <span class='mono'>guitar</span> stem exists for the selected track.",
-      "Running both the Spectral and Mid-side methods completes and reports a correlation figure for each.",
+      "Running the Spectral, Mid-side, and Hybrid methods all complete and each reports a correlation figure.",
+      "Whichever method is currently selected shows a clearly brighter/highlighted button, not just the same blue every method button already is.",
       "The two resulting candidates sound like audibly different stereo pictures of the same performance.",
     ]
   },
   {
     id: "playalong-transport",
-    title: "7. Play Along — backing track & tuner",
+    title: "8. Play Along — backing track & tuner",
     note: "Open Play Along and work through the top strip before touching the pedalboard below it.",
     items: [
       "Opening <strong>🎸 Play Along</strong> shows the backing track transport, tuner, input meter, and pedalboard without needing to scroll to find them.",
@@ -391,7 +409,7 @@ const DATA = [
   },
   {
     id: "playalong-input",
-    title: "8. Play Along — input & riff capture",
+    title: "9. Play Along — input & riff capture",
     note: "Needs a real guitar plugged into an interface (or a mic picking up an amp).",
     items: [
       "The device dropdown lists your actual audio interface/input, and <strong>Enable input</strong> makes the meter respond to real playing.",
@@ -405,7 +423,7 @@ const DATA = [
   },
   {
     id: "playalong-rig",
-    title: "9. Play Along — amp & pedalboard",
+    title: "10. Play Along — amp & pedalboard",
     note: "The tone-shaping heart of Play Along — work through it front-to-back.",
     items: [
       "Switching between amp modes (Clean / Analog / Neural) is click-free, and only the active mode actually makes sound.",
@@ -424,7 +442,7 @@ const DATA = [
   },
   {
     id: "presets",
-    title: "10. Rig presets",
+    title: "11. Rig presets",
     note: "Save a tone once, recall it instantly next time.",
     items: [
       "<strong>Save current rig as…</strong> captures the full chain: amp mode, loaded capture + tweaker knobs, cab IR, EQ, Compressor, Delay/Reverb, Output level, and pedal order.",
@@ -435,7 +453,7 @@ const DATA = [
   },
   {
     id: "recording",
-    title: "11. Recording a take",
+    title: "12. Recording a take",
     note: "Switch to the Record tab inside Play Along.",
     items: [
       "The Record performance and Takes cards are always visible below the rig, with the camera/quality/sync setup section expanded by default.",
@@ -445,21 +463,26 @@ const DATA = [
       "A red <strong>REC</strong> indicator appears in the main toolbar while recording, and clicking it jumps back into Play Along; stopping the recording also stops the backing track.",
       "After stopping, the take finishes processing and offers <strong>Reveal</strong> and <strong>Discard</strong>.",
       "For a video take, <strong>Auto-calibrate (strum once, ~5s)</strong> — with Input already enabled and your instrument connected — (or the manual alternative) produces a believable audio/video sync offset.",
+      "With a loop region set and Loop on, checking <strong>Practice mode: auto-retake each loop pass</strong> starts the backing track and recording together; each time the loop wraps, that pass saves as its own take and a new one starts immediately, without the backing track ever stopping.",
+      "Unchecking practice mode (or stopping playback) saves whatever pass was in progress as a normal take, and the manual <strong>● Record</strong> button (disabled while practice mode runs) becomes clickable again.",
     ]
   },
   {
     id: "takes",
-    title: "12. Reviewing takes",
+    title: "13. Reviewing takes",
     items: [
       "The Takes list shows every recording you've made, oldest/newest in a sensible order.",
       "Star, rename, reveal-in-folder, and delete each work on a take.",
       "Clicking Play loads a take into an inline player without leaving the page.",
       "<strong>Trim (lossless copy, new file)</strong> produces a new, correctly-trimmed file and leaves the original take untouched.",
+      "Checking the box on two different takes opens a <strong>Compare Takes</strong> card; <strong>▶ Play both</strong> starts them together and they stay in sync.",
+      "The <strong>Listening: A/B</strong> toggle switches which take you actually hear without restarting either or losing sync; the shared seek bar scrubs both at once.",
+      "Trying to check a third box does nothing until you uncheck one of the first two.",
     ]
   },
   {
     id: "projects",
-    title: "13. Projects (saving your work)",
+    title: "14. Projects (saving your work)",
     note: "Confirms your mix, loop, markers, and rig choices actually survive.",
     items: [
       "After changing the mix, loop, or markers on a song, waiting a moment and reselecting a different track then coming back restores exactly what you left.",
@@ -469,7 +492,7 @@ const DATA = [
   },
   {
     id: "export",
-    title: "14. Export",
+    title: "15. Export",
     items: [
       "Exporting bounces exactly your mute/gain choices from the mixer — Solo, Pan, and per-stem EQ do <em>not</em> leak into the exported file (they're for monitoring while you play, not for the mix itself).",
       "Both the WAV and MP3 export formats produce a playable file.",
@@ -478,7 +501,7 @@ const DATA = [
   },
   {
     id: "cross-cutting",
-    title: "15. Cross-cutting checks",
+    title: "16. Cross-cutting checks",
     note: "Things that should just quietly work no matter what else you were doing.",
     items: [
       "Leaving the app idle in a background tab for a while and coming back doesn't require a page reload to hear audio again.",
@@ -492,7 +515,10 @@ const DATA = [
 
 const root = document.getElementById("sections");
 const toc = document.getElementById("toc");
-const STORAGE_KEY = "orpheus-first-session-checklist-v1";
+// v2: content reshuffled for the V4 checklist items (new Library section,
+// items inserted mid-list elsewhere) — bumped so a v1 run's checked state
+// can't silently misapply to different items at the same index.
+const STORAGE_KEY = "orpheus-first-session-checklist-v2";
 
 let state = {};
 try { state = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch(e) { state = {}; }
