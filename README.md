@@ -98,7 +98,13 @@ A quick tour — see [USER-MANUAL.md](USER-MANUAL.md) for the full version
 of every feature below, plus keyboard shortcuts and troubleshooting.
 
 **Import a song.** Drag an MP3 or WAV onto the sidebar (or click it to
-pick a file). Click the song to select it.
+pick a file). Click the song to select it. Already have a song split
+into parts (a purchased backing-track pack, a pre-split multitrack)?
+Drop the `.zip` on **or import a stem pack (.zip)** instead — no
+separation needed, and every stem keeps its original file name. No file
+at all, just something playing on your Mac? The **Rip system audio**
+card captures it straight into your Library (needs a one-time free
+virtual-audio-driver install — the app walks you through it).
 
 **Separate it into stems.** Pick a model and click **Separate** — this
 runs entirely on your Mac and typically takes a fraction of the song's

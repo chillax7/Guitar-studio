@@ -1,14 +1,13 @@
 # Orpheus Guitar Studio — Regression Test Plan
 
-**Status:** covers the app through the current build, including the
-recent V4 additions (playlists, practice log, chord lane, continuous
-timeline zoom) and the Rate My Take CLI research spike. A manual,
-real-hardware checklist — every item here needs an actual USB audio
-interface + guitar (or at minimum real playback/mic input) to mean
-anything; headless/automated checks in this codebase (Playwright DOM/JS
-verification during development) cover wiring and math, never real-time
-audio behavior, timing, or perceived quality. Run this after any change
-that touches the areas it covers, not just at release time.
+**Status:** covers every area of the app, including the Rate My Take CLI
+research spike. A manual, real-hardware checklist — every item here needs
+an actual USB audio interface + guitar (or at minimum real playback/mic
+input) to mean anything; headless/automated checks in this codebase
+(Playwright DOM/JS verification during development) cover wiring and
+math, never real-time audio behavior, timing, or perceived quality. Run
+this after any change that touches the areas it covers, not just at
+release time.
 
 Checkbox format is for your own copy — tick as you go. Group headers
 roughly match the sidebar/UI areas so a targeted change only needs its own
@@ -26,8 +25,21 @@ instead — open it directly in a browser, no server required.
 - [ ] Selecting a track with no cached stems shows "Separate" and produces stems within a minute or two.
 - [ ] Switching models on an already-separated track re-separates (or reuses a cache hit for a model already run).
 - [ ] Re-running separation on a track whose source file changed on disk shows the stale banner; Re-separate/Dismiss both work.
+- [ ] **Stem-pack ZIP import:** clicking "or import a stem pack (.zip)" (or dropping a `.zip` anywhere on the sidebar — it's routed automatically, not treated as a broken audio file) imports every audio file inside as its own stem lane, named exactly as the file was; long names wrap in the lane header instead of overflowing.
+- [ ] The imported track shows the mixer immediately on selection — no Separate step — with the model badge reading `imported`, and does **not** appear anywhere with a `.zip` extension in the Library list.
+- [ ] BPM, beat grid, chord lane, and detected key all populate for an imported stem pack, matching a real reference (not blank/zero) — this depends on fuzzy stem-name matching since an imported pack's names won't match the app's usual fixed vocabulary.
+- [ ] A zip with two files that would collide to the same sanitized stem name fails up front with a message naming both files, rather than silently overwriting one.
+- [ ] A non-zip file or a zip with no usable audio inside fails with a clear message, not a crash; `__MACOSX/`/`._*` junk entries in a real Finder-compressed zip are silently ignored, not shown as broken stems.
 
-## 2. Library — Playlists & Practice log
+## 2. Rip system audio
+
+- [ ] With no BlackHole-named input device present, the Rip panel shows install instructions (`brew install blackhole-2ch`) rather than a confusing empty/silent device list.
+- [ ] With BlackHole installed and selected as the Mac's output, the device dropdown auto-selects it and the hint text explains you'll hear silence while ripping unless a Multi-Output Device is also set up.
+- [ ] **Start Rip** requests input permission (first time only) and visibly starts (button swaps to Stop, elapsed time counts up).
+- [ ] **Stop Rip** prompts for a name, uploads, and the resulting mp3 appears in the Library, selectable and playable like any normal import.
+- [ ] Audio actually played through BlackHole during the capture window is present and audible in the resulting file.
+
+## 3. Library — Playlists & Practice log
 
 - [ ] **Playlists:** the Playlists picker defaults to "— All songs —" (the normal alphabetical Library); **+ New** creates a playlist seeded with the currently-loaded song (if any); **Rename**/**Delete** act on the selected playlist; deleting a playlist never deletes the songs in it.
 - [ ] Selecting a playlist swaps the Library list to that playlist's songs in playlist order, with **▲ / ▼** reorder and **✕** remove controls on each row; a second row (**◀ Prev** / **+ Add current song** / **Next ▶**) appears while a playlist is active.
@@ -36,14 +48,14 @@ instead — open it directly in a browser, no server required.
 - [ ] **Practice log:** a song's Library row shows a small dim time readout (e.g. "12m") once you've played it for at least a minute, with the exact total + last-practiced date in the tooltip; time accumulates during real playback (Mixer or Play Along, any reason playback is running) and stops accumulating when paused/stopped.
 - [ ] Practice time follows a renamed source file (content-hash keyed) the same way projects do.
 
-## 3. Mixer
+## 4. Mixer
 
 - [ ] Each stem lane's Mute/Solo/fader work independently; Solo silences every other lane; un-soloing restores the prior mute state.
 - [ ] Waveforms render for every stem and match audible content roughly (peaks track loud passages).
 - [ ] Mute-lane click-drag paints a region; clicking an existing region removes it; painted regions match what actually mutes on playback.
 - [ ] A/B loop: dragging both ruler handles sets a region; Loop toggle enables/disables; playback wraps correctly at the loop boundary.
 - [ ] **Pan:** dragging a stem's Pan slider audibly moves it left/right; label reads correctly (C / L50 / R30 etc.).
-- [ ] **Per-stem EQ:** the EQ disclosure toggles open/closed; each of Bass/Mid/Treble audibly changes that stem's tone; Solo/Pan/EQ do NOT affect what gets exported (§10 below).
+- [ ] **Per-stem EQ:** the EQ disclosure toggles open/closed; each of Bass/Mid/Treble audibly changes that stem's tone; Solo/Pan/EQ do NOT affect what gets exported (§11 below).
 - [ ] **Section markers:** **+ Marker** drops a marker at the playhead and prompts for a name; clicking a marker seeks to it; double-clicking loops from it to the next marker (or track end) and turns Loop on; hovering reveals a delete **×**; markers persist across a reload of the same song.
 - [ ] **Waveform zoom (Zoom to loop / Zoom out):** with a loop set, **Zoom to loop** rescales the ruler/waveforms to that region with real added detail (not the same picture stretched); ruler clicks, loop-handle drags, and mute-painting all still land on the correct time while zoomed; **Zoom out** restores the full view; zoom resets on track switch.
 - [ ] **Continuous zoom (Zoom slider):** dragging the slider widens the ruler/waveforms/chord lane beyond the window and the area becomes horizontally scrollable; stem names + M/S/fader/pan/EQ controls stay pinned on the left while scrolling (never scroll away, never show waveform content underneath them); click-to-seek, loop-handle drag, and mute-painting all remain correct at any zoom/scroll position.
@@ -58,13 +70,13 @@ instead — open it directly in a browser, no server required.
 - [ ] **BPM correction:** on a track where the detected BPM looks halved/doubled from the real tempo, the ½×/2× buttons fix it in one click and the correction is remembered on reselecting that song later.
 - [ ] Count-in (2 bars of click) plays before playback starts when enabled, synced to the track's detected BPM.
 
-## 4. Guitar Split (experimental)
+## 5. Guitar Split (experimental)
 
 - [ ] Split panel only appears once a `guitar` stem exists; Spectral, Mid-side, and Hybrid methods all run and report a correlation figure; all three candidates are audibly plausible pans/variants of the same take.
 - [ ] The currently-selected method button is visibly highlighted (brighter/ringed, not just the same blue every button already is) — clicking a different method moves the highlight.
 - [ ] Hybrid falls back gracefully (no error) on a track with no beat grid.
 
-## 5. Screen nav (Mixer / Tone Lab / Play Along / Help)
+## 6. Screen nav (Mixer / Tone Lab / Play Along / Help)
 
 - [ ] All 4 sidebar buttons (🎚 Mixer, 🎛 Tone Lab, 🎸 Play Along, ❓ Help) are visually identical in size/shape; the current screen's button (Mixer/Tone Lab/Play Along only — Help never does) shows an active/highlighted state.
 - [ ] The top banner shows the app name/version on the left and the current screen name (Mixer/Tone Lab/Play Along) centered on the full window width, in all three screens — no overlap between the banner and either rig screen's own header.
@@ -72,7 +84,7 @@ instead — open it directly in a browser, no server required.
 - [ ] Selecting a track in the Library from either Tone Lab or Play Along drops back to the Mixer (both overlays close).
 - [ ] Opening either Tone Lab or Play Along for the first time after a track loads builds the rig (Enable Input becomes usable, meters move) without needing to visit the other screen first.
 
-## 6. Play Along — top strip
+## 7. Play Along — top strip
 
 - [ ] Backing Track transport (Play/Stop/Loop/Count-in/BPM/Speed/Tune/Volume) mirrors the mixer's own state in both directions.
 - [ ] Tuner: toggling on mutes both the backing track and your live guitar tone (both restore to their actual prior levels, not just unity, on toggling off); note/cents/needle read correctly against a tuned reference.
@@ -82,7 +94,7 @@ instead — open it directly in a browser, no server required.
 - [ ] **Auto-calibrate:** requires Input enabled first (with an instrument connected, not a bare microphone) and says so clearly if it isn't; with a genuine pause before strumming, the reported offset falls in a plausible range (roughly 50-300ms); an implausible result says so explicitly rather than silently applying a bad number.
 - [ ] **Riff Capture:** "Save that!" (with no prior setup) saves a WAV file capturing roughly the last ~20s of backing+guitar audio; saving doesn't interrupt the rolling capture (playing right after and saving again produces a second, different riff file); riff files are numbered independently from regular takes; the rolling capture starts whether you open Tone Lab or Play Along first.
 
-## 7. Tone Lab — input & pedalboard
+## 8. Tone Lab — input & pedalboard
 
 - [ ] Input: meter and clip light respond to real input level; clip light latches until Clear or a new input session; the device/Calibrate disclosure stays open across uses until you collapse it yourself.
 - [ ] **Default input device:** with a USB interface connected and mic permission already granted in a prior session, "Enable Input" defaults to the USB interface, not the Mac's built-in mic; switching devices and reopening Tone Lab later remembers the last device used.
@@ -100,7 +112,7 @@ instead — open it directly in a browser, no server required.
 - [ ] Suggest (NAM or Analog) picks a plausible tone from the loaded guitar stem, skips overly-heavy captures, and is clearly labeled as a rough heuristic.
 - [ ] **Rig presets:** saving captures the full rig (amp mode, NAM capture + Tweaker knobs, IR + tone shaper, EQ, Comp, Delay/Reverb, the eight extra pedals, Output, pedal order); loading a preset restores every one of those; Attach to this song + reload the song auto-recalls the preset the next time either Tone Lab or Play Along opens; deleting a preset that's attached to the current song detaches it.
 
-## 8. Recording
+## 9. Recording
 
 - [ ] The Record performance and Takes cards are on the Play Along screen, always visible with the camera/quality/sync setup expanded by default.
 - [ ] **Audio-only takes:** with no camera enabled, Record produces a `.m4a`/`.webm` audio file and the mode hint says "audio-only" beforehand; enabling a camera switches the hint to "will include video" and produces a video file as before.
@@ -111,17 +123,17 @@ instead — open it directly in a browser, no server required.
 - [ ] **Practice mode (auto-retake on loop):** with a loop region set and Loop on, checking "Practice mode: auto-retake each loop pass" starts the backing track from the top of the loop and begins recording; each time playback wraps the loop, the just-finished pass saves as its own take and a new recording starts immediately, with the backing track never stopping in between; unchecking the box (or stopping playback) saves whatever pass was in progress as a normal take and re-enables the manual Record button.
 - [ ] **Compare two takes:** checking the box on two rows in the Takes list opens a Compare Takes card; both takes play back together from the same starting point and stay in sync; the Listening: A/B toggle switches which one is audible without breaking sync or restarting either; the shared seek bar scrubs both at once; a third checkbox can't be selected until one of the first two is unchecked.
 
-## 9. Projects
+## 10. Projects
 
 - [ ] Mix/loop/markers/rig-preset-attachment autosave a moment after changing and restore on reselecting the same song.
 - [ ] **Rename-following:** save a project, rename the source file in Finder/on disk, reselect the (now differently-named) track — the mix/loop/markers all still load correctly.
 - [ ] The Library sidebar shows a small dot next to any track with a saved project.
 
-## 10. Export
+## 11. Export
 
 - [ ] Export bounces exactly the mixer's mute/gain state (NOT solo, pan, or per-stem EQ — those are monitoring-only); format (WAV/MP3), output name, target LUFS, normalize toggle, and boost cap all take effect.
 
-## 11. Rate My Take (CLI research spike — no UI yet)
+## 12. Rate My Take (CLI research spike — no UI yet)
 
 This is a command-line tool, not an in-app feature — there's nothing to
 click in the browser for this section. The actual point of running it is
@@ -133,7 +145,7 @@ the scores and heatmap match what your ears say happened?
 - [ ] The command runs cleanly on a track with no beat grid (falls back to fixed 0.5s scoring windows) and reports a clear error (not a crash) if `--offset` is wrong enough that nothing scores.
 - [ ] **The actual test:** do the three takes rank tight > variation > sloppy? Does the heatmap's red (low-agreement) zones line up with where the sloppy take actually fell apart, by ear? Note the result here either way — a "no" is a useful, expected possible outcome at this stage, not a bug to fix.
 
-## 12. Cross-cutting
+## 13. Cross-cutting
 
 - [ ] **In-app Help:** auto-shows on first-ever launch; reachable any time via the sidebar's ❓ button; doesn't reappear on later launches.
 - [ ] Keyboard shortcuts legend (**?**) lists every current shortcut accurately, including Alt for the fine nudge; none of the shortcuts fire while a text field has focus.

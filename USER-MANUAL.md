@@ -67,7 +67,45 @@ song's state:
 - **Source file changed since separation:** an amber banner offers
   **Re-separate** or **Dismiss** — nothing is ever silently thrown away.
 
-### 3.1 Playlists / setlists
+### 3.1 Importing a stem pack (.zip)
+Already have a song split into its parts — a purchased "custom backing
+track" pack, a friend's multitrack export, anything pre-split? Skip
+separation entirely: click **or import a stem pack (.zip)**, just below
+the normal drop zone (or drag the `.zip` straight onto the sidebar — it's
+detected automatically and routed here, not treated as a broken audio
+file). Every audio file inside becomes its own stem lane, named exactly
+as the file was — long names wrap in the lane header rather than getting
+cut off, and nothing is renamed or "prettified." The track appears in
+your Library immediately, with its own autosaved project and practice
+log entry, exactly like any other song. Each stem is converted to WAV on
+import (so it works with the rest of the app the same way a separated
+stem does) but never run through separation — that's the whole point.
+BPM, beat grid, chord lane, and key detection all still work on an
+imported pack, matching stems by name (anything that looks like a
+guitar/bass/piano/drum part) rather than needing the fixed stem names a
+separation model produces. If two files in the zip would collide to the
+same stem name, the import fails up front with a clear message naming
+both, rather than silently overwriting one.
+
+### 3.2 Rip — capture whatever's playing on your Mac
+Don't have the file at all — just something playing in a browser tab,
+another app, anywhere on your Mac? The **Rip system audio** card in the
+sidebar captures it straight into your Library as a new song. This needs
+a one-time install of a free, open-source virtual audio driver,
+[BlackHole](https://github.com/ExistentialAudio/BlackHole)
+(`brew install blackhole-2ch`), set as your Mac's audio output — the
+panel shows this instruction automatically if no BlackHole device is
+found yet. Once it's installed, pick it in the device dropdown, click
+**● Start Rip**, and the elapsed time counts up while it records; click
+**■ Stop Rip**, give the take a name, and it appears in your Library like
+any other imported song. One thing worth knowing up front: routing
+straight to BlackHole means *you* hear silence while ripping (the audio
+is going to the capture device, not your speakers) — build a
+**Multi-Output Device** in Audio MIDI Setup (combining BlackHole with
+your normal output) if you want to hear it too while it records; the
+panel's own hint says so.
+
+### 3.3 Playlists / setlists
 The **Playlists** section above the Library picks which set of songs
 `#track-list` shows and in what order. **— All songs —** (the default) is
 the normal alphabetical Library. Pick a playlist instead and the same list
@@ -82,7 +120,7 @@ appends the loaded song to the end. Clicking any song, in either view,
 loads it exactly the same way — a playlist is only ever an ordering, never
 a copy of a song's mix/rig settings.
 
-### 3.2 Practice log
+### 3.4 Practice log
 Every song's Library row shows a small dim time readout (e.g. "1h 12m")
 once you've played it for at least a minute, with a tooltip giving the
 exact total and the last-practiced date. This counts actual elapsed time
@@ -93,6 +131,10 @@ total, not a streak counter or a goal tracker: no gamification, just an
 honest "how much have I actually played this" number.
 
 ## 4. Separating into stems
+
+A track imported as a stem pack (§3.1) skips this section entirely —
+its model badge just reads `imported`, and the mixer is ready the moment
+you select it. Everything below is for a normal single-file import.
 
 Pick a model, then **Separate** (styled the same blue as Export — it's the
 main action once you've picked a model). This runs entirely on your Mac (no

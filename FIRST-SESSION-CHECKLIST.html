@@ -285,7 +285,7 @@
         <rect x="64" y="64" width="896" height="896" rx="200" fill="var(--gold)"/>
         <path d="M336 612 L688 612 C700 612 706 622 700 634 L540 886 C528 906 496 906 484 886 L324 634 C318 622 324 612 336 612 Z" fill="var(--bg)"/>
       </svg>
-      Orpheus Guitar Studio &nbsp;·&nbsp; v4.5
+      Orpheus Guitar Studio &nbsp;·&nbsp; v4.6
     </div>
     <h1 class="display">First Session Checklist</h1>
     <p>Walk through the app exactly as someone opening it for the very first time would — import a song, split it into stems, mix, plug in a guitar, record a take, and save your work. Each box you tick stays ticked in this browser, so you can close the tab and pick back up later. This needs real audio in and out (a guitar, an interface or built-in mic, speakers or headphones) to mean anything — it's a hands-on pass, not a code review.</p>
@@ -308,7 +308,7 @@ const DATA = [
     title: "1. Launch & orientation",
     note: "Before touching any one feature, get your bearings.",
     items: [
-      "The app opens to a Library sidebar (empty, or showing tracks if you've imported before) and a version number reads <strong>v4.5</strong> in the top banner, centered screen name (Mixer/Tone Lab/Play Along) alongside it.",
+      "The app opens to a Library sidebar (empty, or showing tracks if you've imported before) and a version number reads <strong>v4.6</strong> in the top banner, centered screen name (Mixer/Tone Lab/Play Along) alongside it.",
       "The <strong>🎚 Mixer</strong>, <strong>🎛 Tone Lab</strong>, <strong>🎸 Play Along</strong>, and <strong>❓ Help</strong> buttons are all visible in the sidebar even with nothing imported yet.",
       "Clicking <strong>❓ Help</strong> opens an overlay explaining the app; on a genuinely first-ever launch, it should already have opened itself once automatically.",
       "Closing Help (<strong>Got it</strong>) and reopening it works, and it does not auto-open again on a page reload.",
@@ -326,8 +326,20 @@ const DATA = [
     ]
   },
   {
+    id: "alt-import",
+    title: "3. Optional: stem-pack import & ripping system audio",
+    note: "Two more ways to get a song in, beyond dragging in a file. Skip this whole section if you don't have a stem-pack .zip handy or haven't installed BlackHole — nothing later in this checklist depends on it.",
+    items: [
+      "Clicking <strong>or import a stem pack (.zip)</strong> below the drop zone (or dragging a <span class='mono'>.zip</span> straight onto the sidebar — it's detected automatically) imports every audio file inside as its own stem lane, named exactly as the file was; long names wrap in the lane header instead of getting cut off.",
+      "Selecting that imported track shows the mixer immediately — no <strong>Separate</strong> button — with the model badge reading <span class='mono'>imported</span>.",
+      "BPM, beat grid, a chord lane, and a detected key all populate for the imported track, the same as a normally-separated one.",
+      "With <a href=\"https://github.com/ExistentialAudio/BlackHole\">BlackHole</a> installed (<span class='mono'>brew install blackhole-2ch</span>) and set as your Mac's output, the <strong>Rip system audio</strong> card's device dropdown auto-selects it instead of showing the install-instructions hint.",
+      "Clicking <strong>● Start Rip</strong>, playing something, then <strong>■ Stop Rip</strong> and giving it a name adds a new mp3 to the Library — selectable and playable like any other imported song.",
+    ]
+  },
+  {
     id: "separation",
-    title: "3. Stem separation",
+    title: "4. Stem separation",
     note: "This is the slow, CPU-heavy step — give it a minute or two on a real machine.",
     items: [
       "Clicking <strong>Separate</strong> runs and finishes, leaving you with individual stem lanes (e.g. drums, bass, vocals, other/guitar).",
@@ -337,7 +349,7 @@ const DATA = [
   },
   {
     id: "library",
-    title: "4. Library — playlists & practice log",
+    title: "5. Library — playlists & practice log",
     note: "Import a second or third song first if you only have one so far — playlists need at least two songs to be worth trying.",
     items: [
       "The <strong>Playlists</strong> picker above the Library defaults to <span class='mono'>— All songs —</span>, the normal alphabetical list.",
@@ -351,7 +363,7 @@ const DATA = [
   },
   {
     id: "mixer",
-    title: "5. Mixer basics",
+    title: "6. Mixer basics",
     note: "One stem lane per instrument, plus transport controls above them.",
     items: [
       "Each lane's Mute and Solo buttons work, and soloing one lane silences all the others without losing their individual mute states when you un-solo.",
@@ -364,7 +376,7 @@ const DATA = [
   },
   {
     id: "practice",
-    title: "6. Practice tools",
+    title: "7. Practice tools",
     note: "The features aimed at actually learning a song, not just listening to it.",
     items: [
       "Click-drag on the mute lane paints a muted region, and clicking an existing painted region removes it.",
@@ -387,7 +399,7 @@ const DATA = [
   },
   {
     id: "split",
-    title: "7. Guitar split (experimental)",
+    title: "8. Guitar split (experimental)",
     note: "Only relevant once a track has a combined guitar stem worth splitting into two takes.",
     items: [
       "The split panel appears once a <span class='mono'>guitar</span> stem exists for the selected track.",
@@ -398,7 +410,7 @@ const DATA = [
   },
   {
     id: "playalong-transport",
-    title: "8. Play Along — backing track & tuner",
+    title: "9. Play Along — backing track & tuner",
     note: "Open Play Along and work through the top strip before touching the pedalboard below it.",
     items: [
       "Opening <strong>🎸 Play Along</strong> shows the backing track transport, tuner, input meter, and pedalboard without needing to scroll to find them.",
@@ -409,7 +421,7 @@ const DATA = [
   },
   {
     id: "playalong-input",
-    title: "9. Play Along — input & riff capture",
+    title: "10. Play Along — input & riff capture",
     note: "Needs a real guitar plugged into an interface (or a mic picking up an amp).",
     items: [
       "The device dropdown lists your actual audio interface/input, and <strong>Enable input</strong> makes the meter respond to real playing.",
@@ -423,7 +435,7 @@ const DATA = [
   },
   {
     id: "playalong-rig",
-    title: "10. Play Along — amp & pedalboard",
+    title: "11. Play Along — amp & pedalboard",
     note: "The tone-shaping heart of Play Along — work through it front-to-back.",
     items: [
       "Switching between amp modes (Clean / Analog / Neural) is click-free, and only the active mode actually makes sound.",
@@ -442,7 +454,7 @@ const DATA = [
   },
   {
     id: "presets",
-    title: "11. Rig presets",
+    title: "12. Rig presets",
     note: "Save a tone once, recall it instantly next time.",
     items: [
       "<strong>Save current rig as…</strong> captures the full chain: amp mode, loaded capture + tweaker knobs, cab IR, EQ, Compressor, Delay/Reverb, Output level, and pedal order.",
@@ -453,7 +465,7 @@ const DATA = [
   },
   {
     id: "recording",
-    title: "12. Recording a take",
+    title: "13. Recording a take",
     note: "Switch to the Record tab inside Play Along.",
     items: [
       "The Record performance and Takes cards are always visible below the rig, with the camera/quality/sync setup section expanded by default.",
@@ -469,7 +481,7 @@ const DATA = [
   },
   {
     id: "takes",
-    title: "13. Reviewing takes",
+    title: "14. Reviewing takes",
     items: [
       "The Takes list shows every recording you've made, oldest/newest in a sensible order.",
       "Star, rename, reveal-in-folder, and delete each work on a take.",
@@ -482,7 +494,7 @@ const DATA = [
   },
   {
     id: "projects",
-    title: "14. Projects (saving your work)",
+    title: "15. Projects (saving your work)",
     note: "Confirms your mix, loop, markers, and rig choices actually survive.",
     items: [
       "After changing the mix, loop, or markers on a song, waiting a moment and reselecting a different track then coming back restores exactly what you left.",
@@ -492,7 +504,7 @@ const DATA = [
   },
   {
     id: "export",
-    title: "15. Export",
+    title: "16. Export",
     items: [
       "Exporting bounces exactly your mute/gain choices from the mixer — Solo, Pan, and per-stem EQ do <em>not</em> leak into the exported file (they're for monitoring while you play, not for the mix itself).",
       "Both the WAV and MP3 export formats produce a playable file.",
@@ -501,7 +513,7 @@ const DATA = [
   },
   {
     id: "cross-cutting",
-    title: "16. Cross-cutting checks",
+    title: "17. Cross-cutting checks",
     note: "Things that should just quietly work no matter what else you were doing.",
     items: [
       "Leaving the app idle in a background tab for a while and coming back doesn't require a page reload to hear audio again.",
@@ -517,7 +529,10 @@ const root = document.getElementById("sections");
 const toc = document.getElementById("toc");
 // v2: content reshuffled for the V4 checklist items (new Library section,
 // items inserted mid-list elsewhere) — bumped so a v1 run's checked state
-// can't silently misapply to different items at the same index.
+// can't silently misapply to different items at the same index. v4.6 added
+// a whole new section (its own section id, own item indices) rather than
+// reordering any existing one, so existing checked state stays valid
+// without another bump.
 const STORAGE_KEY = "orpheus-first-session-checklist-v2";
 
 let state = {};
