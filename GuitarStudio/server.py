@@ -20,14 +20,17 @@ port beyond localhost.
 """
 
 import argparse
+import io
 import json
 import mimetypes
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -48,6 +51,12 @@ PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 NAM_DIR.mkdir(parents=True, exist_ok=True)
 IR_DIR.mkdir(parents=True, exist_ok=True)
 INPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# Every place input/ needs to tell audio from non-audio (the Library
+# listing, multi-stem zip extraction) — input/ now legitimately holds a
+# non-audio file too (a staged .zip stem pack, pre-import), so svc_tracks
+# needs this same allowlist to not list it as a broken track.
+AUDIO_EXTS = {".wav", ".wave", ".mp3", ".flac", ".m4a", ".aiff", ".aif"}
 
 SAFE_NAME_RE = re.compile(r"[\x00/]+")
 DEFAULT_PORT = 8765
@@ -140,11 +149,17 @@ def resolve_source_path(source_path: str) -> Path:
 
 def stem_info(out_dir: Path, model: str) -> list:
     known_stems = set(engine.ALL_KNOWN_MODELS.get(model, ()))
+    # Imported stem packs (multi-stem-import-spec.md) have safe_name()'d
+    # on-disk keys that don't round-trip back to the original filename —
+    # this sidecar carries the raw label so the UI can display it verbatim.
+    labels_path = out_dir / "stem_labels.json"
+    labels = json.loads(labels_path.read_text()) if labels_path.exists() else {}
     stems = []
     for wav_path in sorted(out_dir.glob("*.wav")):
         info = engine.sf.info(str(wav_path))
         stems.append({
             "name": wav_path.stem,
+            "label": labels.get(wav_path.stem),
             "duration": info.duration,
             "sample_rate": info.samplerate,
             "is_derived": wav_path.stem not in known_stems,
@@ -177,7 +192,7 @@ def svc_tracks() -> dict:
     practice_log = _read_practice_log()
     tracks = []
     for path in sorted(INPUT_DIR.iterdir()):
-        if path.is_file() and not path.name.startswith("."):
+        if path.is_file() and not path.name.startswith(".") and path.suffix.lower() in AUDIO_EXTS:
             try:
                 digest = engine.content_hash(path)
                 has_project = (PROJECTS_DIR / f"{digest}.json").exists() or legacy_project_path(path.name).exists()
@@ -262,6 +277,197 @@ def svc_import(filename: str, data: bytes) -> dict:
     dest = INPUT_DIR / name
     dest.write_bytes(data)
     return {"name": name, "path": str(dest), "size": len(data)}
+
+
+# ---------------------------------------------------------------------------
+# Multi-stem ZIP import (multi-stem-import-spec.md) — a second import path
+# for audio that's already separated (a purchased "custom backing track"
+# pack, any pre-split multitrack): skip the ML separation step entirely,
+# keep every stem's own audio, name lanes exactly as the files were.
+# ---------------------------------------------------------------------------
+
+IMPORTED_MODEL_NAME = "imported"
+
+
+def _is_junk_zip_entry(name: str) -> bool:
+    """__MACOSX/ AppleDouble resource-fork junk — every zip Finder's own
+    'Compress' feature produces carries this, and it isn't real audio."""
+    basename = Path(name).name
+    return name.startswith("__MACOSX/") or basename.startswith("._") or basename == ".DS_Store"
+
+
+def _ffmpeg_convert_to_wav(src_path: Path, dst_path: Path, target_sr: int | None = None) -> None:
+    """Converts any ffmpeg-readable audio file to WAV — the format every
+    other stem in this app already is (Demucs/audio-separator both only
+    ever produce WAV), so an imported stem needs the same treatment to work
+    with the existing mix/waveform/analysis code, all of which assumes it.
+    Raises ApiError instead of backing_track.py's write_audio's sys.exit()
+    — this runs inside a request, not a one-shot CLI process."""
+    ffmpeg = engine.find_ffmpeg()
+    if not ffmpeg:
+        raise ApiError(500, "ffmpeg not found — required to import stem audio. Is it installed? (brew install ffmpeg)")
+    cmd = [ffmpeg, "-y", "-i", str(src_path)]
+    if target_sr:
+        cmd += ["-ar", str(target_sr)]
+    cmd += [str(dst_path)]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise ApiError(400, f"Could not read '{src_path.name}' as audio: {result.stderr[-500:]}")
+
+
+def svc_import_stem_zip(zip_bytes: bytes, zip_filename: str) -> dict:
+    """See multi-stem-import-spec.md for the full design. Short version:
+    extract every real audio entry (filtering __MACOSX/ junk), convert each
+    to WAV, sum them into a synthetic full-mix that becomes this track's
+    input/ file (everything else in this app — projects, practice log, the
+    stem cache — is content-hash-keyed off one source file, and a multi-file
+    import has none until this mixdown creates one), then write the
+    converted stems into that hash's stem-cache dir under the pseudo-model
+    'imported'. A minimal project pre-seeded with model='imported' means
+    the track loads correctly the very first time it's selected, with no
+    client-side special-casing needed."""
+    if not zip_bytes:
+        raise ApiError(400, "Empty upload")
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    except zipfile.BadZipFile:
+        raise ApiError(400, "Not a valid zip file")
+
+    entries = [
+        info for info in zf.infolist()
+        if not info.is_dir()
+        and not _is_junk_zip_entry(info.filename)
+        and Path(info.filename).suffix.lower() in AUDIO_EXTS
+    ]
+    if not entries:
+        raise ApiError(400, "No usable audio files found in this zip (after filtering out __MACOSX/ junk)")
+
+    # Stem label = filename minus extension, exactly as given — no vendor-
+    # specific pattern-stripping (this needs to work for any zip source,
+    # not one vendor's naming convention). safe_name() (already used for
+    # every other user-supplied name in this app) makes it filesystem-safe
+    # for the on-disk key; the raw label is preserved separately for display.
+    seen_keys: dict[str, str] = {}
+    stem_entries = []  # (raw_label, safe_key, zip_info)
+    for info in entries:
+        raw_name = Path(info.filename).name
+        raw_label = raw_name.rsplit(".", 1)[0]
+        safe_key = safe_name(raw_label)
+        if safe_key in seen_keys:
+            raise ApiError(400, f"Two stems would collide as '{safe_key}' — rename one and re-zip: "
+                                 f"'{seen_keys[safe_key]}' and '{raw_name}'")
+        seen_keys[safe_key] = raw_name
+        stem_entries.append((raw_label, safe_key, info))
+
+    with tempfile.TemporaryDirectory(prefix="gs_stem_import_") as tmp_dir_str:
+        tmp_dir = Path(tmp_dir_str)
+        converted = []  # (raw_label, safe_key, wav_path)
+        for raw_label, safe_key, info in stem_entries:
+            src_ext = Path(info.filename).suffix.lower()
+            src_path = tmp_dir / f"{safe_key}_src{src_ext}"
+            src_path.write_bytes(zf.read(info))
+            wav_path = tmp_dir / f"{safe_key}.wav"
+            _ffmpeg_convert_to_wav(src_path, wav_path)
+            converted.append((raw_label, safe_key, wav_path))
+
+        # Sum every converted stem into a synthetic full mix — the file this
+        # whole import gets hash-keyed off (see docstring). Resample any
+        # stem that doesn't match the first one's rate rather than reject
+        # the pack outright; real downloaded packs occasionally do differ.
+        # Two passes: first pass settles target_sr and re-samples outliers
+        # in place, second pass sums at a now-known common length.
+        target_sr = None
+        stereo_audio = {}  # safe_key -> (n_samples, 2) float32
+        for raw_label, safe_key, wav_path in converted:
+            audio, sr = engine.sf.read(str(wav_path), dtype="float32", always_2d=True)
+            if target_sr is None:
+                target_sr = sr
+            elif sr != target_sr:
+                resampled = tmp_dir / f"{safe_key}_rs.wav"
+                _ffmpeg_convert_to_wav(wav_path, resampled, target_sr=target_sr)
+                audio, sr = engine.sf.read(str(resampled), dtype="float32", always_2d=True)
+            if audio.shape[1] == 1:
+                audio = engine.np.repeat(audio, 2, axis=1)
+            stereo_audio[safe_key] = audio[:, :2]
+
+        max_len = max(len(a) for a in stereo_audio.values())
+        mix = engine.np.zeros((max_len, 2), dtype="float32")
+        for audio in stereo_audio.values():
+            mix[:len(audio)] += audio
+
+        mix, _norm_info = engine.normalize_loudness(
+            mix, target_sr, engine.DEFAULT_TARGET_LUFS, normalize=True, max_boost_db=engine.DEFAULT_MAX_BOOST_DB)
+
+        song_base = safe_name(Path(zip_filename).stem)
+        input_path = (INPUT_DIR / f"{song_base}.wav").resolve()
+        engine.sf.write(str(input_path), mix, target_sr)
+
+        digest = engine.content_hash(input_path)
+        out_dir = engine.SEPARATED_DIR / IMPORTED_MODEL_NAME / f"{song_base}__{digest}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        labels = {}
+        for raw_label, safe_key, wav_path in converted:
+            wav_path.replace(out_dir / f"{safe_key}.wav")
+            labels[safe_key] = raw_label
+        (out_dir / "stem_labels.json").write_text(json.dumps(labels, indent=2))
+
+    # Pre-seed a project so selecting this track for the very first time
+    # loads model='imported' automatically — matches the shape app.js's
+    # own saveProjectDebounced() writes (XC-01 project format v2).
+    svc_save_project(input_path.name, {
+        "version": 2, "model": IMPORTED_MODEL_NAME,
+        "mix": {"gains": {}, "muted": {}, "solo": None, "muteRanges": {}, "eq": {}, "pan": {}},
+        "ui": {"loop": None, "loopEnabled": False},
+        "markers": [], "rigPreset": None, "bpmOverride": None,
+    })
+
+    return {
+        "name": input_path.name,
+        "model": IMPORTED_MODEL_NAME,
+        "stems": stem_info(out_dir, IMPORTED_MODEL_NAME),
+    }
+
+
+# ---------------------------------------------------------------------------
+# "Rip" — capture whatever's playing on the Mac (system-audio-rip-spec.md).
+# The actual system-audio tap happens in the browser (getUserMedia against a
+# BlackHole virtual device + MediaRecorder — same primitives Play Along's
+# input picker and the take-recorder already use), so this server side is
+# just "remux whatever container that produced into an mp3 in input/,"
+# mirroring svc_recording_finalize's ffmpeg-subprocess/temp-file pattern.
+# Once the mp3 lands in input/, it's an ordinary track — refreshTrackList()
+# picks it up exactly like a manual drag-and-drop import.
+# ---------------------------------------------------------------------------
+
+RIP_SRC_EXTS = {"webm", "mp4", "m4a", "wav"}
+
+
+def svc_rip_save(filename: str, src_ext: str, data: bytes) -> dict:
+    if not data:
+        raise ApiError(400, "Empty upload")
+    src_ext = (src_ext or "webm").lstrip(".").lower()
+    if src_ext not in RIP_SRC_EXTS:
+        raise ApiError(400, f"Unsupported extension '{src_ext}'")
+
+    name = safe_name(filename) or "Rip"
+    name = re.sub(r"\.(mp3|wav|m4a|webm|mp4)$", "", name, flags=re.IGNORECASE)
+
+    ffmpeg = engine.find_ffmpeg()
+    if not ffmpeg:
+        raise ApiError(500, "ffmpeg not found — required to finish a rip. Is it installed? (brew install ffmpeg)")
+
+    with tempfile.TemporaryDirectory(prefix="gs_rip_") as tmp_dir_str:
+        src_path = Path(tmp_dir_str) / f"rip_src.{src_ext}"
+        src_path.write_bytes(data)
+
+        dest_path = (INPUT_DIR / f"{name}.mp3").resolve()
+        cmd = [ffmpeg, "-y", "-i", str(src_path), "-vn", "-acodec", "libmp3lame", "-q:a", "2", str(dest_path)]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ApiError(400, f"Could not finish the rip: {result.stderr[-500:]}")
+
+    return {"name": dest_path.name, "path": str(dest_path)}
 
 
 def svc_separate(source_path: str, model: str, force: bool) -> dict:
@@ -1051,6 +1257,17 @@ class Handler(BaseHTTPRequestHandler):
                 _, query = self._query()
                 filename = query.get("filename", "")
                 result = svc_import(filename, self._read_body())
+                return self._send_json(200, result)
+
+            if path == "/api/import_stem_zip":
+                _, query = self._query()
+                filename = query.get("filename", "")
+                result = svc_import_stem_zip(self._read_body(), filename)
+                return self._send_json(200, result)
+
+            if path == "/api/rip/save":
+                _, query = self._query()
+                result = svc_rip_save(query.get("filename", ""), query.get("src_ext", "webm"), self._read_body())
                 return self._send_json(200, result)
 
             if path == "/api/separate":

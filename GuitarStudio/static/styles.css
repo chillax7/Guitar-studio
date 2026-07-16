@@ -178,6 +178,25 @@ body {
 }
 #import-drop.dragover { border-color: var(--accent); color: var(--accent); }
 
+#import-zip-drop {
+  margin: 0 10px 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+#import-zip-drop:hover { color: var(--accent); }
+
+#rip-panel { margin: 0 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+#rip-device-select { width: 100%; font-size: 11px; }
+#rip-hint { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+#rip-start-btn, #rip-stop-btn { width: 100%; }
+#rip-stop-btn.recording { background: var(--mute); color: #fff; border-color: var(--mute); }
+#rip-elapsed { font-size: 11px; color: var(--text-dim); text-align: center; }
+
 /* ---------- Main canvas ---------- */
 
 #canvas {
@@ -361,7 +380,12 @@ button:disabled:hover { filter: none; }
   z-index: 3;
   background: var(--bg);
 }
-.lane-name { font-size: 12px; display: flex; align-items: center; gap: 6px; }
+/* Imported stem-pack labels (multi-stem-import-spec.md) are the raw
+   filename, underscores and all — one long unbroken "word" with no spaces
+   for the browser to wrap at by default, so overflow-wrap is needed to
+   actually wrap within the 150px lane-header column rather than overflow
+   into the waveform. */
+.lane-name { font-size: 12px; display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
 .lane-derived-badge { font-size: 9px; color: var(--text-dim); background: var(--panel-2); padding: 1px 4px; border-radius: 3px; }
 .lane-buttons { display: flex; gap: 4px; }
 .lane-buttons button { width: 22px; height: 20px; padding: 0; font-size: 11px; font-weight: 600; }

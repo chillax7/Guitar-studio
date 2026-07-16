@@ -12,7 +12,7 @@
   <div id="top-banner">
     <img id="app-logo" src="app-icon.svg" alt="">
     <span id="app-title">Orpheus Guitar Studio</span>
-    <span id="app-version">v4.5</span>
+    <span id="app-version">v4.6</span>
     <!-- Centered on the full window width (not just the canvas column) via
          absolute positioning in CSS — see #top-banner-screen-label. Kept in
          sync with the current screen by paSetActiveScreen (playalong.js),
@@ -55,6 +55,21 @@
     <div id="track-list"></div>
     <div id="import-drop">Drop an audio file here<br>or click to import</div>
     <input type="file" id="import-input" accept="audio/*" style="display:none">
+    <div id="import-zip-drop">or import a stem pack (.zip)</div>
+    <input type="file" id="import-zip-input" accept=".zip" style="display:none">
+
+    <!-- system-audio-rip-spec.md: captures whatever's currently playing on
+         the Mac (a streaming tab, another app) via a BlackHole virtual
+         audio device, straight into input/ as a new song — a second way to
+         get a song in when you don't have the file itself in hand. -->
+    <h2>Rip system audio</h2>
+    <div id="rip-panel">
+      <select id="rip-device-select"></select>
+      <div id="rip-hint">Checking for a BlackHole input device…</div>
+      <button id="rip-start-btn">● Start Rip</button>
+      <button id="rip-stop-btn" style="display:none">■ Stop Rip</button>
+      <span id="rip-elapsed" style="display:none">0:00</span>
+    </div>
   </div>
 
   <div id="canvas">

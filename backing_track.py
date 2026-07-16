@@ -448,6 +448,33 @@ def _build_chord_templates() -> tuple[list[tuple[str, str]], "np.ndarray"]:
 CHORD_TEMPLATE_LABELS, CHORD_TEMPLATE_MATRIX = _build_chord_templates()
 
 
+def _find_stems_fuzzy(out_dir: Path, exact_names: tuple, hint_words: tuple,
+                       exclude_words: tuple = ()) -> list[Path]:
+    """Every separation model here produces a fixed, known stem vocabulary
+    (drums.wav, guitar.wav, ...) — the fast, exact path every reading in
+    analyze_track originally used. An imported stem pack
+    (multi-stem-import-spec.md §5) has arbitrary names instead (e.g.
+    "Lead_Electric_Guitar_1"), so if none of the exact names exist, fall
+    back to substring-matching hint_words against whatever stems do exist
+    (skipping anything matching exclude_words) — same cheap,
+    good-enough-not-guaranteed spirit as every other heuristic in this
+    file. Returns every match (a caller wanting just one picks the
+    first); an empty list is the normal "nothing to analyze" case every
+    caller already treats as a missing reading, not an error."""
+    exact = [out_dir / f"{name}.wav" for name in exact_names]
+    exact = [p for p in exact if p.exists()]
+    if exact:
+        return exact
+    matches = []
+    for wav_path in sorted(out_dir.glob("*.wav")):
+        lname = wav_path.stem.lower()
+        if any(w in lname for w in exclude_words):
+            continue
+        if any(w in lname for w in hint_words):
+            matches.append(wav_path)
+    return matches
+
+
 def detect_chords(out_dir: Path, beats: list) -> list[dict] | None:
     """One chord guess per beat-grid interval [beats[i], beats[i+1]).
     Chroma source is the sum of every pitched, non-percussive, non-vocal
@@ -461,12 +488,14 @@ def detect_chords(out_dir: Path, beats: list) -> list[dict] | None:
 
     import librosa
 
+    stem_paths = _find_stems_fuzzy(
+        out_dir, exact_names=("bass", "other", "guitar", "piano"),
+        hint_words=("guitar", "bass", "piano", "keys", "synth", "organ", "string"),
+        exclude_words=("vocal", "vox", "voice", "drum", "kit", "perc"))
+
     sources = []
     sr = None
-    for name in ("bass", "other", "guitar", "piano"):
-        stem_path = out_dir / f"{name}.wav"
-        if not stem_path.exists():
-            continue
+    for stem_path in stem_paths:
         y, sr = librosa.load(str(stem_path), sr=None, mono=True)
         sources.append(y)
     if not sources:
@@ -542,8 +571,10 @@ def analyze_track(out_dir: Path) -> dict:
 
     result = {"version": ANALYSIS_VERSION}
 
-    drums_path = out_dir / "drums.wav"
-    if drums_path.exists():
+    drums_matches = _find_stems_fuzzy(
+        out_dir, exact_names=("drums",), hint_words=("drum", "kit", "percussion"))
+    drums_path = drums_matches[0] if drums_matches else None
+    if drums_path is not None:
         try:
             y, sr = librosa.load(str(drums_path), sr=None, mono=True)
             # librosa's tempo estimator defaults to a start_bpm=120 prior,
@@ -582,10 +613,11 @@ def analyze_track(out_dir: Path) -> dict:
         except Exception:
             pass
 
-    for name in ("other", "guitar", "piano"):
-        stem_path = out_dir / f"{name}.wav"
-        if not stem_path.exists():
-            continue
+    pitched_matches = _find_stems_fuzzy(
+        out_dir, exact_names=("other", "guitar", "piano"),
+        hint_words=("guitar", "piano", "keys", "synth", "organ", "string"),
+        exclude_words=("vocal", "vox", "voice", "drum", "kit", "perc", "bass"))
+    for stem_path in pitched_matches:
         try:
             y, sr = librosa.load(str(stem_path), sr=None, mono=True)
             tuning = librosa.estimate_tuning(y=y, sr=sr)

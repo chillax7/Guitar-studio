@@ -1,7 +1,15 @@
 # Multi-stem ZIP import — Design Spec
 
-**Status:** proposed, not built. Backlog item from the post-v4.5 planning
+**Status:** shipped in v4.6. Backlog item from the post-v4.5 planning
 pass (2026-07-16) — see [post-v4-backlog-audit.md](post-v4-backlog-audit.md).
+One real design correction from what's below: **§4/§7's "byte-for-byte
+preservation" turned out to be wrong** — `stem_info()`, `svc_mix()`, and
+everything else that reads a stem all glob `*.wav` and assume WAV, and the
+real example pack's stems are MP3. Each stem gets converted to WAV via
+ffmpeg on import (the same treatment Demucs/audio-separator output already
+gets), which still skips the ML separation step — the actual value
+proposition — without breaking the WAV-only assumption everywhere else in
+the app. Everything else below matches what shipped.
 
 **One-line pitch:** a second way to get a song into the Library — instead
 of one audio file that gets run through separation, drop in a `.zip` of
@@ -133,18 +141,15 @@ def svc_import_stem_zip(zip_bytes: bytes, zip_filename: str) -> dict:
   "humanize a filename" treatment the regular importer already applies
   for display purposes (check what that currently does, if anything —
   keep this consistent rather than inventing a second convention).
-- Decode each stem (`soundfile`/`librosa`, already hard dependencies),
-  sum to mono-summed-to-stereo at the loudest stem's sample rate (pad
-  shorter ones with silence, same pattern `svc_mix` already uses for
-  mismatched lengths), run through `normalize_loudness`, write as the
-  new `input/<song name>.wav` (WAV, not MP3, for the synthetic mixdown —
-  no lossy generation loss on a file nobody's meant to listen to
-  directly; it only exists to be hashed and, optionally, re-separated
-  later).
-- `digest = content_hash(that new input file)`; write every original
-  stem file **byte-for-byte unchanged** (this is the whole value
-  proposition — never re-encode a pack the user paid quality for) into
-  `separated/imported/<song>__<digest>/<safe_stem_name>.<original ext>`.
+- Convert each stem to WAV via ffmpeg first (see the status-note
+  correction above), then decode (`soundfile`, already a hard
+  dependency), sum to stereo at the first stem's sample rate (resampling
+  any outlier via ffmpeg, padding shorter ones with silence — same
+  pattern `svc_mix` already uses for mismatched lengths), run through
+  `normalize_loudness`, write as the new `input/<song name>.wav`.
+- `digest = content_hash(that new input file)`; write every converted
+  stem WAV into
+  `separated/imported/<song>__<digest>/<safe_stem_name>.wav`.
 - Write a small `stem_labels.json` sidecar in that same directory —
   `{safe_name: raw_label}` — since `safe_name()` is lossy (can't always
   round-trip back to the original). Every place that currently does
@@ -203,9 +208,11 @@ arbitrary. Each needs a decision, not a crash:
 
 ## 7. Explicit non-goals (v1)
 
-- **Re-encoding/normalizing individual stems.** The whole point is
-  byte-for-byte preservation of a pack the user already trusts — don't
-  "helpfully" transcode anything.
+- **Preserving the original stem file bytes/format.** See the status-note
+  correction at the top — every stem is converted to WAV on import, same
+  as separation output. What's preserved is the *content* (no re-run
+  through an ML separator) and the *label* (the raw filename), not the
+  original container.
 - **Nested-folder zips.** Not represented in the one real example this
   spec is built from; add it if a real pack ever needs it, not
   speculatively.

@@ -1,7 +1,15 @@
 # "Rip" — capture whatever's playing on the Mac — Design Spec
 
-**Status:** proposed, not built. Backlog item from the post-v4.5 planning
-pass (2026-07-16) — see [post-v4-backlog-audit.md](post-v4-backlog-audit.md).
+**Status:** shipped in v4.6, on the Option A (BlackHole) path recommended
+below — but implemented via the **browser**, not the server-side ffmpeg
+subprocess §4 originally described. The rig already had the exact
+primitives needed one layer up: Play Along's device-enumeration and
+DSP-off `getUserMedia` pattern (`paEnableInput`, playalong.js) plus the
+take-recorder's `MediaRecorder` + upload-and-remux pattern (recorder.js).
+Capturing in the browser and only remuxing server-side reuses both
+directly, with no subprocess lifecycle (start/SIGINT/zombie-process
+cleanup) to manage at all. §4 below is left as-written for the
+architectural reasoning — the design that shipped is described in §4a.
 
 **One-line pitch:** a button that records whatever audio is currently
 playing anywhere on the Mac — a streaming service, a YouTube tab, another
@@ -141,6 +149,40 @@ Lab's input card) driven by parsing ffmpeg's own stderr level output
 elapsed-time readout and a pulsing "recording" indicator (reusing the
 existing `#rec-pill` visual language) without a live meter at all. A
 meter is a nice-to-have, not a blocker for v1.
+
+## 4a. What actually shipped: browser capture, not a server subprocess
+
+Same BlackHole prerequisite and detection idea as §4.1, but the capture
+itself runs client-side:
+
+- **Device detection**: `navigator.mediaDevices.enumerateDevices()`
+  (`ripRefreshDevices()`, app.js) filters to `audioinput` kind and
+  auto-selects any device whose label matches `/blackhole/i`. No device
+  found → the panel shows the `brew install blackhole-2ch` instructions
+  in place of assuming a silent, confusing empty picker.
+- **Capture**: `getUserMedia({ audio: { deviceId, echoCancellation: false,
+  noiseSuppression: false, autoGainControl: false } })` — identical DSP-off
+  constraints to `paEnableInput()`, since a BlackHole tap is full-band
+  music, not a voice call. The returned `MediaStream` feeds a
+  `MediaRecorder` directly (`audio/mp4;codecs=mp4a.40.2` preferred, webm/
+  opus fallback — same candidate-list pattern as recorder.js), with no
+  Web Audio graph in between; this never touches `Audio.ctx` or the
+  record bus recorder.js uses for the app's own mix.
+- **Stop + upload**: on Stop, the collected chunks become one `Blob`,
+  the user is prompted for a song name (defaulting to a timestamp), and
+  it's uploaded to `POST /api/rip/save?filename=...&src_ext=...`. The
+  server (`svc_rip_save`, server.py) writes the blob to a temp file and
+  shells out to `ffmpeg -i <src> -vn -acodec libmp3lame -q:a 2 <dest>` —
+  the same "temp file, ffmpeg subprocess, check returncode, only replace
+  on success" shape as `svc_recording_finalize`, just producing an mp3 in
+  `input/` instead of remuxing a take in place. From there it's an
+  ordinary imported track; `refreshTrackList()` + `selectTrack()` pick it
+  up exactly like a manual drag-and-drop import.
+- **Elapsed-time readout only** (no level meter) for v1, per §4.4's own
+  "nice-to-have, not a blocker" framing.
+- **UI placement**: a small "Rip system audio" card in the sidebar,
+  directly below the two import affordances — matches §5's reasoning
+  below exactly.
 
 ## 5. Where this lives in the UI
 

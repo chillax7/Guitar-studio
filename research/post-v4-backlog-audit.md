@@ -36,7 +36,7 @@ hand-sketched spectrogram mask, not a turnkey checkpoint — narrowed to a
 cheap go/no-go gate, not built further); title bar consistency fix; the
 split-method active-highlight visibility bug fixed.
 
-**v4.5 (this build):** chord detection & chord lane (BT-04/V4-F1) —
+**v4.5:** chord detection & chord lane (BT-04/V4-F1) —
 maj/min/7 templates, transposes live with Tune; playlists/setlists
 (BT-09/V4-F3); practice log (BT-10/V4-F4); continuous GarageBand-style
 timeline zoom with playback auto-scroll (not originally scoped anywhere
@@ -46,6 +46,19 @@ confidently wrong on blues/rock material — confirmed on two real songs
 in this library); Rate My Take's Phase R1a research spike built and
 mechanically verified (`backing_track.py rate`) — **not** the same as
 the feature shipping; see §2.
+
+**v4.6 (this build):** both new ideas from §3 below — multi-stem ZIP
+import and Rip — both shipped, not just spec'd. One graceful-degradation
+gap found and fixed during implementation: `analyze_track`'s tempo/beat/
+key detection originally only checked exact stem names (`drums.wav`,
+`guitar.wav`, ...), which meant an imported pack got no beat grid, no
+key, and no chords at all — `detect_chords`'s own fuzzy fallback (§3's
+original design) never even ran, since it needs a beat grid that never
+existed. Fixed with one shared fuzzy-stem-matching helper
+(`_find_stems_fuzzy`, backing_track.py) used by all three readings, not
+just chords. Verified end-to-end against the real 9-stem Iron Maiden
+example: BPM, a full beat grid, chord lane, and key (A major) all
+populated correctly.
 
 ## 2. Rate My Take — the one item that's genuinely half-done
 
@@ -61,7 +74,7 @@ whenever there's time to record them. If it passes, R1b/c (the real
 capture pipeline + UI) is a real, scoped, ~L-sized build on top. If it
 fails, the honest outcome per that doc's own §6 is to stop, not force it.
 
-## 3. New this pass: two ideas from real material in hand
+## 3. Shipped in v4.6: two ideas from real material in hand
 
 - **Multi-stem ZIP import** — a second import path: drop in a `.zip` of
   already-separated stems (a purchased "custom backing track" pack, any
@@ -73,26 +86,22 @@ fails, the honest outcome per that doc's own §6 is to stop, not force it.
   architectural wrinkle (every existing per-song system is keyed off one
   content-hashed source file, and a multi-file import has none — solved
   by synthesizing a full-mix file to hash) and graceful degradation for
-  features that assume a known stem vocabulary (chord detection, the
-  guitar-split panel): [multi-stem-import-spec.md](multi-stem-import-spec.md).
-  **Size: M** — no new external dependencies, mostly server-side
-  zip-handling + a second drop-zone affordance.
+  features that assume a known stem vocabulary (chord detection, tempo/
+  key detection, the guitar-split panel):
+  [multi-stem-import-spec.md](multi-stem-import-spec.md) (status note at
+  the top covers what changed during implementation — stems get
+  converted to WAV, not preserved byte-for-byte). Verified end-to-end
+  against the real Iron Maiden example.
 
 - **"Rip" — capture whatever's playing on the Mac** — a button that
   records system audio (a streaming tab, another app, anything) straight
   into `input/` as a new song, without needing the file already in hand.
-  The real design decision is *how* to get at system audio on macOS at
-  all, since nothing else in this app has ever needed to (everything so
-  far works on files ffmpeg/Python can already see). Two real options
-  researched and compared — BlackHole (free virtual driver) + ffmpeg vs.
-  native ScreenCaptureKit — recommending the BlackHole path first since
-  it fits the existing all-ffmpeg architecture with zero new native code,
-  versus ScreenCaptureKit's real cost (this project's *first* compiled/
-  native component, plus a Screen-Recording permission prompt that reads
-  as alarming out of context for a guitar app). Full comparison,
-  recommendation, and design: [system-audio-rip-spec.md](system-audio-rip-spec.md).
-  **Size: S** given the recommended path — genuinely close to a same-day
-  build on top of existing device-enumeration + ffmpeg-subprocess code.
+  Shipped on the recommended BlackHole path, implemented via the browser
+  (`getUserMedia`+`MediaRecorder`, reusing Play Along's device-picker and
+  the take-recorder's upload/remux pattern) rather than the server-side
+  ffmpeg-subprocess design originally sketched — see
+  [system-audio-rip-spec.md](system-audio-rip-spec.md) §4a for what
+  actually shipped and why that turned out simpler.
 
 ## 4. Everything still open, grouped by theme
 
@@ -191,8 +200,6 @@ item's own spec).
   decided either way.
 
 ### Import & I/O
-- **Multi-stem ZIP import** — new, see §3.
-- **"Rip" system audio capture** — new, see §3.
 - **WebCodecs A/V muxing** — the "v2 escape hatch" for A/V sync, only
   needed if the current ffmpeg-remux approach ever proves insufficient
   in practice. It hasn't yet.

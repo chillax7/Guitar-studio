@@ -75,9 +75,14 @@ function orderedStems() {
 
 // Candidate A/B labeling per ui-spec.md §7.3 — never "Lead"/"Rhythm", since
 // the split is a panning guess, not a guaranteed role assignment.
-function stemDisplayName(name) {
+// `label` is the raw filename an imported stem pack shipped with
+// (multi-stem-import-spec.md) — safe_name() sanitizes `name` for on-disk/
+// dict-key use and isn't always reversible, so the server hands back the
+// original separately for display rather than the UI trying to prettify it.
+function stemDisplayName(name, label) {
   if (name.endsWith("_center")) return `Candidate A (center) — from ${name.slice(0, -7)}`;
   if (name.endsWith("_sides")) return `Candidate B (sides) — from ${name.slice(0, -6)}`;
+  if (label) return label;
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
@@ -1043,7 +1048,7 @@ function renderLanes() {
     const header = document.createElement("div");
     header.className = "lane-header";
     header.innerHTML = `
-      <div class="lane-name">${escapeHtml(stemDisplayName(name))}
+      <div class="lane-name">${escapeHtml(stemDisplayName(name, stem.label))}
         ${stem.is_derived ? '<span class="lane-derived-badge">derived</span>' : ""}</div>
       <div class="lane-buttons">
         <button class="mute-btn ${State.mix.muted[name] ? "on" : ""}">M</button>
@@ -2180,7 +2185,18 @@ function wireImport() {
     e.preventDefault();
     dropEl.classList.remove("dragover");
     const f = e.dataTransfer.files[0];
-    if (f) importFile(f);
+    // A dropped .zip is a stem pack, not a single audio file to run
+    // through separation — route it to the other import path rather than
+    // letting /api/import reject it with a confusing error.
+    if (f && f.name.toLowerCase().endsWith(".zip")) importStemZip(f);
+    else if (f) importFile(f);
+  });
+
+  const zipDropEl = document.getElementById("import-zip-drop");
+  const zipInputEl = document.getElementById("import-zip-input");
+  zipDropEl.addEventListener("click", () => zipInputEl.click());
+  zipInputEl.addEventListener("change", (e) => {
+    if (e.target.files[0]) importStemZip(e.target.files[0]);
   });
 }
 
@@ -2201,6 +2217,179 @@ async function importFile(file) {
   } finally {
     dropEl.innerHTML = originalHtml;
   }
+}
+
+async function importStemZip(file) {
+  const dropEl = document.getElementById("import-zip-drop");
+  const originalHtml = dropEl.innerHTML;
+  dropEl.textContent = `Importing stem pack ${file.name}…`;
+  try {
+    const buf = await file.arrayBuffer();
+    const r = await Api.postRaw(`/api/import_stem_zip?filename=${encodeURIComponent(file.name)}`, buf);
+    await refreshTrackList();
+    await selectTrack(r.name);
+  } catch (err) {
+    alert(`Could not import stem pack: ${err.message || err}`);
+  } finally {
+    dropEl.innerHTML = originalHtml;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Rip system audio (system-audio-rip-spec.md) — captures whatever's
+// currently playing on the Mac via a BlackHole virtual audio device +
+// MediaRecorder (same getUserMedia/DSP-off pattern as Play Along's input
+// picker, playalong.js's paEnableInput), straight into input/ as a new
+// song. Deliberately its own capture, not a tap on Recorder's internal
+// record bus (recorder.js) — that bus only ever carries this app's own
+// mix + monitored guitar, never arbitrary system audio.
+// ---------------------------------------------------------------------------
+
+const Rip = {
+  stream: null,
+  mediaRecorder: null,
+  state: "idle", // idle | recording | saving
+  startedAt: 0,
+  tickInterval: null,
+};
+
+const RIP_MIME_CANDIDATES = [
+  "audio/mp4;codecs=mp4a.40.2",
+  "audio/mp4",
+  "audio/webm;codecs=opus",
+  "audio/webm",
+];
+
+function ripPickMimeType() {
+  return RIP_MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m)) || "";
+}
+
+async function ripRefreshDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const inputs = devices.filter((d) => d.kind === "audioinput");
+  const sel = document.getElementById("rip-device-select");
+  const hintEl = document.getElementById("rip-hint");
+  const startBtn = document.getElementById("rip-start-btn");
+  const prevValue = sel.value;
+  sel.innerHTML = "";
+  for (const d of inputs) {
+    const opt = document.createElement("option");
+    opt.value = d.deviceId;
+    opt.textContent = d.label || `Input ${sel.children.length + 1}`;
+    sel.appendChild(opt);
+  }
+  if (prevValue && inputs.some((d) => d.deviceId === prevValue)) sel.value = prevValue;
+
+  const blackhole = inputs.find((d) => /blackhole/i.test(d.label));
+  if (blackhole && !prevValue) sel.value = blackhole.deviceId;
+
+  if (!inputs.length) {
+    hintEl.textContent = "No input devices listed yet — click Start Rip once to grant permission, which reveals device names.";
+  } else if (!blackhole) {
+    hintEl.innerHTML = 'No BlackHole device found. Install it once (<code>brew install blackhole-2ch</code>), ' +
+      'set it as your Mac\'s output (or build a Multi-Output Device combining it with your speakers, if you ' +
+      'also want to hear audio while ripping), then reload this page.';
+  } else {
+    hintEl.textContent = `Will capture via "${blackhole.label}". Without a Multi-Output Device set up, ` +
+      `you'll hear silence while ripping — audio goes to BlackHole only, not your speakers.`;
+  }
+  startBtn.disabled = !inputs.length;
+}
+
+async function ripStart() {
+  const deviceId = document.getElementById("rip-device-select").value;
+  const hintEl = document.getElementById("rip-hint");
+  const mimeType = ripPickMimeType();
+  if (!mimeType) {
+    hintEl.textContent = "This browser can't record audio (no supported MediaRecorder format).";
+    return;
+  }
+  try {
+    const audioConstraints = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+    if (deviceId) audioConstraints.deviceId = { exact: deviceId };
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+    Rip.stream = stream;
+
+    const chunks = [];
+    const recorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 192_000 });
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => ripFinalizeAndUpload(chunks, mimeType);
+    recorder.onerror = (e) => {
+      console.error("Rip MediaRecorder error", e.error);
+      hintEl.textContent = "Recorder error — rip ended early, salvaging what was captured.";
+      ripStop();
+    };
+
+    Rip.mediaRecorder = recorder;
+    Rip.state = "recording";
+    Rip.startedAt = performance.now();
+    recorder.start(1000); // 1s timeslices — a crash loses at most the last second
+
+    await ripRefreshDevices(); // device labels only populate after permission is granted
+    updateRipUI();
+    ripTick();
+    Rip.tickInterval = setInterval(ripTick, 250);
+  } catch (e) {
+    hintEl.textContent = `Could not access input: ${e.message}. Check System Settings > Privacy & Security > Microphone.`;
+  }
+}
+
+function ripStop() {
+  if (!Rip.mediaRecorder || Rip.mediaRecorder.state === "inactive") return;
+  Rip.mediaRecorder.stop();
+  Rip.state = "saving";
+  updateRipUI();
+}
+
+function ripTick() {
+  if (Rip.state !== "recording") return;
+  const elapsed = (performance.now() - Rip.startedAt) / 1000;
+  const m = Math.floor(elapsed / 60), s = Math.floor(elapsed % 60);
+  document.getElementById("rip-elapsed").textContent = `${m}:${String(s).padStart(2, "0")}`;
+}
+
+async function ripFinalizeAndUpload(chunks, mimeType) {
+  const hintEl = document.getElementById("rip-hint");
+  if (Rip.stream) { Rip.stream.getTracks().forEach((t) => t.stop()); Rip.stream = null; }
+  if (Rip.tickInterval) { clearInterval(Rip.tickInterval); Rip.tickInterval = null; }
+
+  const blob = new Blob(chunks, { type: mimeType });
+  const srcExt = mimeType.includes("mp4") ? "m4a" : "webm";
+  const defaultName = `Rip ${new Date().toLocaleString()}`;
+  const name = prompt("Name this rip:", defaultName) || defaultName;
+
+  hintEl.textContent = "Saving rip…";
+  try {
+    const r = await Api.postRaw(`/api/rip/save?filename=${encodeURIComponent(name)}&src_ext=${srcExt}`, blob);
+    hintEl.textContent = `Saved as ${r.name}.`;
+    await refreshTrackList();
+    await selectTrack(r.name);
+  } catch (e) {
+    hintEl.textContent = `Rip upload failed: ${e.message}`;
+  } finally {
+    Rip.state = "idle";
+    updateRipUI();
+  }
+}
+
+function updateRipUI() {
+  const startBtn = document.getElementById("rip-start-btn");
+  const stopBtn = document.getElementById("rip-stop-btn");
+  const elapsedEl = document.getElementById("rip-elapsed");
+  const recording = Rip.state === "recording";
+  startBtn.style.display = recording || Rip.state === "saving" ? "none" : "";
+  stopBtn.style.display = recording ? "" : "none";
+  stopBtn.classList.toggle("recording", recording);
+  stopBtn.disabled = Rip.state === "saving";
+  elapsedEl.style.display = recording ? "" : "none";
+  if (!recording) elapsedEl.textContent = "0:00";
+}
+
+function wireRip() {
+  document.getElementById("rip-start-btn").addEventListener("click", ripStart);
+  document.getElementById("rip-stop-btn").addEventListener("click", ripStop);
+  ripRefreshDevices();
+  updateRipUI();
 }
 
 // ---------------------------------------------------------------------------
@@ -2328,6 +2517,7 @@ async function init() {
   wireSeparateButton();
   wireStaleBanner();
   wireImport();
+  wireRip();
   wireSpeedTune();
   wireSpeedTrainer();
   wireBpmCorrection();
