@@ -90,6 +90,26 @@ deliverable):* chord lane reads as useful and accurate on 3 real songs of
 different styles, judged by ear, before anything in §2 onward gets built
 on top of it.
 
+**Known limitation, found post-ship (v4.6 user feedback): riff-heavy songs
+over-fragment the ribbon.** On a riff-based track — Iron Maiden's "Phantom
+of the Opera" is the flagged example — the chord lane reads as very busy:
+short, rapidly-alternating chips (e.g. "Em E7 E" across a few beats) where
+a guitarist would hear one underlying chord/rhythm-part idea, not several.
+Root cause is `detect_chords` in `backing_track.py` classifying each beat
+independently (maj/min/7 templates, no temporal smoothing) against a
+single-frame chroma window — a moving riff or palm-muted chug shifts chroma
+content beat-to-beat enough to flip the best-matching template even when
+the underlying harmony hasn't actually changed. Two candidate fixes,
+neither implemented yet: (a) backend smoothing — require a chord to hold
+for a minimum span (e.g. a full bar) before switching, via majority vote
+across beats, the more correct fix but touches the analysis pipeline and
+needs re-running detection on real tracks to judge; (b) client-side same-
+root merging in `renderChordLane` (app.js) — collapse adjacent short runs
+that share a root but differ in quality, cheap to ship but risks papering
+over real chord changes along with the noise. Worth a scoped look before
+or alongside §2 (Scale/Mode Advisor), which depends on chord-lane regions
+being clean enough to anchor a scale suggestion to.
+
 ## 2. Scale/Mode Advisor — Tier 1, deterministic (V5-F2 · M)
 
 The AI Lab screen's actual MVP, and the reason chord detection had to come

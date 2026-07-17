@@ -24,6 +24,7 @@ import io
 import json
 import mimetypes
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -206,6 +207,112 @@ def svc_tracks() -> dict:
                 "last_practiced": (entry or {}).get("last_practiced"),
             })
     return {"tracks": tracks}
+
+
+def svc_track_rename(track: str, new_name: str) -> dict:
+    """Renames the source file in input/, plus every place on disk that's
+    keyed off the filename rather than pure content hash. project_path_for
+    (saved mixes/practice log) really is hash-only, but track_stem_dir bakes
+    the filename INTO the cache dir name too (f"{stem}__{digest}" — see its
+    docstring), and recordings/exports live under output/<filename>/ with
+    no hash at all. A plain Path.rename() of just the source file quietly
+    orphans all of that — separate/list_stems would report "no stems found"
+    even though the (now differently-named) cache directory is sitting
+    right there. Renamed dirs are matched by exact old name, not a prefix
+    scan, so an unrelated orphaned cache that happens to share the old stem
+    (e.g. left behind by svc_track_delete, then reused by a same-named but
+    different re-import) can never get swept up by mistake. The caller
+    (app.js) is responsible for patching any playlist entries, which store
+    the literal filename."""
+    target = resolve_source_path(track)
+    if not new_name:
+        raise ApiError(400, "new_name is required")
+    stem = safe_name(new_name)
+    new_path = target.parent / f"{stem}{target.suffix}"
+    if new_path.exists() and new_path != target:
+        raise ApiError(409, f"'{new_path.name}' already exists")
+
+    old_stem, old_full_name = target.stem, target.name
+    new_stem, new_full_name = new_path.stem, new_path.name
+    digest = engine.content_hash(target)
+
+    # Validate every rename target is free before touching anything on
+    # disk, so a collision aborts cleanly rather than leaving the track
+    # half-renamed (source file moved but its stems left behind, etc.).
+    dir_renames = []
+    if old_stem != new_stem and engine.SEPARATED_DIR.exists():
+        for model_dir in engine.SEPARATED_DIR.iterdir():
+            if not model_dir.is_dir():
+                continue
+            for old_dir_name in (f"{old_stem}__{digest}", old_stem):
+                old_dir = model_dir / old_dir_name
+                if not old_dir.is_dir():
+                    continue
+                new_dir = model_dir / old_dir_name.replace(old_stem, new_stem, 1)
+                if new_dir.exists():
+                    raise ApiError(409, f"Can't rename: 'separated/{model_dir.name}/{new_dir.name}' already exists")
+                dir_renames.append((old_dir, new_dir))
+
+    if old_full_name != new_full_name:
+        old_out = engine.OUTPUT_DIR / old_full_name
+        if old_out.is_dir():
+            new_out = engine.OUTPUT_DIR / new_full_name
+            if new_out.exists():
+                raise ApiError(409, f"Can't rename: 'output/{new_full_name}' already exists")
+            dir_renames.append((old_out, new_out))
+
+    if old_stem != new_stem:
+        old_out_stem = engine.OUTPUT_DIR / old_stem
+        if old_out_stem.is_dir():
+            new_out_stem = engine.OUTPUT_DIR / new_stem
+            if new_out_stem.exists():
+                raise ApiError(409, f"Can't rename: 'output/{new_stem}' already exists")
+            dir_renames.append((old_out_stem, new_out_stem))
+
+    target.rename(new_path)
+    for old_dir, new_dir in dir_renames:
+        old_dir.rename(new_dir)
+
+    return {"ok": True, "name": new_path.name}
+
+
+def svc_track_delete(track: str) -> dict:
+    """Removes the source file from input/ and everything derived from it
+    that's on disk purely because that file existed: separated stem caches
+    (separated/<model>/<stem>[__<hash>]/ — see track_stem_dir), and its
+    output/ directory (recordings + exported mixes/stem copies). Same
+    exact-name matching as svc_track_rename, for the same reason: a bare
+    stem-name match without the hash suffix could otherwise sweep up an
+    unrelated cache. Saved projects/practice history stay (hash-keyed,
+    honest history of time spent even if the source file is gone). The
+    caller is responsible for dropping the track from any playlists, which
+    store the literal filename."""
+    target = resolve_source_path(track)
+    stem, full_name = target.stem, target.name
+    digest = engine.content_hash(target)
+
+    dirs_to_remove = []
+    if engine.SEPARATED_DIR.exists():
+        for model_dir in engine.SEPARATED_DIR.iterdir():
+            if not model_dir.is_dir():
+                continue
+            for candidate_name in (f"{stem}__{digest}", stem):
+                candidate = model_dir / candidate_name
+                if candidate.is_dir():
+                    dirs_to_remove.append(candidate)
+
+    out_by_full_name = engine.OUTPUT_DIR / full_name
+    if out_by_full_name.is_dir():
+        dirs_to_remove.append(out_by_full_name)
+    out_by_stem = engine.OUTPUT_DIR / stem
+    if out_by_stem.is_dir():
+        dirs_to_remove.append(out_by_stem)
+
+    target.unlink()
+    for d in dirs_to_remove:
+        shutil.rmtree(d, ignore_errors=True)
+
+    return {"ok": True}
 
 
 def _scan_model_dir(root: Path, suffixes: tuple[str, ...]) -> list[dict]:
@@ -530,6 +637,34 @@ def svc_list_stems(source_path: str, model: str) -> dict:
     }
 
 
+def svc_stem_rename(source_path: str, model: str, stem: str, new_label: str) -> dict:
+    """Sets a stem's display label — stemDisplayName (app.js) shows this
+    instead of the raw on-disk key when present. Only the label changes;
+    the on-disk filename and State.mix's gain/mute/pan/eq lookups (all
+    keyed by the stem's real name) are untouched, so this can't orphan any
+    per-stem mix state the way renaming the underlying file could. Most
+    useful for imported stem packs (multi-stem-import-spec.md), whose
+    on-disk keys are safe_name()'d from often-long original filenames —
+    but stem_info reads stem_labels.json for any model's cache dir, so
+    this works the same way for a plain Demucs/audio-separator stem too."""
+    input_path = resolve_source_path(source_path)
+    out_dir = engine.track_stem_dir(input_path, model)
+    if not engine.has_cached_stems(out_dir):
+        raise ApiError(404, f"No stems found for {input_path.name} with model '{model}'.")
+    stem_key = safe_name(stem)
+    stem_path = out_dir / f"{stem_key}.wav"
+    if not stem_path.exists():
+        raise ApiError(404, f"No '{stem}' stem found.")
+    if not new_label or not new_label.strip():
+        raise ApiError(400, "new_label is required")
+
+    labels_path = out_dir / "stem_labels.json"
+    labels = json.loads(labels_path.read_text()) if labels_path.exists() else {}
+    labels[stem_key] = new_label.strip()
+    labels_path.write_text(json.dumps(labels, indent=2))
+    return {"ok": True, "name": stem_key, "label": labels[stem_key]}
+
+
 def svc_split_guitar(source_path: str, model: str, stem: str, method: str) -> dict:
     input_path = resolve_source_path(source_path)
     out_dir = engine.track_stem_dir(input_path, model)
@@ -651,6 +786,29 @@ def svc_mix(source_path: str, model: str, gains: dict, mute_ranges: dict,
     engine.write_audio(mix, samplerate, out_path)
 
     return {"output_path": str(out_path), **norm_info}
+
+
+def svc_exported_tracks(source_path: str) -> dict:
+    """Real exported mixes for one song (most recent first), for the Play
+    Along "Exported Tracks" card — output/<track>/ also holds stem copies
+    (export_stem_files, always named "<model>_<stem>.wav" — including
+    split-guitar candidates and any other derived stem, since those go
+    through the same copy call) and a recordings/ subfolder, which this
+    filters out so only actual Export-panel bounces show up."""
+    input_path = resolve_source_path(source_path)
+    out_dir = engine.track_output_dir(input_path.stem)
+    if not out_dir.exists():
+        return {"tracks": []}
+    known_model_prefixes = tuple(f"{m}_" for m in engine.ALL_KNOWN_MODELS)
+    tracks = []
+    for f in sorted(out_dir.iterdir()):
+        if not f.is_file() or f.suffix.lower() not in (".wav", ".mp3"):
+            continue
+        if f.name.startswith(known_model_prefixes):
+            continue
+        tracks.append({"name": f.name, "path": str(f), "size": f.stat().st_size, "modified": f.stat().st_mtime})
+    tracks.sort(key=lambda t: t["modified"], reverse=True)
+    return {"tracks": tracks}
 
 
 def resolve_stem_file(source_path: str, model: str, stem: str) -> Path:
@@ -1033,6 +1191,15 @@ def _read_practice_log() -> dict:
         return {}
 
 
+# A session is a run of flush increments with no gap between them bigger
+# than this — comfortably above the ~15-20s cadence flushPracticeLog (app.js)
+# flushes at during continuous play, but short enough that stepping away for
+# a few minutes (or longer) starts a new row in the log rather than silently
+# padding the last one.
+SESSION_STITCH_GAP_SEC = 120
+PRACTICE_SESSIONS_MAX = 500  # per track — oldest sessions drop off past this
+
+
 def svc_practice_log_add(track: str, seconds: float) -> dict:
     if seconds <= 0:
         raise ApiError(400, "seconds must be positive")
@@ -1045,11 +1212,97 @@ def svc_practice_log_add(track: str, seconds: float) -> dict:
     log = _read_practice_log()
     entry = log.get(digest, {"seconds": 0.0, "last_practiced": None, "track_name": track})
     entry["seconds"] = entry.get("seconds", 0.0) + seconds
-    entry["last_practiced"] = time.time()
+    now = time.time()
+    entry["last_practiced"] = now
     entry["track_name"] = track  # keeps the display name fresh across renames
+
+    sessions = entry.setdefault("sessions", [])
+    if sessions and now - sessions[-1]["end"] <= SESSION_STITCH_GAP_SEC:
+        sessions[-1]["end"] = now
+        sessions[-1]["seconds"] += seconds
+    else:
+        sessions.append({"start": now - seconds, "end": now, "seconds": seconds})
+    if len(sessions) > PRACTICE_SESSIONS_MAX:
+        del sessions[:-PRACTICE_SESSIONS_MAX]
+
     log[digest] = entry
     PRACTICE_LOG_FILE.write_text(json.dumps(log, indent=2))
     return {"ok": True, "seconds": entry["seconds"], "last_practiced": entry["last_practiced"]}
+
+
+def svc_practice_sessions(track: str) -> dict:
+    """Session-by-session practice history for one track (most recent
+    first), for the Play Along practice-log card — the cumulative total
+    svc_tracks already exposes is one running number, this is the log
+    entries that add up to it."""
+    digest = engine.content_hash(resolve_source_path(track))
+    log = _read_practice_log()
+    entry = log.get(digest, {})
+    sessions = sorted(entry.get("sessions", []), key=lambda s: s["start"], reverse=True)
+    for s in sessions:
+        s["id"] = _session_id(s)
+    return {
+        "sessions": sessions,
+        "seconds": entry.get("seconds", 0.0),
+        "last_practiced": entry.get("last_practiced"),
+    }
+
+
+# A session has no explicit stored id — it's derived from its own start
+# time (ms resolution comfortably beats SESSION_STITCH_GAP_SEC's 120s, so
+# two sessions can never collide) instead, so nothing needed backfilling
+# for the sessions already on disk before rating/notes/delete existed.
+def _session_id(session: dict) -> str:
+    return str(round(session["start"] * 1000))
+
+
+PRACTICE_RATINGS = ("crap", "bad", "ok", "good", "awesome")
+
+
+def _find_session_entry(track: str, session_id: str) -> tuple[dict, dict, list]:
+    """Returns (log, entry, sessions) with `entry`/`sessions` being the
+    live objects inside `log` — callers mutate the returned session dict
+    in place, then just re-serialize `log`, same pattern _read_practice_log
+    callers already use elsewhere in this file."""
+    digest = engine.content_hash(resolve_source_path(track))
+    log = _read_practice_log()
+    entry = log.get(digest)
+    if not entry:
+        raise ApiError(404, "No practice history for this track")
+    sessions = entry.get("sessions", [])
+    target = next((s for s in sessions if _session_id(s) == session_id), None)
+    if target is None:
+        raise ApiError(404, "Practice session not found")
+    return log, entry, target
+
+
+def svc_practice_session_update(track: str, session_id: str, rating, notes) -> dict:
+    if rating is not None and rating not in PRACTICE_RATINGS:
+        raise ApiError(400, f"rating must be one of: {', '.join(PRACTICE_RATINGS)}")
+    if notes is not None and len(notes) > 60:
+        raise ApiError(400, "notes must be 60 characters or fewer")
+    # target is the actual dict object living inside log[digest]["sessions"]
+    # (a list lookup, not a copy) — mutating it in place already updates
+    # log, so writing log back out below is all persistence needs.
+    log, _entry, target = _find_session_entry(track, session_id)
+    if rating is not None:
+        target["rating"] = rating
+    if notes is not None:
+        target["notes"] = notes
+    PRACTICE_LOG_FILE.write_text(json.dumps(log, indent=2))
+    return {"ok": True, "id": session_id, "rating": target.get("rating"), "notes": target.get("notes", "")}
+
+
+def svc_practice_session_delete(track: str, session_id: str) -> dict:
+    log, entry, target = _find_session_entry(track, session_id)
+    entry["sessions"] = [s for s in entry["sessions"] if _session_id(s) != session_id]
+    # Deleting a session (e.g. a bogus/accidental one) drops its seconds
+    # from the cumulative total too — same "honest numbers" spirit as the
+    # rest of the practice log, not a running total that outlives the
+    # entries it's supposed to add up from.
+    entry["seconds"] = max(0.0, entry.get("seconds", 0.0) - target.get("seconds", 0.0))
+    PRACTICE_LOG_FILE.write_text(json.dumps(log, indent=2))
+    return {"ok": True, "seconds": entry["seconds"]}
 
 
 # ---------------------------------------------------------------------------
@@ -1237,6 +1490,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_file(resolve_ir_file(query.get("filename", "")), cacheable=True)
             if path == "/api/recordings":
                 return self._send_json(200, svc_recordings_list(query.get("track", "")))
+            if path == "/api/exported_tracks":
+                return self._send_json(200, svc_exported_tracks(query.get("track", "")))
+            if path == "/api/practice_sessions":
+                return self._send_json(200, svc_practice_sessions(query.get("track", "")))
             if path == "/api/rig_presets":
                 return self._send_json(200, svc_load_rig_presets())
             if path == "/api/playlists":
@@ -1275,6 +1532,14 @@ class Handler(BaseHTTPRequestHandler):
                 result = svc_separate(body.get("source_path", ""),
                                        body.get("model", engine.DEFAULT_MODEL),
                                        bool(body.get("force", False)))
+                return self._send_json(200, result)
+
+            if path == "/api/stem/rename":
+                body = self._read_json_body()
+                result = svc_stem_rename(body.get("source_path", ""),
+                                          body.get("model", engine.DEFAULT_MODEL),
+                                          body.get("stem", ""),
+                                          body.get("new_label", ""))
                 return self._send_json(200, result)
 
             if path == "/api/split_guitar":
@@ -1359,6 +1624,27 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/practice_log":
                 body = self._read_json_body()
                 result = svc_practice_log_add(body.get("track", ""), float(body.get("seconds", 0)))
+                return self._send_json(200, result)
+
+            if path == "/api/practice_session/update":
+                body = self._read_json_body()
+                result = svc_practice_session_update(body.get("track", ""), body.get("id", ""),
+                                                      body.get("rating"), body.get("notes"))
+                return self._send_json(200, result)
+
+            if path == "/api/practice_session/delete":
+                body = self._read_json_body()
+                result = svc_practice_session_delete(body.get("track", ""), body.get("id", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/track/rename":
+                body = self._read_json_body()
+                result = svc_track_rename(body.get("track", ""), body.get("new_name", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/track/delete":
+                body = self._read_json_body()
+                result = svc_track_delete(body.get("track", ""))
                 return self._send_json(200, result)
 
             return self._send_json(404, {"error": f"Unknown route: {path}"})

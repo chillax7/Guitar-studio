@@ -32,30 +32,24 @@
       <button id="playalong-open-btn" class="nav-screen-btn">🎸 Play Along</button>
       <button id="help-open-btn" class="nav-screen-btn">❓ Help</button>
     </div>
-    <!-- V4-F3: a playlist is just an ordering over the same Library list —
-         picking one swaps #track-list's contents from "all songs,
-         alphabetical" to "this playlist's songs, in order" and adds
-         reorder/remove controls to each row (see renderTrackList). Nothing
-         about a song's own settings lives here; selecting a row still goes
-         through the normal selectTrack() -> /api/project auto-recall. -->
+    <!-- A playlist is just an ordering over a subset of the same Library
+         list — no separate "current playlist" view anymore. #track-list
+         renders "All Tracks" (anything not in any playlist) followed by
+         each playlist as its own collapsible group (see renderTrackList in
+         app.js). A track can belong to any number of playlists at once
+         (added via the "+" on its row); nothing about a song's own
+         settings lives here — selecting a row still goes through the
+         normal selectTrack() -> /api/project auto-recall. -->
     <h2>Playlists</h2>
     <div id="playlist-bar">
-      <select id="playlist-select"><option value="">— All songs —</option></select>
-      <button id="playlist-new-btn" title="New playlist">+ New</button>
-      <button id="playlist-rename-btn" title="Rename this playlist">Rename</button>
-      <button id="playlist-delete-btn" title="Delete this playlist">Delete</button>
-    </div>
-    <div id="playlist-nav-bar" style="display:none">
-      <button id="playlist-prev-btn" title="Previous song in this playlist">◀ Prev</button>
-      <button id="playlist-add-current-btn" title="Add the loaded song to this playlist">+ Add current song</button>
-      <button id="playlist-next-btn" title="Next song in this playlist">Next ▶</button>
+      <button id="playlist-new-btn" title="New playlist">+ New playlist</button>
     </div>
 
     <h2>Library</h2>
     <div id="track-list"></div>
     <div id="import-drop">Drop an audio file here<br>or click to import</div>
     <input type="file" id="import-input" accept="audio/*" style="display:none">
-    <div id="import-zip-drop">or import a stem pack (.zip)</div>
+    <div id="import-zip-drop">Drop a stem pack (.zip) file here<br>or click to import</div>
     <input type="file" id="import-zip-input" accept=".zip" style="display:none">
 
     <!-- system-audio-rip-spec.md: captures whatever's currently playing on
@@ -88,6 +82,7 @@
         <span class="transport-label">Zoom</span>
         <input type="range" id="timeline-zoom-slider" min="0" max="1" step="0.01" value="0" title="Zoom the timeline in — scrolls to follow playback once zoomed in. Double-click to reset.">
         <button id="click-toggle" title="Metronome click synced to this track's detected beat grid">Click</button>
+        <input type="range" id="click-volume-slider" min="0" max="100" step="1" value="25" title="Click volume">
         <button id="count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
       </div>
       <div class="spacer"></div>
@@ -141,7 +136,7 @@
       <p>Separating — this can take a minute or two depending on song length.</p>
       <div id="separating-progress"><div id="separating-progress-fill"></div></div>
       <p class="hint" id="separating-progress-text"></p>
-      <p class="hint">The progress bar shows the progress of the processing, not necessarily how much time is left.</p>
+      <p class="hint">The progress bar shows the progress of the processing, not necessarily how much time is left. Watch that 99% doesn't fool you.</p>
     </div>
 
     <!-- Continuous zoom: #ruler/#markers-row/#chord-lane each split into a
@@ -160,21 +155,31 @@
         <div class="timeline-gutter"></div>
         <div id="markers-row-content"></div>
       </div>
-      <!-- V4-F1: one chip per beat-grid interval, positioned/widthed via
-           timeToPct like every other ruler-aligned element — see
-           renderChordLane in app.js. Hidden entirely (display:none) when
-           the analysis has no chords key at all (older cache, or no
-           pitched stem to read), same graceful-omission contract as
-           key-hint/pitch-hint below. -->
-      <div id="chord-lane">
-        <div class="timeline-gutter"></div>
-        <div id="chord-lane-content"></div>
-      </div>
-      <div id="ruler">
-        <div class="timeline-gutter"></div>
-        <div id="ruler-content">
-          <div id="beat-grid"></div>
-          <div id="loop-region"><div class="loop-handle" id="loop-handle-a" style="left:0"></div><div class="loop-handle" id="loop-handle-b" style="left:0"></div></div>
+      <!-- Chord ribbon + Click Track pinned together in one sticky wrapper
+           so both stay visible at the top of #workspace while the stem
+           lanes below scroll past vertically — a fixed pixel "top" offset
+           per row would break whenever #chord-lane is display:none (no
+           chords for this track), so the wrapper (whose height adapts
+           automatically) is sticky instead of each row individually.
+           Horizontal scroll (continuous zoom) is untouched — sticky only
+           pins the vertical axis. -->
+      <div id="sticky-timeline-header">
+        <!-- V4-F1: one chip per beat-grid interval, positioned/widthed via
+             timeToPct like every other ruler-aligned element — see
+             renderChordLane in app.js. Hidden entirely (display:none) when
+             the analysis has no chords key at all (older cache, or no
+             pitched stem to read), same graceful-omission contract as
+             key-hint/pitch-hint below. -->
+        <div id="chord-lane">
+          <div class="timeline-gutter">Chord ribbon</div>
+          <div id="chord-lane-content"></div>
+        </div>
+        <div id="ruler">
+          <div class="timeline-gutter">Click Track</div>
+          <div id="ruler-content">
+            <div id="beat-grid"></div>
+            <div id="loop-region"><div class="loop-handle" id="loop-handle-a" style="left:0"></div><div class="loop-handle" id="loop-handle-b" style="left:0"></div></div>
+          </div>
         </div>
       </div>
       <div id="lanes"></div>
@@ -234,7 +239,7 @@
       <label>Format</label>
       <select id="export-format"><option value="wav">WAV</option><option value="mp3">MP3</option></select>
       <label>Output name</label>
-      <input type="text" id="export-name" placeholder="backing_track.wav">
+      <input type="text" id="export-name" placeholder="e.g. backing_track.wav">
       <label>Target LUFS</label>
       <input type="number" id="export-lufs" value="-14" step="0.5">
       <div class="row">
@@ -416,6 +421,30 @@
             <p class="hint" id="compare-status"></p>
           </section>
         </div>
+
+        <!-- V4-F4 follow-up: full-width, below the Record/Takes grid rather
+             than inside it — a log reads as a list of rows, not a card
+             competing for the same 300px column width as Record/Takes.
+             Cumulative total up top (mirrors the Library sidebar's per-track
+             badge), session-by-session rows underneath (see
+             svc_practice_sessions in server.py — SESSION_STITCH_GAP_SEC
+             groups nearby flush increments into one sitting). -->
+        <section class="pa-card" id="practice-log-card">
+          <h3>Practice Log</h3>
+          <p class="hint" id="practice-log-summary"></p>
+          <p class="hint" id="practice-log-score"></p>
+          <div id="practice-log-sessions"></div>
+        </section>
+
+        <!-- Below the practice log rather than back on the crowded Mixer
+             screen — a finished mix you just want to play along to doesn't
+             need re-stemming or a trip back to the Mixer to hear it. -->
+        <section class="pa-card" id="exported-tracks-card">
+          <h3>Exported Tracks</h3>
+          <p class="hint" id="exported-tracks-hint"></p>
+          <div id="exported-tracks-list"></div>
+          <audio id="exported-track-player" controls style="display:none"></audio>
+        </section>
 
       </div>
     </div>

@@ -34,10 +34,12 @@ const Api = {
 // State
 // ---------------------------------------------------------------------------
 
+const ALL_TRACKS_GROUP_KEY = "\0all-tracks"; // NUL-prefixed: can't collide with a real (user-typed) playlist name
+
 const State = {
   tracks: [],
   playlists: {}, // V4-F3 — {name: {tracks: [trackName, ...]}}, shared cross-song (like rig presets)
-  currentPlaylist: "", // "" = viewing the full Library, not a playlist
+  expandedPlaylists: new Set([ALL_TRACKS_GROUP_KEY]), // which playlist groups are open in the Library tree — All Tracks starts open; in-memory only, resets on reload
   models: [],
   defaultModel: "htdemucs",
   track: null,
@@ -84,6 +86,16 @@ function stemDisplayName(name, label) {
   if (name.endsWith("_sides")) return `Candidate B (sides) — from ${name.slice(0, -6)}`;
   if (label) return label;
   return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+// Split candidates (Candidate A/center, Candidate B/sides — see
+// stemDisplayName above) come out of the panning-based split quieter than
+// a normal stem, sides especially — the mid-side math that isolates them
+// throws away most of the signal's energy along the way, not a mixing
+// choice. The regular 150% fader ceiling isn't enough headroom to bring a
+// quiet candidate back up to par with the rest of the mix.
+function isSplitCandidate(name) {
+  return name.endsWith("_center") || name.endsWith("_sides");
 }
 
 function escapeHtml(s) {
@@ -135,7 +147,7 @@ function pctToTime(pct) {
 // "session-only, not State.ui" reasoning as zoomWindow.
 // ---------------------------------------------------------------------------
 let zoomMultiplier = 1; // 1 = fit-to-viewport (today's behavior, no scrolling)
-const ZOOM_MAX_MULTIPLIER = 16;
+const ZOOM_MAX_MULTIPLIER = 24; // 1.5x the original 16 — same 0..1 slider, wider effective range
 
 // Slider is 0..1, mapped exponentially — linear felt bad (all the useful
 // range bunched at the low end); this gives fine control near both ends.
@@ -242,6 +254,7 @@ const Audio = {
   stretchNodes: {},
   workletLoaded: false,
   processedPosition: 0,
+  clickVolume: 0.5, // shared by the metronome click and the count-in pre-roll — see #click-volume-slider
 };
 
 function ensureCtx() {
@@ -425,6 +438,12 @@ function stopPlayback() {
   }
   Audio.playing = false;
   resyncClickPointer(0); // BT-02 — position just jumped to 0 outside seekTo()
+  // Every caller means "playback isn't running anymore" (track switch,
+  // track delete, natural end-of-song, the Stop button) — resetting the
+  // icon here once covers all of them, instead of each call site having to
+  // remember to do it itself (selectTrack() used to forget, leaving a
+  // stale pause icon showing after switching tracks mid-playback).
+  setTransportText("play-btn", "▶");
 }
 
 function seekTo(sec) {
@@ -645,29 +664,191 @@ async function refreshTrackList() {
   renderTrackList();
 }
 
+// Library tree: "All Tracks" (every track, regardless of playlist
+// membership) at top, alphabetical playlists below — replaces the old
+// dropdown-driven single-playlist view (V4-F3) entirely. A track can
+// belong to any number of playlists (or none) and always still shows
+// under All Tracks too — playlists are extra cross-listings, not a move.
 function renderTrackList() {
   const el = document.getElementById("track-list");
   el.innerHTML = "";
 
-  if (State.currentPlaylist) {
-    renderPlaylistTrackList(el);
-    return;
-  }
+  el.appendChild(renderAllTracksGroup());
 
-  for (const t of State.tracks) {
-    const row = document.createElement("div");
-    row.className = "track-row" + (t.name === State.track ? " selected" : "");
-    // Projects UX: a visible per-song project indicator — content-hash-
-    // keyed server-side now (server.py's project_path_for), so this stays
-    // accurate even for a track that's been renamed since its mix was saved.
-    row.innerHTML = `<span class="track-name">${escapeHtml(t.name)}</span>` +
-      (t.practice_seconds > 0
-        ? `<span class="track-practice-time" title="${escapeHtml(practiceLogTooltip(t))}">${escapeHtml(fmtPracticeTime(t.practice_seconds))}</span>`
-        : "") +
-      (t.has_project ? '<span class="track-project-dot" title="Has a saved mix/project"></span>' : "");
-    row.addEventListener("click", () => selectTrack(t.name));
-    el.appendChild(row);
+  const names = Object.keys(State.playlists).sort((a, b) => a.localeCompare(b));
+  for (const name of names) el.appendChild(renderPlaylistGroup(name));
+}
+
+function renderAllTracksGroup() {
+  const expanded = State.expandedPlaylists.has(ALL_TRACKS_GROUP_KEY);
+  const group = document.createElement("div");
+  group.className = "playlist-group";
+
+  const header = document.createElement("div");
+  header.className = "playlist-group-header playlist-group-header-interactive";
+  header.innerHTML = `
+    <button class="playlist-group-toggle" title="${expanded ? "Collapse" : "Expand"}">${expanded ? "▾" : "▸"}</button>
+    <span class="playlist-group-name">All Tracks</span>
+    <span class="playlist-group-count">${State.tracks.length}</span>`;
+  group.appendChild(header);
+
+  const toggleGroup = () => {
+    if (State.expandedPlaylists.has(ALL_TRACKS_GROUP_KEY)) State.expandedPlaylists.delete(ALL_TRACKS_GROUP_KEY);
+    else State.expandedPlaylists.add(ALL_TRACKS_GROUP_KEY);
+    renderTrackList();
+  };
+  header.querySelector(".playlist-group-toggle").addEventListener("click", toggleGroup);
+  header.querySelector(".playlist-group-name").addEventListener("click", toggleGroup);
+
+  if (expanded) {
+    if (!State.tracks.length) {
+      const hint = document.createElement("p");
+      hint.className = "hint playlist-group-empty-hint";
+      hint.textContent = "No tracks yet — drop an audio file below to import one.";
+      group.appendChild(hint);
+    } else {
+      for (const t of State.tracks) group.appendChild(renderLibraryTrackRow(t));
+    }
   }
+  return group;
+}
+
+function renderLibraryTrackRow(t) {
+  const row = document.createElement("div");
+  row.className = "track-row" + (t.name === State.track ? " selected" : "");
+  row.innerHTML = `<span class="track-name">${escapeHtml(t.name)}</span>`;
+  row.appendChild(renderAddToPlaylistControl(t.name));
+  row.appendChild(renderTrackRenameButton(t.name));
+  row.appendChild(renderTrackDeleteButton(t.name));
+  row.addEventListener("click", () => selectTrack(t.name));
+  return row;
+}
+
+// Renaming/deleting a track's source file — same rename/delete idiom as a
+// playlist's own header icons. Stems/project/practice-log are all
+// content-hash-keyed (see project_path_for in server.py), so they follow a
+// renamed file automatically; playlists store the literal filename though,
+// so both handlers patch every playlist that references the old name
+// before persisting.
+function renamePlaylistReferences(oldName, newName) {
+  for (const playlist of Object.values(State.playlists)) {
+    playlist.tracks = playlist.tracks.map((n) => (n === oldName ? newName : n));
+  }
+}
+
+function removePlaylistReferences(name) {
+  for (const playlist of Object.values(State.playlists)) {
+    playlist.tracks = playlist.tracks.filter((n) => n !== name);
+  }
+}
+
+function renderTrackRenameButton(trackName) {
+  const btn = document.createElement("button");
+  btn.className = "track-rename-btn";
+  btn.title = "Rename track";
+  btn.textContent = "✎";
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const base = trackName.replace(/\.[^.]+$/, "");
+    const newName = prompt("Rename track to:", base);
+    if (!newName || !newName.trim() || newName.trim() === base) return;
+    try {
+      const r = await Api.post("/api/track/rename", { track: trackName, new_name: newName.trim() });
+      renamePlaylistReferences(trackName, r.name);
+      if (State.track === trackName) State.track = r.name;
+      await persistPlaylists();
+      await refreshTrackList();
+    } catch (err) {
+      alert(`Rename failed: ${err.message || err}`);
+    }
+  });
+  return btn;
+}
+
+function renderTrackDeleteButton(trackName) {
+  const btn = document.createElement("button");
+  btn.className = "track-delete-btn";
+  btn.title = "Delete track";
+  btn.textContent = "✕";
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (!confirm(`Delete "${trackName}"? This removes the audio file plus its separated stems, exported mixes, and recordings. This can't be undone.`)) return;
+    try {
+      await Api.post("/api/track/delete", { track: trackName });
+      removePlaylistReferences(trackName);
+      if (State.track === trackName) {
+        stopPlayback();
+        State.track = null;
+        showState("empty-state");
+      }
+      await persistPlaylists();
+      await refreshTrackList();
+    } catch (err) {
+      alert(`Delete failed: ${err.message || err}`);
+    }
+  });
+  return btn;
+}
+
+// A track's own "+" — the only way (besides dragging none exists) to put a
+// track into a playlist now that there's no dropdown-selected "current"
+// playlist to add into. Checkboxes rather than a single-pick list since a
+// track can be in more than one playlist at once.
+let openAddToPlaylistFor = null; // which track's popover renderTrackList() should reopen after a re-render — cleared on a checkbox change so picking a playlist closes it
+
+function renderAddToPlaylistControl(trackName) {
+  const wrap = document.createElement("details");
+  wrap.className = "track-add-to-playlist";
+  if (openAddToPlaylistFor === trackName) wrap.open = true;
+  wrap.addEventListener("click", (e) => e.stopPropagation()); // don't let this bubble into the row's selectTrack
+  wrap.addEventListener("toggle", () => { openAddToPlaylistFor = wrap.open ? trackName : null; });
+
+  const summary = document.createElement("summary");
+  summary.title = "Add to playlist";
+  summary.textContent = "+";
+  wrap.appendChild(summary);
+
+  const menu = document.createElement("div");
+  menu.className = "track-add-to-playlist-menu";
+  const names = Object.keys(State.playlists).sort((a, b) => a.localeCompare(b));
+  if (!names.length) {
+    menu.innerHTML = '<p class="hint">No playlists yet.</p>';
+  } else {
+    for (const name of names) {
+      const label = document.createElement("label");
+      const checked = State.playlists[name].tracks.includes(trackName);
+      label.innerHTML = `<input type="checkbox" ${checked ? "checked" : ""}> ${escapeHtml(name)}`;
+      label.querySelector("input").addEventListener("change", async (e) => {
+        const playlist = State.playlists[name];
+        if (e.target.checked) {
+          if (!playlist.tracks.includes(trackName)) playlist.tracks.push(trackName);
+        } else {
+          playlist.tracks = playlist.tracks.filter((n) => n !== trackName);
+        }
+        openAddToPlaylistFor = null; // a selection is a "done" signal — close the popover instead of leaving it open across the re-render
+        await persistPlaylists();
+        renderTrackList();
+      });
+      menu.appendChild(label);
+    }
+  }
+  const newBtn = document.createElement("button");
+  newBtn.className = "track-add-to-playlist-new-btn";
+  newBtn.textContent = "+ New playlist…";
+  newBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const name = prompt("New playlist name:");
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    if (State.playlists[trimmed]) { alert(`A playlist named "${trimmed}" already exists.`); return; }
+    State.playlists[trimmed] = { tracks: [trackName] };
+    State.expandedPlaylists.add(trimmed);
+    await persistPlaylists();
+    renderTrackList();
+  });
+  menu.appendChild(newBtn);
+  wrap.appendChild(menu);
+  return wrap;
 }
 
 // V4-F4: honest numbers, not gamified — a plain elapsed-time readout and a
@@ -678,11 +859,6 @@ function fmtPracticeTime(seconds) {
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-
-function practiceLogTooltip(t) {
-  const last = t.last_practiced ? new Date(t.last_practiced * 1000).toLocaleDateString() : "never";
-  return `${fmtPracticeTime(t.practice_seconds)} practiced total — last practiced ${last}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -726,50 +902,309 @@ function flushPracticeLog() {
     if (t) {
       t.practice_seconds = r.seconds;
       t.last_practiced = r.last_practiced;
-      if (!State.currentPlaylist) renderTrackList();
+      renderTrackList();
     }
+    if (track === State.track) refreshPracticeSessionLog(); // Play Along's log stays live during play, not just on next open
   }).catch(() => { /* best-effort — a lost tick just under-counts slightly */ });
 }
 
-// V4-F3: the playlist view of the same #track-list — order comes from the
-// playlist itself (not alphabetical), and each row picks up reorder/remove
-// controls. Clicking a row still goes through the exact same selectTrack()
-// as the Library view, so per-song project auto-recall is unchanged.
-function renderPlaylistTrackList(el) {
-  const playlist = State.playlists[State.currentPlaylist];
-  const tracks = (playlist && playlist.tracks) || [];
-  if (!tracks.length) {
-    el.innerHTML = '<p class="hint">Empty — use "+ Add current song" below to build this playlist.</p>';
+// Play Along's Practice Log card (below Record/Takes): cumulative total +
+// weighted score up top, session-by-session rows underneath (rated, noted,
+// deletable) — see svc_practice_sessions in server.py for how flush
+// increments get stitched into sessions.
+const PRACTICE_RATINGS = ["crap", "bad", "ok", "good", "awesome"];
+const PRACTICE_RATING_EMOJI = { crap: "😖", bad: "😕", ok: "😐", good: "🙂", awesome: "🤩" };
+const PRACTICE_RATING_LABEL = { crap: "Crap", bad: "Bad", ok: "OK", good: "Good", awesome: "Awesome" };
+const PRACTICE_RATING_VALUE = { crap: 0, bad: 2.5, ok: 5, good: 7.5, awesome: 10 };
+
+// 10 = totally god-like awesome, 0 = novice ukulele player — weighted
+// toward recent form: only the most recent 5 RATED sessions count at all,
+// so a strong current run always fully overrides however the earliest
+// sessions went (10 stays reachable no matter how practice started out).
+// Unrated sessions are skipped rather than treated as a zero, so just not
+// bothering to rate a session never drags the score down.
+function computePracticeScore(sessions) {
+  const rated = sessions.filter((s) => s.rating).slice(0, 5);
+  if (!rated.length) return null;
+  return rated.reduce((sum, s) => sum + PRACTICE_RATING_VALUE[s.rating], 0) / rated.length;
+}
+
+async function refreshPracticeSessionLog() {
+  const track = State.track;
+  const summaryEl = document.getElementById("practice-log-summary");
+  const scoreEl = document.getElementById("practice-log-score");
+  const listEl = document.getElementById("practice-log-sessions");
+  if (!summaryEl || !listEl) return; // guard, same spirit as the refreshTakesList typeof-checks elsewhere
+  if (!track) {
+    summaryEl.textContent = "";
+    scoreEl.textContent = "";
+    listEl.innerHTML = "";
     return;
   }
-  tracks.forEach((name, i) => {
-    const row = document.createElement("div");
-    row.className = "track-row playlist-track-row" + (name === State.track ? " selected" : "");
-    row.innerHTML = `
-      <span class="track-name">${escapeHtml(name)}</span>
-      <button class="playlist-track-up-btn" title="Move up"${i === 0 ? " disabled" : ""}>▲</button>
-      <button class="playlist-track-down-btn" title="Move down"${i === tracks.length - 1 ? " disabled" : ""}>▼</button>
-      <button class="playlist-track-remove-btn" title="Remove from playlist">✕</button>`;
-    row.addEventListener("click", () => selectTrack(name));
-    row.querySelector(".playlist-track-up-btn").addEventListener("click", (e) => {
-      e.stopPropagation(); movePlaylistTrack(i, -1);
+  let r;
+  try {
+    r = await Api.get(`/api/practice_sessions?track=${encodeURIComponent(track)}`);
+  } catch (e) {
+    return; // best-effort — a failed refresh just leaves the last-known log showing
+  }
+  if (track !== State.track) return; // a track switch raced this fetch
+
+  summaryEl.textContent = r.seconds > 0
+    ? `${fmtPracticeTime(r.seconds)} practiced total — last practiced ${r.last_practiced ? new Date(r.last_practiced * 1000).toLocaleDateString() : "never"}`
+    : "No practice time logged for this track yet.";
+
+  const score = computePracticeScore(r.sessions);
+  scoreEl.textContent = score === null
+    ? "Rate a session below to start tracking a practice score."
+    : `Practice score: ${score.toFixed(1)} / 10 (weighted toward your last ${Math.min(5, r.sessions.filter((s) => s.rating).length)} rated sessions)`;
+
+  listEl.innerHTML = "";
+  if (!r.sessions.length) return;
+  const frag = document.createDocumentFragment();
+  for (const s of r.sessions) frag.appendChild(renderPracticeSessionRow(track, s));
+  listEl.appendChild(frag);
+}
+
+function renderPracticeSessionRow(track, s) {
+  const start = new Date(s.start * 1000);
+  const row = document.createElement("div");
+  row.className = "practice-session-row";
+  row.innerHTML = `
+    <span class="practice-session-date">${escapeHtml(start.toLocaleDateString())}</span>
+    <span class="practice-session-time">${escapeHtml(start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</span>
+    <span class="practice-session-duration">${escapeHtml(fmtPracticeTime(s.seconds))}</span>
+    <div class="practice-session-rating">
+      ${PRACTICE_RATINGS.map((r) => `<button class="practice-rating-btn${s.rating === r ? " active" : ""}" data-rating="${r}" title="${PRACTICE_RATING_LABEL[r]}">${PRACTICE_RATING_EMOJI[r]}</button>`).join("")}
+    </div>
+    <input type="text" class="practice-session-notes" maxlength="60" placeholder="Notes…" value="${escapeHtml(s.notes || "")}">
+    <button class="practice-session-delete-btn" title="Delete this session">✕</button>`;
+
+  row.querySelectorAll(".practice-rating-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const rating = btn.dataset.rating;
+      try {
+        await Api.post("/api/practice_session/update", { track, id: s.id, rating });
+        // Full refresh (cheap — one fetch) rather than patching this row in
+        // place: the weighted score above depends on every session's
+        // rating, not just this one, so it needs recomputing regardless.
+        await refreshPracticeSessionLog();
+      } catch (err) { alert(`Couldn't save rating: ${err.message || err}`); }
     });
-    row.querySelector(".playlist-track-down-btn").addEventListener("click", (e) => {
-      e.stopPropagation(); movePlaylistTrack(i, 1);
-    });
-    row.querySelector(".playlist-track-remove-btn").addEventListener("click", (e) => {
-      e.stopPropagation(); removePlaylistTrack(i);
-    });
-    el.appendChild(row);
   });
+
+  const notesInput = row.querySelector(".practice-session-notes");
+  notesInput.addEventListener("change", async () => {
+    try {
+      await Api.post("/api/practice_session/update", { track, id: s.id, notes: notesInput.value });
+      s.notes = notesInput.value;
+    } catch (err) {
+      alert(`Couldn't save note: ${err.message || err}`);
+      notesInput.value = s.notes || "";
+    }
+  });
+
+  row.querySelector(".practice-session-delete-btn").addEventListener("click", async () => {
+    if (!confirm("Delete this practice session? This can't be undone.")) return;
+    try {
+      await Api.post("/api/practice_session/delete", { track, id: s.id });
+      await refreshPracticeSessionLog();
+    } catch (err) { alert(`Couldn't delete session: ${err.message || err}`); }
+  });
+
+  return row;
+}
+
+function fmtFileSize(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Play Along's Exported Tracks card (below Practice Log): real Export-panel
+// bounces for the loaded song, playable right here — no need to re-stem or
+// go back to the Mixer just to hear a finished mix. svc_exported_tracks
+// (server.py) already filters out the stem copies/recordings/ subfolder
+// that also live under output/<track>/.
+async function refreshExportedTracksList() {
+  const track = State.track;
+  const hintEl = document.getElementById("exported-tracks-hint");
+  const listEl = document.getElementById("exported-tracks-list");
+  const player = document.getElementById("exported-track-player");
+  if (!hintEl || !listEl) return;
+  player.pause();
+  player.style.display = "none";
+  player.removeAttribute("src");
+  if (!track) {
+    hintEl.textContent = "";
+    listEl.innerHTML = "";
+    return;
+  }
+  let r;
+  try {
+    r = await Api.get(`/api/exported_tracks?track=${encodeURIComponent(track)}`);
+  } catch (e) {
+    return; // best-effort — a failed refresh just leaves the last-known list showing
+  }
+  if (track !== State.track) return; // a track switch raced this fetch
+
+  hintEl.textContent = r.tracks.length
+    ? "Exported mixes for this song — play them here without re-stemming or leaving Play Along."
+    : "No exports yet for this song — use Export on the Mixer screen.";
+
+  listEl.innerHTML = "";
+  if (!r.tracks.length) return;
+  const frag = document.createDocumentFragment();
+  for (const t of r.tracks) {
+    const row = document.createElement("div");
+    row.className = "exported-track-row";
+    row.innerHTML = `
+      <span class="exported-track-name">${escapeHtml(t.name)}</span>
+      <span class="exported-track-meta">${escapeHtml(fmtFileSize(t.size))} · ${escapeHtml(new Date(t.modified * 1000).toLocaleDateString())}</span>
+      <button class="exported-track-play-btn">▶ Play</button>
+      <button class="exported-track-reveal-btn">Reveal</button>`;
+    row.querySelector(".exported-track-play-btn").addEventListener("click", () => {
+      player.src = `/api/output?path=${encodeURIComponent(t.path)}`;
+      player.style.display = "block";
+      player.play();
+    });
+    row.querySelector(".exported-track-reveal-btn").addEventListener("click", () => {
+      Api.post("/api/reveal", { path: t.path }).catch(() => {});
+    });
+    frag.appendChild(row);
+  }
+  listEl.appendChild(frag);
+}
+
+// A playlist's own group within the Library tree — header (expand toggle,
+// name, count, rename/delete) plus, when expanded, its tracks in playlist
+// order (not alphabetical) with the same reorder/remove controls the old
+// dropdown-selected playlist view had.
+function renderPlaylistGroup(name) {
+  const playlist = State.playlists[name];
+  const tracks = playlist.tracks;
+  const expanded = State.expandedPlaylists.has(name);
+
+  const group = document.createElement("div");
+  group.className = "playlist-group";
+
+  // Setlist stepping (◀/▶) and a one-click "add the loaded song here" (+)
+  // — the dropdown-driven single-currentPlaylist view had these as a
+  // separate #playlist-nav-bar; multi-membership (a track can be in any
+  // number of playlists at once, see the file-top comment) means "the"
+  // playlist is no longer a single global selection, so each group now
+  // carries its own copy instead of one shared bar.
+  const header = document.createElement("div");
+  header.className = "playlist-group-header playlist-group-header-interactive";
+  header.innerHTML = `
+    <button class="playlist-group-toggle" title="${expanded ? "Collapse" : "Expand"}">${expanded ? "▾" : "▸"}</button>
+    <span class="playlist-group-name">${escapeHtml(name)}</span>
+    <span class="playlist-group-count">${tracks.length}</span>
+    <button class="playlist-group-prev-btn" title="Previous song in this playlist"${tracks.length ? "" : " disabled"}>◀</button>
+    <button class="playlist-group-add-current-btn" title="Add the loaded song to this playlist"${(State.track && !tracks.includes(State.track)) ? "" : " disabled"}>+</button>
+    <button class="playlist-group-next-btn" title="Next song in this playlist"${tracks.length ? "" : " disabled"}>▶</button>
+    <button class="playlist-group-rename-btn" title="Rename playlist">✎</button>
+    <button class="playlist-group-delete-btn" title="Delete playlist">✕</button>`;
+  group.appendChild(header);
+
+  const toggleGroup = () => {
+    if (State.expandedPlaylists.has(name)) State.expandedPlaylists.delete(name);
+    else State.expandedPlaylists.add(name);
+    renderTrackList();
+  };
+  header.querySelector(".playlist-group-toggle").addEventListener("click", toggleGroup);
+  header.querySelector(".playlist-group-name").addEventListener("click", toggleGroup);
+
+  header.querySelector(".playlist-group-prev-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    stepPlaylistGroup(name, -1);
+  });
+  header.querySelector(".playlist-group-next-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    stepPlaylistGroup(name, 1);
+  });
+  header.querySelector(".playlist-group-add-current-btn").addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (!State.track || tracks.includes(State.track)) return;
+    tracks.push(State.track);
+    await persistPlaylists();
+    renderTrackList();
+  });
+
+  header.querySelector(".playlist-group-rename-btn").addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const newName = prompt("Rename playlist to:", name);
+    if (!newName || !newName.trim() || newName.trim() === name) return;
+    const trimmed = newName.trim();
+    if (State.playlists[trimmed]) { alert(`A playlist named "${trimmed}" already exists.`); return; }
+    State.playlists[trimmed] = State.playlists[name];
+    delete State.playlists[name];
+    if (State.expandedPlaylists.has(name)) { State.expandedPlaylists.delete(name); State.expandedPlaylists.add(trimmed); }
+    await persistPlaylists();
+    renderTrackList();
+  });
+
+  header.querySelector(".playlist-group-delete-btn").addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (!confirm(`Delete playlist "${name}"? This can't be undone (the songs themselves are untouched).`)) return;
+    delete State.playlists[name];
+    State.expandedPlaylists.delete(name);
+    await persistPlaylists();
+    renderTrackList();
+  });
+
+  if (expanded) {
+    if (!tracks.length) {
+      const hint = document.createElement("p");
+      hint.className = "hint playlist-group-empty-hint";
+      hint.textContent = 'Empty — use "+" on a track above to add it here.';
+      group.appendChild(hint);
+    } else {
+      tracks.forEach((trackName, i) => group.appendChild(renderPlaylistMemberRow(name, trackName, i, tracks.length)));
+    }
+  }
+  return group;
+}
+
+// Steps to the next/previous song in a given playlist relative to whatever
+// is currently loaded — same "stop at either end, don't wrap" and "not on
+// a song from this playlist, jump to its first" behavior the old
+// dropdown-driven stepPlaylist had.
+function stepPlaylistGroup(name, delta) {
+  const playlist = State.playlists[name];
+  if (!playlist || !playlist.tracks.length) return;
+  const i = playlist.tracks.indexOf(State.track);
+  const next = i === -1 ? 0 : i + delta;
+  if (next < 0 || next >= playlist.tracks.length) return;
+  selectTrack(playlist.tracks[next]);
+}
+
+function renderPlaylistMemberRow(playlistName, trackName, index, total) {
+  const row = document.createElement("div");
+  row.className = "track-row playlist-track-row" + (trackName === State.track ? " selected" : "");
+  row.innerHTML = `
+    <span class="track-name">${escapeHtml(trackName)}</span>
+    <button class="playlist-track-up-btn" title="Move up"${index === 0 ? " disabled" : ""}>▲</button>
+    <button class="playlist-track-down-btn" title="Move down"${index === total - 1 ? " disabled" : ""}>▼</button>
+    <button class="playlist-track-remove-btn" title="Remove from playlist">✕</button>`;
+  row.appendChild(renderAddToPlaylistControl(trackName));
+  row.addEventListener("click", () => selectTrack(trackName));
+  row.querySelector(".playlist-track-up-btn").addEventListener("click", (e) => {
+    e.stopPropagation(); movePlaylistTrack(playlistName, index, -1);
+  });
+  row.querySelector(".playlist-track-down-btn").addEventListener("click", (e) => {
+    e.stopPropagation(); movePlaylistTrack(playlistName, index, 1);
+  });
+  row.querySelector(".playlist-track-remove-btn").addEventListener("click", (e) => {
+    e.stopPropagation(); removePlaylistTrack(playlistName, index);
+  });
+  return row;
 }
 
 async function persistPlaylists() {
   await Api.post("/api/playlists", { playlists: State.playlists }).catch(() => { /* best-effort */ });
 }
 
-function movePlaylistTrack(index, delta) {
-  const playlist = State.playlists[State.currentPlaylist];
+function movePlaylistTrack(playlistName, index, delta) {
+  const playlist = State.playlists[playlistName];
   if (!playlist) return;
   const tracks = playlist.tracks;
   const j = index + delta;
@@ -779,23 +1214,12 @@ function movePlaylistTrack(index, delta) {
   persistPlaylists();
 }
 
-function removePlaylistTrack(index) {
-  const playlist = State.playlists[State.currentPlaylist];
+function removePlaylistTrack(playlistName, index) {
+  const playlist = State.playlists[playlistName];
   if (!playlist) return;
   playlist.tracks.splice(index, 1);
   renderTrackList();
   persistPlaylists();
-}
-
-// Setlist-style traversal, not a carousel — running off either end just
-// stops rather than wrapping, since a real setlist has a start and an end.
-function stepPlaylist(delta) {
-  const playlist = State.playlists[State.currentPlaylist];
-  if (!playlist || !playlist.tracks.length) return;
-  const i = playlist.tracks.indexOf(State.track);
-  const next = i === -1 ? 0 : i + delta; // not on a song from this playlist — jump to its first
-  if (next < 0 || next >= playlist.tracks.length) return;
-  selectTrack(playlist.tracks[next]);
 }
 
 async function refreshPlaylists() {
@@ -805,77 +1229,19 @@ async function refreshPlaylists() {
   } catch (e) {
     State.playlists = {};
   }
-  renderPlaylistSelect();
-}
-
-function renderPlaylistSelect() {
-  const sel = document.getElementById("playlist-select");
-  const names = Object.keys(State.playlists).sort((a, b) => a.localeCompare(b));
-  sel.innerHTML = '<option value="">— All songs —</option>';
-  for (const name of names) {
-    const opt = document.createElement("option");
-    opt.value = name; opt.textContent = name;
-    sel.appendChild(opt);
-  }
-  if (!names.includes(State.currentPlaylist)) State.currentPlaylist = "";
-  sel.value = State.currentPlaylist;
-  document.getElementById("playlist-nav-bar").style.display = State.currentPlaylist ? "flex" : "none";
 }
 
 function wirePlaylists() {
-  document.getElementById("playlist-select").addEventListener("change", (e) => {
-    State.currentPlaylist = e.target.value;
-    document.getElementById("playlist-nav-bar").style.display = State.currentPlaylist ? "flex" : "none";
-    renderTrackList();
-  });
-
   document.getElementById("playlist-new-btn").addEventListener("click", async () => {
     const name = prompt("New playlist name:");
     if (!name || !name.trim()) return;
     const trimmed = name.trim();
     if (State.playlists[trimmed]) { alert(`A playlist named "${trimmed}" already exists.`); return; }
     State.playlists[trimmed] = { tracks: State.track ? [State.track] : [] };
-    State.currentPlaylist = trimmed;
-    await persistPlaylists();
-    renderPlaylistSelect();
-    renderTrackList();
-  });
-
-  document.getElementById("playlist-rename-btn").addEventListener("click", async () => {
-    if (!State.currentPlaylist) return;
-    const newName = prompt("Rename playlist to:", State.currentPlaylist);
-    if (!newName || !newName.trim() || newName.trim() === State.currentPlaylist) return;
-    const trimmed = newName.trim();
-    if (State.playlists[trimmed]) { alert(`A playlist named "${trimmed}" already exists.`); return; }
-    State.playlists[trimmed] = State.playlists[State.currentPlaylist];
-    delete State.playlists[State.currentPlaylist];
-    State.currentPlaylist = trimmed;
-    await persistPlaylists();
-    renderPlaylistSelect();
-    renderTrackList();
-  });
-
-  document.getElementById("playlist-delete-btn").addEventListener("click", async () => {
-    if (!State.currentPlaylist) return;
-    if (!confirm(`Delete playlist "${State.currentPlaylist}"? This can't be undone (the songs themselves are untouched).`)) return;
-    delete State.playlists[State.currentPlaylist];
-    State.currentPlaylist = "";
-    await persistPlaylists();
-    renderPlaylistSelect();
-    renderTrackList();
-  });
-
-  document.getElementById("playlist-add-current-btn").addEventListener("click", async () => {
-    if (!State.currentPlaylist || !State.track) return;
-    const playlist = State.playlists[State.currentPlaylist];
-    if (!playlist || playlist.tracks.includes(State.track)) return;
-    playlist.tracks.push(State.track);
+    State.expandedPlaylists.add(trimmed);
     await persistPlaylists();
     renderTrackList();
   });
-
-  document.getElementById("playlist-prev-btn").addEventListener("click", () => stepPlaylist(-1));
-  document.getElementById("playlist-next-btn").addEventListener("click", () => stepPlaylist(1));
 }
 
 let selectTrackEpoch = 0;
@@ -947,6 +1313,8 @@ async function selectTrack(name) {
   toggleTransportClass("loop-toggle-btn", "active", State.ui.loopEnabled);
   updateModelBadge();
   if (typeof refreshTakesList === "function") refreshTakesList(); // recorder.js — takes are per-track
+  refreshPracticeSessionLog(); // per-track, same as takes above
+  refreshExportedTracksList(); // per-track, same as takes above
 
   await refreshStemsForCurrentModelAndTrack();
 }
@@ -1049,18 +1417,19 @@ function renderLanes() {
     header.className = "lane-header";
     header.innerHTML = `
       <div class="lane-name">${escapeHtml(stemDisplayName(name, stem.label))}
-        ${stem.is_derived ? '<span class="lane-derived-badge">derived</span>' : ""}</div>
+        ${stem.is_derived ? '<span class="lane-derived-badge">derived</span>' : ""}
+        <button class="lane-rename-btn" title="Rename this stem (display name only — doesn't touch its saved mix)">✎</button></div>
       <div class="lane-buttons">
         <button class="mute-btn ${State.mix.muted[name] ? "on" : ""}">M</button>
         <button class="solo-btn ${State.mix.solo === name ? "on" : ""}">S</button>
       </div>
       <div class="lane-fader">
-        <input type="range" class="lane-gain-input" min="0" max="1.5" step="0.01" value="${State.mix.gains[name] ?? 1.0}">
+        <input type="range" class="lane-gain-input" min="0" max="${isSplitCandidate(name) ? 3.0 : 1.5}" step="0.01" value="${State.mix.gains[name] ?? 1.0}">
         <span class="lane-gain-val" style="cursor:pointer" title="Double-click to reset to 100%">${Math.round((State.mix.gains[name] ?? 1.0) * 100)}%</span>
       </div>
       <div class="lane-pan-row">
         <input type="range" class="lane-pan-input" min="-1" max="1" step="0.01" value="${pan}">
-        <span class="lane-pan-val">${panLabel(pan)}</span>
+        <span class="lane-pan-val" style="cursor:pointer" title="Double-click to reset to center">${panLabel(pan)}</span>
         <button class="lane-eq-toggle-btn">EQ</button>
       </div>
       <div class="lane-eq-row" style="display:none">
@@ -1092,6 +1461,21 @@ function renderLanes() {
     lane.addEventListener("mouseenter", () => { hoveredStemName = name; });
     lane.addEventListener("mouseleave", () => { if (hoveredStemName === name) hoveredStemName = null; });
 
+    header.querySelector(".lane-rename-btn").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const current = stemDisplayName(name, stem.label);
+      const newLabel = prompt("Rename this stem to:", current);
+      if (!newLabel || !newLabel.trim() || newLabel.trim() === current) return;
+      try {
+        const r = await Api.post("/api/stem/rename", {
+          source_path: State.track, model: State.model, stem: name, new_label: newLabel.trim(),
+        });
+        stem.label = r.label; // update in place — no need to re-fetch/re-decode audio just for a label
+        renderLanes();
+      } catch (err) {
+        alert(`Rename failed: ${err.message || err}`);
+      }
+    });
     header.querySelector(".mute-btn").addEventListener("click", () => toggleMute(name));
     header.querySelector(".solo-btn").addEventListener("click", () => toggleSolo(name));
     const fader = header.querySelector(".lane-gain-input");
@@ -1111,6 +1495,10 @@ function renderLanes() {
       const v = parseFloat(e.target.value);
       setPan(name, v);
       header.querySelector(".lane-pan-val").textContent = panLabel(v);
+    });
+    header.querySelector(".lane-pan-val").addEventListener("dblclick", () => {
+      panInput.value = "0";
+      panInput.dispatchEvent(new Event("input", { bubbles: true }));
     });
     header.querySelector(".lane-eq-toggle-btn").addEventListener("click", (e) => {
       const row = header.querySelector(".lane-eq-row");
@@ -1421,7 +1809,7 @@ function resyncClickPointer(pos) {
 function playClickBlip(ctxTime, accented) {
   if (!Audio.clickBus) {
     Audio.clickBus = Audio.ctx.createGain();
-    Audio.clickBus.gain.value = 0.5;
+    Audio.clickBus.gain.value = Audio.clickVolume;
     Audio.clickBus.connect(Audio.ctx.destination);
   }
   const osc = Audio.ctx.createOscillator();
@@ -1489,9 +1877,8 @@ function tick() {
         seekTo(State.ui.loop.start);
         pos = currentPosition(); // seekTo() moves the position synchronously
       } else if (pos >= Audio.duration && Audio.duration > 0) {
-        stopPlayback();
-        pos = currentPosition(); // stopPlayback() resets position synchronously
-        setTransportText("play-btn", "▶");
+        stopPlayback(); // resets position and the play-btn icon synchronously
+        pos = currentPosition();
       }
     }
     applyLiveMuteRanges(pos);
@@ -1539,7 +1926,7 @@ function scheduleCountIn(bpm) {
   const beats = 8; // 2 bars of 4/4
   const startAt = Audio.ctx.currentTime + 0.05;
   const bus = Audio.ctx.createGain();
-  bus.gain.value = 0.5;
+  bus.gain.value = Audio.clickVolume;
   bus.connect(Audio.ctx.destination);
   for (let i = 0; i < beats; i++) {
     const osc = Audio.ctx.createOscillator();
@@ -1633,8 +2020,7 @@ function wireTransport() {
     }
   });
   onTransportClick("stop-btn", () => {
-    stopPlayback();
-    setTransportText("play-btn", "▶");
+    stopPlayback(); // resets the play-btn icon itself
     renderPlayhead(0);
     renderTimeDisplay(0);
   });
@@ -1659,6 +2045,15 @@ function wireTransport() {
     // off, updateClickStem() never advances it, so toggling on mid-song
     // would otherwise fire every skipped beat at once as a single blast.
     resyncClickPointer(currentPosition());
+  });
+  document.getElementById("click-volume-slider").addEventListener("input", (e) => {
+    // *2: max reachable gain is now 2.0, not 1.0 — the click was too quiet
+    // to cut through a busy full-band mix at its old ceiling. Slider's own
+    // 0-100/default-25 stay put (25/100*2 = 0.5, the same starting volume
+    // as before this change) so only the achievable range grew, not the
+    // slider's size or where it starts.
+    Audio.clickVolume = parseFloat(e.target.value) / 100 * 2;
+    if (Audio.clickBus) Audio.clickBus.gain.value = Audio.clickVolume;
   });
   // BT-08/BT-17: mixer-only (the ruler/timeline they mark up doesn't exist
   // in Play Along), so plain click handlers rather than onTransportClick's
@@ -2055,6 +2450,7 @@ async function runExport() {
     document.getElementById("reveal-export-btn").addEventListener("click", () => {
       Api.post("/api/reveal", { path: r.output_path }).catch(() => {});
     });
+    refreshExportedTracksList(); // Play Along's list — live-updates even if that screen isn't open right now
   } catch (e) {
     resultEl.className = "error";
     resultEl.textContent = "Export failed: " + e.message;
@@ -2120,11 +2516,13 @@ async function runSeparate(force) {
   updateSeparatingProgress(0, "queued");
 
   let polling = true;
+  let lastStatus = null;
   (async () => {
     while (polling) {
       try {
         const s = await Api.get(`/api/separate_status?source_path=${encodeURIComponent(track)}` +
           `&model=${encodeURIComponent(model)}`);
+        lastStatus = s;
         if (polling) updateSeparatingProgress(s.percent, s.status);
       } catch (e) { /* best-effort — a missed poll just means one stale frame */ }
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -2138,6 +2536,25 @@ async function runSeparate(force) {
     saveProjectDebounced();
   } catch (e) {
     polling = false;
+    // The POST above holds one HTTP connection open for as long as
+    // separation takes — several minutes for a full song — with zero
+    // response bytes until it's done. That's exactly the shape of request
+    // some VPNs/firewalls/OS network stacks silently kill as "idle," even
+    // though the job is very much alive and finishes fine server-side
+    // (svc_separate's job tracker, polled independently above, is the
+    // real source of truth). Before reporting a failure the job status
+    // says didn't happen, check whether the poller's last known status
+    // says otherwise and recover via a plain stem fetch instead of
+    // needlessly re-running the whole separation.
+    if (lastStatus && lastStatus.status === "done") {
+      try {
+        const r = await Api.get(`/api/list_stems?source_path=${encodeURIComponent(track)}` +
+          `&model=${encodeURIComponent(model)}`);
+        await onStemsLoaded(r);
+        saveProjectDebounced();
+        return;
+      } catch (e2) { /* genuinely not there after all — fall through */ }
+    }
     alert("Separation failed: " + e.message);
     await refreshStemsForCurrentModelAndTrack();
   }
@@ -2174,16 +2591,29 @@ function wireImport() {
   document.addEventListener("dragover", (e) => e.preventDefault());
   document.addEventListener("drop", (e) => e.preventDefault());
 
+  const zipDropEl = document.getElementById("import-zip-drop");
+
   // The whole sidebar is a drop target, not just the dashed box — "drop it
   // somewhere in the library area" is what people actually do, and the box
-  // alone is a small target to hit precisely.
-  sidebarEl.addEventListener("dragover", (e) => { e.preventDefault(); dropEl.classList.add("dragover"); });
+  // alone is a small target to hit precisely. Both drop zones highlight
+  // together on dragover — a browser's dragover event can't see the
+  // dragged file's name/extension (only drop can), so there's no way to
+  // know in advance which of the two it'll actually route to.
+  sidebarEl.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropEl.classList.add("dragover");
+    zipDropEl.classList.add("dragover");
+  });
   sidebarEl.addEventListener("dragleave", (e) => {
-    if (!sidebarEl.contains(e.relatedTarget)) dropEl.classList.remove("dragover");
+    if (!sidebarEl.contains(e.relatedTarget)) {
+      dropEl.classList.remove("dragover");
+      zipDropEl.classList.remove("dragover");
+    }
   });
   sidebarEl.addEventListener("drop", (e) => {
     e.preventDefault();
     dropEl.classList.remove("dragover");
+    zipDropEl.classList.remove("dragover");
     const f = e.dataTransfer.files[0];
     // A dropped .zip is a stem pack, not a single audio file to run
     // through separation — route it to the other import path rather than
@@ -2191,8 +2621,6 @@ function wireImport() {
     if (f && f.name.toLowerCase().endsWith(".zip")) importStemZip(f);
     else if (f) importFile(f);
   });
-
-  const zipDropEl = document.getElementById("import-zip-drop");
   const zipInputEl = document.getElementById("import-zip-input");
   zipDropEl.addEventListener("click", () => zipInputEl.click());
   zipInputEl.addEventListener("change", (e) => {
@@ -2211,9 +2639,24 @@ async function importFile(file) {
   dropEl.textContent = `Importing ${file.name}…`;
   try {
     const buf = await file.arrayBuffer();
+    // A file picked from a cloud-storage placeholder that hasn't actually
+    // been downloaded to this Mac yet (OneDrive/iCloud "available online
+    // only") reads back empty or short rather than throwing — the OS
+    // reports a real byte count in file.size (from its metadata) but the
+    // read itself doesn't materialize the missing content. Catching that
+    // here, before the upload, gives a specific and actionable message
+    // instead of either silently doing nothing or a generic server-side
+    // "Empty upload".
+    if (buf.byteLength === 0 || buf.byteLength < file.size) {
+      throw new Error(`"${file.name}" read back ${buf.byteLength} of its ${file.size} bytes — it's likely a cloud-storage ` +
+        `placeholder that isn't downloaded to this Mac yet. In Finder, right-click the file and choose ` +
+        `"Download Now" (or open it once in another app to force the download), then try importing again.`);
+    }
     const r = await Api.postRaw(`/api/import?filename=${encodeURIComponent(file.name)}`, buf);
     await refreshTrackList();
     await selectTrack(r.name);
+  } catch (e) {
+    alert(`Could not import "${file.name}": ${e.message}`);
   } finally {
     dropEl.innerHTML = originalHtml;
   }

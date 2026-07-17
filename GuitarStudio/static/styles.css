@@ -130,65 +130,141 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Projects UX: a small dot instead of text/an icon font — reads at a
-   glance without competing with the track name for space. */
-.track-project-dot {
-  flex: none;
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-/* V4-F4: practice log — a plain dim readout, not a badge/achievement look,
-   since the whole point is honest numbers, not gamification. */
-.track-practice-time {
-  flex: none;
-  font-size: 10px;
-  color: var(--text-dim);
-}
 
 .track-row:hover { background: var(--panel-2); }
 .track-row.selected { background: var(--accent-dim); border-left-color: var(--accent); }
 
-/* ---------- Playlists (V4-F3) — #track-list doubles as the playlist view;
-   see renderTrackList/renderPlaylistTrackList in app.js. ---------- */
+.track-rename-btn, .track-delete-btn {
+  flex: none;
+  width: 18px; height: 18px;
+  padding: 0;
+  font-size: 10px;
+  border-radius: 3px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+}
+.track-rename-btn:hover, .track-delete-btn:hover { color: var(--text); background: var(--border); }
+
+/* ---------- Playlists — #track-list is a grouped tree: "All Tracks" then
+   each playlist as a collapsible group; see renderTrackList/
+   renderPlaylistGroup in app.js. ---------- */
 
 #playlist-bar { display: flex; gap: 4px; padding: 0 12px 8px; }
-#playlist-bar select {
-  flex: 1; min-width: 0;
-  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
-  border-radius: 4px; padding: 4px 6px; font-size: 12px;
-}
 #playlist-bar button { padding: 4px 7px; font-size: 11px; flex: none; }
 
-#playlist-nav-bar { display: flex; gap: 4px; padding: 0 12px 8px; }
-#playlist-nav-bar button { flex: 1; padding: 4px 6px; font-size: 11px; }
+.playlist-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+.playlist-group-header-interactive { cursor: pointer; }
+.playlist-group-toggle {
+  flex: none;
+  width: 16px; height: 16px;
+  padding: 0;
+  font-size: 9px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+}
+.playlist-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.playlist-group-count {
+  flex: none;
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+.playlist-group-prev-btn, .playlist-group-add-current-btn, .playlist-group-next-btn,
+.playlist-group-rename-btn, .playlist-group-delete-btn {
+  flex: none;
+  padding: 1px 5px;
+  font-size: 10px;
+}
+.playlist-group-empty-hint { padding: 2px 12px 8px; }
 
 .playlist-track-row button { padding: 2px 5px; font-size: 10px; flex: none; }
+
+/* Per-track "add to playlist" — a native <details> disclosure rather than a
+   hand-rolled popover: dismissal (click the summary again) and single-open
+   state come for free, and app.js only needs to remember which track's was
+   open (openAddToPlaylistFor) to restore it across the renderTrackList()
+   a checkbox toggle triggers. */
+.track-add-to-playlist { position: relative; flex: none; }
+.track-add-to-playlist summary {
+  list-style: none;
+  cursor: pointer;
+  width: 18px; height: 18px;
+  border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+}
+.track-add-to-playlist summary::-webkit-details-marker { display: none; }
+.track-add-to-playlist summary:hover { color: var(--text); background: var(--border); }
+.track-add-to-playlist[open] summary { color: var(--accent); }
+.track-add-to-playlist-menu {
+  position: absolute;
+  top: 100%; right: 0;
+  z-index: 10;
+  margin-top: 4px;
+  min-width: 160px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+.track-add-to-playlist-menu label {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 4px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.track-add-to-playlist-menu label:hover { background: var(--panel); border-radius: 3px; }
+.track-add-to-playlist-new-btn {
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px 6px;
+  font-size: 11px;
+}
 
 #import-drop {
   margin: 10px;
   padding: 14px 8px;
   border: 1px dashed var(--border);
   border-radius: 6px;
+  background: var(--panel-2);
   text-align: center;
   color: var(--text-dim);
   font-size: 12px;
   cursor: pointer;
 }
+#import-drop:hover { color: var(--accent); }
 #import-drop.dragover { border-color: var(--accent); color: var(--accent); }
 
 #import-zip-drop {
   margin: 0 10px 10px;
-  padding: 6px 8px;
+  padding: 14px 8px;
+  border: 1px dashed var(--border);
   border-radius: 6px;
+  background: var(--panel-2);
   text-align: center;
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
-  text-decoration: underline dotted;
 }
 #import-zip-drop:hover { color: var(--accent); }
+#import-zip-drop.dragover { border-color: var(--accent); color: var(--accent); }
 
 #rip-panel { margin: 0 10px 10px; display: flex; flex-direction: column; gap: 6px; }
 #rip-device-select { width: 100%; font-size: 11px; }
@@ -223,6 +299,7 @@ body {
 #toolbar-tools { display: none; align-items: center; gap: 8px; }
 #toolbar-tools.show { display: flex; }
 #timeline-zoom-slider { width: 90px; }
+#click-volume-slider { width: 70px; }
 
 /* House rule: any button available to click is solid blue with white text
    (Separate's look, and what Click/Count-in look like whether on or off) —
@@ -339,8 +416,16 @@ button:disabled:hover { filter: none; }
 #time-display { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--text-dim); min-width: 90px; }
 #transport input[type=range] { width: 90px; }
 #loop-toggle-btn.active,
-#pa-bt-loop-toggle-btn.active { background: var(--success); border-color: var(--success); color: #fff; }
+#pa-bt-loop-toggle-btn.active,
+#count-in-toggle.active,
+#pa-bt-count-in-toggle.active,
+#click-toggle.active { background: var(--success); border-color: var(--success); color: #fff; }
 #pa-tuner-toggle.active { background: var(--success); border-color: var(--success); color: #fff; }
+/* "Zoom out" only ever shows in place of "Zoom to loop" while a zoomed-to-
+   loop view is active (see the zoom-to-loop-btn/zoom-out-btn swap in
+   app.js) — its mere visibility already means the state is running, so it
+   goes green unconditionally rather than needing an .active class. */
+#zoom-out-btn { background: var(--success); border-color: var(--success); }
 .transport-label { font-size: 11px; color: var(--text-dim); }
 
 /* ---------- Workspace / lanes ---------- */
@@ -354,6 +439,19 @@ button:disabled:hover { filter: none; }
     6-stem track grows #workspace past the viewport instead of scrolling. */
 }
 #workspace.show { display: block; }
+
+/* Chord ribbon + Click Track: pinned to the top of #workspace's scroll
+   viewport (vertical only — horizontal continuous-zoom scrolling is
+   untouched) so both stay visible while the stems below scroll past. Sits
+   above .lane-header's z-index:3 so a lane scrolling up underneath doesn't
+   poke through; opaque background for the same reason .lane-header has
+   one. */
+#sticky-timeline-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--bg);
+}
 
 .lane {
   display: grid;
@@ -387,6 +485,16 @@ button:disabled:hover { filter: none; }
    into the waveform. */
 .lane-name { font-size: 12px; display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
 .lane-derived-badge { font-size: 9px; color: var(--text-dim); background: var(--panel-2); padding: 1px 4px; border-radius: 3px; }
+.lane-rename-btn {
+  flex: none;
+  width: 16px; height: 16px;
+  padding: 0;
+  font-size: 9px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+.lane-rename-btn:hover { color: var(--text); background: var(--border); }
 .lane-buttons { display: flex; gap: 4px; }
 .lane-buttons button { width: 22px; height: 20px; padding: 0; font-size: 11px; font-weight: 600; }
 .lane-buttons button.on.mute-btn { background: var(--mute); color: #fff; border-color: var(--mute); }
@@ -435,12 +543,13 @@ button:disabled:hover { filter: none; }
   border-radius: 2px;
 }
 
-/* Continuous zoom: a sticky, blank 150px "gutter" — mirrors .lane-header's
-   width so #markers-row/#chord-lane/#ruler's timeline content lines up
-   with the waveforms below, and masks whatever scrolls underneath it as
-   the row's -content div (the actual timeToPct/pctToTime containing
-   block) scrolls past. No content of its own — these rows don't have a
-   per-row label the way a lane does. */
+/* Continuous zoom: a sticky 150px "gutter" — mirrors .lane-header's width
+   so #markers-row/#chord-lane/#ruler's timeline content lines up with the
+   waveforms below, and masks whatever scrolls underneath it as the row's
+   -content div (the actual timeToPct/pctToTime containing block) scrolls
+   past. #chord-lane/#ruler's gutters carry a row label (left-justified to
+   line up with .lane-name below); #markers-row's stays blank since that
+   row has no per-row concept to name. */
 .timeline-gutter {
   position: sticky;
   left: 0;
@@ -448,6 +557,10 @@ button:disabled:hover { filter: none; }
   width: 150px;
   z-index: 3;
   background: var(--bg);
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 /* BT-08: section markers row, above the ruler — separate strip so a
@@ -461,12 +574,19 @@ button:disabled:hover { filter: none; }
 }
 /* The actual timeToPct/pctToTime containing block — width set by
    applyZoomWidth (app.js) to whatever the current zoom multiplier
-   implies; min-width:100% keeps today's "fills the row" look at zoom=1,
-   flex-shrink:0 stops it being compressed back down once explicitly widened. */
+   implies. min-width keeps today's "fills the row" look at zoom=1
+   without ever going narrower than the space actually available next to
+   the gutter (100% of #markers-row minus its 150px .timeline-gutter and
+   8px gap — plain 100% resolves against the *whole* flex row including
+   the gutter, which was silently forcing this 158px too wide at low
+   zoom, a fixed offset from the same-width .lane-body/canvas next to it
+   that only fell inside the JS-set explicit width once zoomed in enough
+   to exceed it). flex-shrink:0 (via flex:1 0 auto) stops it being
+   compressed back down once explicitly widened. */
 #markers-row-content {
   position: relative;
   flex: 1 0 auto;
-  min-width: 100%;
+  min-width: calc(100% - 158px);
 }
 .marker-flag {
   position: absolute;
@@ -515,7 +635,7 @@ button:disabled:hover { filter: none; }
 #chord-lane-content {
   position: relative;
   flex: 1 0 auto;
-  min-width: 100%;
+  min-width: calc(100% - 158px); /* see #markers-row-content's comment */
 }
 .chord-chip {
   position: absolute;
@@ -551,7 +671,7 @@ button:disabled:hover { filter: none; }
 #ruler-content {
   position: relative;
   flex: 1 0 auto;
-  min-width: 100%;
+  min-width: calc(100% - 158px); /* see #markers-row-content's comment */
   background: var(--panel-2);
   border-radius: 3px;
   cursor: pointer;
@@ -999,6 +1119,71 @@ button:disabled:hover { filter: none; }
 #takes-player {
   width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 4px; margin: 8px 0;
 }
+
+/* ---------- Practice log (V4-F4 follow-up) ---------- */
+
+#practice-log-card { margin-top: 14px; }
+#practice-log-summary { margin-bottom: 2px; }
+#practice-log-score { margin-bottom: 8px; font-weight: 600; color: var(--text); }
+/* Max ~10 rows visible (each row is ~29px incl. border) before scrolling —
+   a long history shouldn't push Exported Tracks (and everything below it)
+   arbitrarily far down the page. */
+#practice-log-sessions { max-height: 290px; overflow-y: auto; }
+.practice-session-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 2px; border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.practice-session-row .practice-session-date { flex: none; width: 78px; color: var(--text); }
+.practice-session-row .practice-session-time { flex: none; width: 62px; color: var(--text-dim); }
+.practice-session-row .practice-session-duration { flex: none; width: 48px; color: var(--text-dim); }
+.practice-session-rating { flex: none; display: flex; gap: 1px; }
+.practice-rating-btn {
+  flex: none;
+  width: 22px; height: 22px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  background: var(--panel-2);
+  border-color: var(--border);
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+.practice-rating-btn:hover { opacity: 0.75; }
+.practice-rating-btn.active { opacity: 1; filter: none; background: var(--accent-dim); border-color: var(--accent); }
+.practice-session-notes {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px; /* matches .pa-card .hint (e.g. #rec-mode-hint's "No camera enabled…") */
+}
+.practice-session-delete-btn {
+  flex: none;
+  width: 20px; height: 20px;
+  padding: 0;
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+.practice-session-delete-btn:hover { color: #fff; background: var(--danger); border-color: var(--danger); }
+
+/* ---------- Exported tracks (below Practice Log) ---------- */
+
+#exported-tracks-card { margin-top: 14px; }
+.exported-track-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 2px; border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.exported-track-row .exported-track-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.exported-track-row .exported-track-meta { flex: none; color: var(--text-dim); font-size: 11px; }
+.exported-track-row button { flex: none; padding: 3px 7px; font-size: 11px; }
+#exported-track-player { width: 100%; margin-top: 8px; }
 
 /* ---------- Take compare (VD-08) ---------- */
 

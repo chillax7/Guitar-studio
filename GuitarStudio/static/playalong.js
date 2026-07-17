@@ -1456,6 +1456,11 @@ async function openPlayAlong() {
   document.getElementById("playalong-overlay").classList.add("show");
   document.getElementById("tonelab-overlay").classList.remove("show");
   paSetActiveScreen("playalong-open-btn");
+  // app.js only fetches the log on selectTrack — opening Play Along without
+  // just having switched tracks (the common case: pick a song on the Mixer,
+  // then open Play Along a beat later) would otherwise show whatever was
+  // last fetched, which is nothing on a fresh page load.
+  if (typeof refreshPracticeSessionLog === "function") refreshPracticeSessionLog();
 }
 
 function closePlayAlong() {
