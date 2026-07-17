@@ -233,3 +233,48 @@ DELETE) that just unlinks the one file and its `stem_labels.json` entry.
   backing-track-mixer stems (the Mixer screen), unrelated to Tone Lab's
   live-guitar signal chain — no interaction between this feature and
   Tone Lab/Play Along beyond the fuzzy-match Suggest fallback in §5.
+
+## 7. Follow-up (GP-15, shipped): timeline positioning — "patching" a track
+
+Added after the fact, at the user's request — the framing that prompted it
+was using this feature to drop in a short re-recorded piece (a solo, a
+verse) and slide it to line up with the rest of an already-separated
+track, rather than a custom stem always starting at song-time 0 like every
+other stem.
+
+**Storage:** `State.mix.offset[stemName]` — seconds from song start where
+the stem's own buffer position 0 lands. Additive to `project.mix`, same
+no-version-bump backfill pattern as BT-11's eq/pan (§4's `stem_labels.json`
+sidecar is untouched — this is a *mix* concept, live in the project file,
+not baked into the stem's own storage on disk). 0 for every ordinary stem;
+only ever becomes nonzero by dragging a custom stem's waveform.
+
+**UI:** dragging a custom stem's waveform (the same canvas every stem
+already uses for click-to-seek) left/right changes its offset live,
+distinguished from a plain click by a small pixel-movement threshold
+(mirrors `wireMuteLane`'s own click-vs-drag split). `computeOffsetPeaks`
+(a sibling of `computePeaks`, not a modification of it — keeps the hot
+path for every ordinary stem untouched) draws blank canvas before/after
+the clip's own span within the current view window.
+
+**Playback:** `startPlaybackAt`'s per-stem scheduling loop now measures
+each stem's buffer-offset from its own `stemStart` (0 for ordinary stems,
+reducing to the exact previous math) rather than always from song-time 0;
+a stem whose start hasn't been reached yet gets `.start()` scheduled into
+the future instead of at buffer position 0 immediately.
+
+**Export:** `svc_mix` gained an `offsets` param — pads that many silent
+samples onto a stem's front before mute-envelope/summing, so a bounce
+places a repositioned custom stem where it's actually heard live instead
+of silently misplacing it at song-start. This is the one place offset
+*is* baked into a non-live output, unlike per-stem EQ/pan which still
+aren't (an existing, pre-GP-15 export gap, not something this feature
+introduced or was asked to fix).
+
+**Known rough edge, not fixed:** the Speed/Tune time-stretch path (the
+"processed" audio mode, a separate AudioWorkletNode-based pitch/tempo
+engine) loads each stem's buffer as if its own position 0 were song-time
+0 — a repositioned custom stem plays from the wrong place whenever
+Speed/Tune are off their 1.0×/0¢ defaults. Fixing this would mean adding
+offset-aware seek math inside that worklet itself, separate riskier work
+not attempted in this v1.

@@ -449,6 +449,20 @@ in a new file with the same name replaces the old one, for re-recording
 an improved take without any extra cleanup step. A small **✕** next to a
 custom stem's name removes it for good (with a confirmation first).
 
+**Positioning a custom stem in the song ("patching"):** a custom stem
+doesn't have to start at the beginning — drag its waveform left or right
+(cursor turns to ↔ over it) and it slides to wherever you drop it,
+leaving blank space before/after the clip in its lane. Useful for
+dropping in a short re-recorded piece — just the solo, a fixed verse —
+and lining it up with the rest of an already-separated track instead of
+re-recording the whole thing. A plain click on a custom stem's waveform
+still seeks like any other lane; only an actual drag repositions it.
+Export bounces it at wherever you've dropped it, same as what you hear
+live. **One current limitation:** repositioning only plays back correctly
+with Speed and Tune at their defaults (1.00×/0¢) — with either one moved,
+a repositioned custom stem plays from the wrong spot until they're back
+to normal.
+
 ### 3.7 Timeline, looping, and the chord lane
 
 **Chord ribbon and Click Track stay pinned to the top of the workspace**

@@ -35,6 +35,7 @@ instead — open it directly in a browser, no server required.
 - [ ] Dragging in a same-named file again replaces the existing custom stem rather than erroring or duplicating it.
 - [ ] The **✕** next to a custom stem's name removes it (after a confirmation) and it's gone from the lane list immediately.
 - [ ] A custom stem literally named "guitar" does **not** trigger the Guitar Split panel (§5) — only a real model-produced `guitar` stem should.
+- [ ] **Custom stem timeline positioning (GP-15):** the cursor turns to ↔ over a custom stem's waveform; dragging it left/right slides the clip and leaves blank space in the lane before/after it; a plain click (no drag) still seeks the transport like any other lane instead of moving the clip. The blank/waveform boundary tracks correctly across zoom levels and after scrolling. Reloading the page keeps the clip wherever it was dropped. If playback is running when you drop it, it resyncs immediately — audible if the clip is muted or unmuted right around the seam. Exporting bounces the clip at its dropped position, not song-start. Repositioning with Speed or Tune off their defaults is a known limitation — the clip is expected to play from the wrong spot until they're back to 1.00×/0¢, not something to file as a new bug.
 
 ## 2. Rip system audio
 

@@ -817,7 +817,8 @@ def svc_split_guitar(source_path: str, model: str, stem: str, method: str) -> di
 
 def svc_mix(source_path: str, model: str, gains: dict, mute_ranges: dict,
             target_lufs: float, output_name: str, fmt: str,
-            normalize: bool = True, max_boost_db: float = engine.DEFAULT_MAX_BOOST_DB) -> dict:
+            normalize: bool = True, max_boost_db: float = engine.DEFAULT_MAX_BOOST_DB,
+            offsets: dict | None = None) -> dict:
     input_path = resolve_source_path(source_path)
     out_dir = engine.track_stem_dir(input_path, model)
     if not engine.has_cached_stems(out_dir):
@@ -856,6 +857,20 @@ def svc_mix(source_path: str, model: str, gains: dict, mute_ranges: dict,
             raise ApiError(400, f"Sample rate mismatch in {stem}.wav: {sr} vs {samplerate}")
 
         audio = audio * full_gains[stem]
+
+        # GP-15 (custom-stem timeline offset): a custom stem "patched" in
+        # partway through the song is stored as just its own short clip, at
+        # buffer-position 0 — this pads that many silent samples onto the
+        # FRONT so it lands at the right absolute position in the mix,
+        # before mute ranges (which are already in absolute song time, same
+        # coordinate system the live mixer's mute-lane paints in) are
+        # applied. A stem with no entry in offsets (every stem except a
+        # repositioned custom one) pads zero — a no-op.
+        offset_sec = (offsets or {}).get(stem, 0.0)
+        if offset_sec > 0:
+            pad_samples = int(round(offset_sec * sr))
+            audio = engine.np.pad(audio, ((pad_samples, 0), (0, 0)))
+
         spans = mute_ranges.get(stem)
         if spans:
             envelope = engine.build_mute_envelope(len(audio), sr, spans)
@@ -1695,7 +1710,8 @@ class Handler(BaseHTTPRequestHandler):
                                   body.get("output_name", ""),
                                   body.get("format", "wav"),
                                   bool(body.get("normalize", True)),
-                                  float(body.get("max_boost_db", engine.DEFAULT_MAX_BOOST_DB)))
+                                  float(body.get("max_boost_db", engine.DEFAULT_MAX_BOOST_DB)),
+                                  body.get("offsets", {}))
                 return self._send_json(200, result)
 
             if path == "/api/recording/save":

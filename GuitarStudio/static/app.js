@@ -48,10 +48,13 @@ const State = {
   analysis: {},
   stale: false,
   // mix is the live recipe AND the export recipe (minus solo — solo is
-  // monitoring-only, per ui-spec.md §5.4). eq/pan (BT-11) are additive to
-  // the existing project.mix shape, not a version bump — see selectTrack's
-  // backfill for projects saved before they existed.
-  mix: { gains: {}, muted: {}, solo: null, muteRanges: {}, eq: {}, pan: {} },
+  // monitoring-only, per ui-spec.md §5.4). eq/pan (BT-11) and offset
+  // (GP-15) are additive to the existing project.mix shape, not a version
+  // bump — see selectTrack's backfill for projects saved before they
+  // existed. offset is seconds-from-song-start a custom stem's own clip
+  // begins at (0 for every ordinary stem — dragging its waveform is the
+  // only way this ever becomes nonzero, see wireCustomStemOffsetDrag).
+  mix: { gains: {}, muted: {}, solo: null, muteRanges: {}, eq: {}, pan: {}, offset: {} },
   ui: { loop: null, loopEnabled: false },
   // XC-01 (project format v2)
   markers: [], // BT-08 (M4) — not populated until that lands
@@ -361,7 +364,10 @@ async function loadStemBuffers(stems) {
   Audio.duration = 0;
   for (const [name, buf] of entries) {
     Audio.buffers[name] = buf;
-    Audio.duration = Math.max(Audio.duration, buf.duration);
+    // GP-15: a custom stem's own clip may start partway through the song
+    // (State.mix.offset) — its actual end, for duration purposes, is that
+    // offset plus its own length, not just its length alone.
+    Audio.duration = Math.max(Audio.duration, (State.mix.offset[name] || 0) + buf.duration);
     const g = Audio.ctx.createGain();
     // BT-11: per-stem 3-band EQ + pan, applied after the mute/solo gain,
     // before the shared master bus — "carving space" without touching the
@@ -397,6 +403,11 @@ function stopSources() {
 
 function startPlaybackAt(offsetSec) {
   if (Audio.mode === "processed") {
+    // GP-15 rough edge: the time-stretch worklet loads each buffer as if
+    // its own position 0 were song-time 0, so a repositioned custom stem
+    // plays from the wrong place while Speed/Tune are off their defaults.
+    // Not fixed here — that worklet would need its own offset/seek math
+    // changed, a separate (and separately risky) piece of work.
     Audio.processedPosition = offsetSec;
     for (const name in Audio.stretchNodes) {
       Audio.stretchNodes[name].port.postMessage({ type: "transport", action: "seek", positionSec: offsetSec });
@@ -406,10 +417,21 @@ function startPlaybackAt(offsetSec) {
     stopSources();
     const startAt = Audio.ctx.currentTime + 0.05;
     for (const name in Audio.buffers) {
+      // GP-15: stemStart is 0 for every ordinary stem, so this reduces to
+      // exactly the old always-0 math below for all of them — only a
+      // repositioned custom stem ever takes the two new branches.
+      const stemStart = State.mix.offset[name] || 0;
+      const buf = Audio.buffers[name];
       const src = Audio.ctx.createBufferSource();
-      src.buffer = Audio.buffers[name];
+      src.buffer = buf;
       src.connect(Audio.gains[name]);
-      src.start(startAt, Math.max(0, Math.min(offsetSec, src.buffer.duration)));
+      if (offsetSec >= stemStart) {
+        src.start(startAt, Math.max(0, Math.min(offsetSec - stemStart, buf.duration)));
+      } else {
+        // Playhead hasn't reached this clip's start yet — schedule it to
+        // begin (from its own buffer position 0) once playback gets there.
+        src.start(startAt + (stemStart - offsetSec), 0);
+      }
       Audio.sources[name] = src;
     }
     Audio.playStartCtxTime = startAt;
@@ -568,6 +590,44 @@ function computePeaks(buffer, buckets, startSec, endSec) {
   return peaks;
 }
 
+// GP-15: same idea as computePeaks, but for a stem whose buffer doesn't
+// start at song-time 0 (a custom stem "patched" in partway through the
+// track — see State.mix.offset/wireCustomStemOffsetDrag). Each bucket
+// covers a fixed slice of the SONG's view window (not the buffer's own
+// duration); a bucket falls back to silence (0) wherever it's outside
+// [stemStart, stemStart + buffer.duration], which is what actually
+// produces the blank space before/after the clip's waveform on screen.
+// Kept as a separate function (rather than adding a stemStart param to
+// computePeaks) so the hot path for every ordinary stem — the vast
+// majority — is completely untouched.
+function computeOffsetPeaks(buffer, buckets, viewStart, viewEnd, stemStart) {
+  const key = `${buckets}:${viewStart.toFixed(3)}:${viewEnd.toFixed(3)}:${stemStart.toFixed(3)}`;
+  let byWindow = _peaksCache.get(buffer);
+  if (!byWindow) { byWindow = new Map(); _peaksCache.set(buffer, byWindow); }
+  const cached = byWindow.get(key);
+  if (cached) return cached;
+
+  const data = buffer.getChannelData(0);
+  const sr = buffer.sampleRate;
+  const viewSpan = Math.max(1e-9, viewEnd - viewStart);
+  const peaks = new Float32Array(buckets);
+  for (let i = 0; i < buckets; i++) {
+    const bucketStart = viewStart + (i / buckets) * viewSpan - stemStart; // buffer-local time
+    const bucketEnd = viewStart + ((i + 1) / buckets) * viewSpan - stemStart;
+    if (bucketEnd <= 0 || bucketStart >= buffer.duration) continue; // stays 0 — outside the clip
+    const startSample = Math.max(0, Math.floor(bucketStart * sr));
+    const endSample = Math.min(data.length, Math.ceil(bucketEnd * sr));
+    let max = 0;
+    for (let j = startSample; j < endSample; j++) {
+      const v = Math.abs(data[j]);
+      if (v > max) max = v;
+    }
+    peaks[i] = max;
+  }
+  byWindow.set(key, peaks);
+  return peaks;
+}
+
 function drawWaveform(canvas, peaks) {
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.width = Math.max(1, canvas.clientWidth) * dpr;
@@ -621,7 +681,7 @@ function migrateProjectV2(raw) {
   return {
     version: PROJECT_VERSION,
     model: raw.model,
-    mix: raw.mix || { gains: {}, muted: {}, solo: null, muteRanges: {}, eq: {}, pan: {} },
+    mix: raw.mix || { gains: {}, muted: {}, solo: null, muteRanges: {}, eq: {}, pan: {}, offset: {} },
     ui: raw.ui || { loop: null, loopEnabled: false },
     markers: [], // BT-08 (M4) — empty until that lands
     rigPresetChain: [], // GP-14 — no presets attached to a v1 project
@@ -1309,12 +1369,14 @@ async function selectTrack(name) {
   if (epoch !== selectTrackEpoch) return;
 
   State.model = (project && project.model) || State.defaultModel;
-  State.mix = (project && project.mix) || { gains: {}, muted: {}, solo: null, muteRanges: {}, eq: {}, pan: {} };
-  // BT-11: eq/pan are additive to project.mix, not a version bump — a v2
-  // project saved before they existed still has a mix object, just without
-  // these two keys, so backfill rather than assume they're always present.
+  State.mix = (project && project.mix) || { gains: {}, muted: {}, solo: null, muteRanges: {}, eq: {}, pan: {}, offset: {} };
+  // BT-11/GP-15: eq/pan/offset are additive to project.mix, not a version
+  // bump — a v2 project saved before they existed still has a mix object,
+  // just without these keys, so backfill rather than assume they're always
+  // present.
   State.mix.eq = State.mix.eq || {};
   State.mix.pan = State.mix.pan || {};
+  State.mix.offset = State.mix.offset || {};
   State.ui = (project && project.ui) || { loop: null, loopEnabled: false };
   State.markers = (project && project.markers) || [];
   // GP-14: the ordered chain of rig presets attached to this song — applied
@@ -1552,7 +1614,18 @@ function renderLanes() {
       });
     });
 
-    canvas.addEventListener("click", (e) => seekFromElement(canvas, e));
+    // GP-15: a custom stem's waveform can be dragged left/right to
+    // reposition it in the song — that gesture lives on the same canvas a
+    // normal stem uses for click-to-seek, distinguished by drag distance
+    // (wireCustomStemOffsetDrag falls back to a plain seek on a real
+    // click). Ordinary stems are unaffected — click-to-seek exactly as
+    // before.
+    if (stem.is_custom) {
+      canvas.classList.add("lane-canvas-offsettable");
+      wireCustomStemOffsetDrag(canvas, name, bucketCount);
+    } else {
+      canvas.addEventListener("click", (e) => seekFromElement(canvas, e));
+    }
 
     const buf = Audio.buffers[name];
     if (buf) {
@@ -1562,7 +1635,10 @@ function renderLanes() {
       // stretched; bucketCount (computed above) is the continuous-zoom
       // half of that same idea.
       const { start, end } = viewWindow();
-      requestAnimationFrame(() => drawWaveform(canvas, computePeaks(buf, bucketCount, start, end)));
+      const peaks = stem.is_custom
+        ? computeOffsetPeaks(buf, bucketCount, start, end, State.mix.offset[name] || 0)
+        : computePeaks(buf, bucketCount, start, end);
+      requestAnimationFrame(() => drawWaveform(canvas, peaks));
     }
   }
 
@@ -1620,6 +1696,54 @@ function setStemEq(name, band, valueDb) {
 function seekFromElement(el, e) {
   const rect = el.getBoundingClientRect();
   seekTo(pctToTime((e.clientX - rect.left) / rect.width * 100));
+}
+
+// GP-15: drag a custom stem's waveform left/right to "patch" it into a
+// different spot in the song — e.g. dropping in a re-recorded solo and
+// sliding it to line up with the rest of the track. Lives on the same
+// canvas ordinary stems use for click-to-seek; a small movement threshold
+// tells a real drag apart from a plain click (mirrors wireMuteLane's own
+// click-vs-drag distinction below), so clicking a custom stem's waveform
+// without dragging still seeks like any other lane.
+function wireCustomStemOffsetDrag(canvas, name, bucketCount) {
+  let dragStartClientX = null;
+  let dragStartOffset = 0;
+  let moved = false;
+
+  canvas.addEventListener("mousedown", (e) => {
+    dragStartClientX = e.clientX;
+    dragStartOffset = State.mix.offset[name] || 0;
+    moved = false;
+  });
+  canvas.addEventListener("mousemove", (e) => {
+    if (dragStartClientX == null) return;
+    if (Math.abs(e.clientX - dragStartClientX) > 3) moved = true;
+    if (!moved) return;
+    const { start, end } = viewWindow();
+    const rect = canvas.getBoundingClientRect();
+    const secPerPx = (end - start) / rect.width;
+    const newOffset = Math.max(0, dragStartOffset + (e.clientX - dragStartClientX) * secPerPx);
+    State.mix.offset[name] = newOffset;
+    const buf = Audio.buffers[name];
+    if (buf) drawWaveform(canvas, computeOffsetPeaks(buf, bucketCount, start, end, newOffset));
+  });
+  function finish(e) {
+    if (dragStartClientX == null) return;
+    dragStartClientX = null;
+    if (!moved) { seekFromElement(canvas, e); return; }
+    // Full re-render (not just this canvas) — the mute-lane's regions and
+    // any other absolute-time-positioned UI need to reflect the same view,
+    // and renderLanes() is what (re)computes bucketCount/viewWindow fresh.
+    renderLanes();
+    saveProjectDebounced();
+    // Offset just changed — resync playback to it immediately if running,
+    // same as any other live mix change that affects what's scheduled.
+    // (Speed/Tune's "processed" mode doesn't yet honor a custom stem's
+    // offset — a known rough edge, not something this drag can fix.)
+    if (Audio.playing && Audio.mode !== "processed") startPlaybackAt(currentPosition());
+  }
+  canvas.addEventListener("mouseup", finish);
+  canvas.addEventListener("mouseleave", () => { dragStartClientX = null; });
 }
 
 function renderMuteRegions(muteLaneEl, stemName) {
@@ -2470,6 +2594,10 @@ async function runExport() {
     model: State.model,
     gains,
     mute_ranges: State.mix.muteRanges,
+    // GP-15: a repositioned custom stem needs the same offset baked into
+    // the bounce, or it'd land at song-start instead of where it's
+    // actually heard live.
+    offsets: State.mix.offset,
     target_lufs: parseFloat(document.getElementById("export-lufs").value) || -14,
     normalize: document.getElementById("export-normalize").checked,
     max_boost_db: parseFloat(document.getElementById("export-boost-cap").value) || 10,
@@ -2522,7 +2650,7 @@ async function switchModel(model) {
   document.getElementById("model-menu").classList.remove("open");
   if (model === State.model) return;
   State.model = model;
-  State.mix = { gains: {}, muted: {}, solo: null, muteRanges: {}, eq: {}, pan: {} };
+  State.mix = { gains: {}, muted: {}, solo: null, muteRanges: {}, eq: {}, pan: {}, offset: {} };
   updateModelBadge();
   await refreshStemsForCurrentModelAndTrack();
   saveProjectDebounced();
