@@ -1808,8 +1808,15 @@ function wirePAControls() {
   document.getElementById("pa-output-level").addEventListener("input", (e) => {
     document.getElementById("pa-output-val").textContent = e.target.value + " dB";
     // V3-E2: mute lives on PA.outputMute now, so this slider owns
-    // PA.outputGain.gain outright regardless of tuner state.
-    PA.outputGain.gain.value = dbToLin(parseFloat(e.target.value));
+    // PA.outputGain.gain outright regardless of tuner state — except while
+    // bypassed, when the bypass handler below owns it instead (forced unity).
+    if (!document.getElementById("pa-output-bypass").checked) {
+      PA.outputGain.gain.value = dbToLin(parseFloat(e.target.value));
+    }
+  });
+  document.getElementById("pa-output-bypass").addEventListener("change", (e) => {
+    const level = parseFloat(document.getElementById("pa-output-level").value);
+    PA.outputGain.gain.value = e.target.checked ? 1 : dbToLin(level);
   });
 }
 
@@ -1870,11 +1877,12 @@ function paChainStageOrder() {
   return ["gate", "amp", ...(PA.pedalOrder || paLoadPedalOrder()), "output"];
 }
 
-// Amp/Output are fixed chain endpoints with no bypass control of their
-// own — always "on". Delay/Reverb share one card (#pa-fx) but each has
-// its own bypass, so the icon lights up if either is active.
+// Amp is the one fixed chain endpoint with no bypass control of its own
+// (three modes instead) — always "on". Delay/Reverb share one card
+// (#pa-fx) but each has its own bypass, so the icon lights up if either
+// is active.
 function paChainStageIsOn(id) {
-  if (id === "amp" || id === "output") return true;
+  if (id === "amp") return true;
   if (id === "fx") {
     const d = document.getElementById("pa-delay-bypass");
     const r = document.getElementById("pa-reverb-bypass");
@@ -2030,7 +2038,7 @@ function paCaptureRigState() {
       center: v("pa-wah-center"), mix: v("pa-wah-mix"),
     },
     octaver: { bypass: c("pa-octaver-bypass"), blend: v("pa-octaver-blend") },
-    output: { level: v("pa-output-level") },
+    output: { level: v("pa-output-level"), bypass: c("pa-output-bypass") },
     pedalOrder: [...PA.pedalOrder], // GP-03
   };
 }
@@ -2164,7 +2172,10 @@ async function paApplyRigState(state) {
     paSetControlValue("pa-octaver-blend", state.octaver.blend);
     paSetControlChecked("pa-octaver-bypass", state.octaver.bypass);
   }
-  if (state.output) paSetControlValue("pa-output-level", state.output.level);
+  if (state.output) {
+    paSetControlValue("pa-output-level", state.output.level);
+    paSetControlChecked("pa-output-bypass", state.output.bypass);
+  }
   // GP-03: reorder the actual DOM to match (not just PA.pedalOrder +
   // rewirePedalChain) — the drag-reorder handler treats DOM order as the
   // source of truth, so leaving it stale here would make the next drag
