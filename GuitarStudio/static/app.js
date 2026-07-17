@@ -189,6 +189,15 @@ function applyZoomWidth() {
   if (rulerContent) rulerContent.style.width = contentWidth + "px";
   if (markersContent) markersContent.style.width = contentWidth + "px";
   if (chordContent) chordContent.style.width = contentWidth + "px";
+  // The sticky header's own box (its opaque background, not just the
+  // -content children widened above) needs to grow to the same total
+  // width as a .lane row — left un-widened, it stayed at the pre-zoom fit
+  // width while .lane grew past it, so scrolling into the zoomed-in
+  // region (horizontally, or just far enough down that a lane's own
+  // border happened to sit right at the boundary) exposed lane content
+  // with no opaque header covering it there at all.
+  const stickyHeader = document.getElementById("sticky-timeline-header");
+  if (stickyHeader) stickyHeader.style.width = (contentWidth + 150 + 8) + "px";
   document.querySelectorAll(".lane").forEach((lane) => {
     lane.style.width = (contentWidth + 150 + 8) + "px";
   });
@@ -1389,12 +1398,14 @@ async function selectTrack(name) {
   State.rigPresetChain = (project && project.rigPresetChain) ||
     (project && project.rigPreset ? [project.rigPreset] : []);
   State.rigPresetIndex = (project && project.rigPresetIndex) || 0;
-  // Backfill: a project saved under the original single-cycle-key design
-  // (before forward/backward split) has the old rigPresetCycleKey field —
-  // carry it over as the forward key so an existing custom binding isn't
-  // silently lost.
-  State.rigPresetCycleKeyForward = (project && project.rigPresetCycleKeyForward) ||
-    (project && project.rigPresetCycleKey) || null;
+  // Deliberately NOT backfilled from the old single-key rigPresetCycleKey
+  // field (a design that existed only briefly before the forward/backward
+  // split, same v4.7 release) — the whole point of that split was "right
+  // arrow forward, left arrow backward" as the new DEFAULT, and carrying
+  // an old single-key value over as the forward key would silently
+  // override that default with whatever got set (even accidentally,
+  // during testing) under the old single-key UI.
+  State.rigPresetCycleKeyForward = (project && project.rigPresetCycleKeyForward) || null;
   State.rigPresetCycleKeyBackward = (project && project.rigPresetCycleKeyBackward) || null;
   State.rigPresetApplied = false;
   State.bpmOverride = (project && project.bpmOverride) || null;
