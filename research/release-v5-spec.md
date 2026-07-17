@@ -24,7 +24,14 @@ sibling AI idea — NAM-library tone matching — that lives on the Play Along
 side, not AI Lab; not re-scoped here),
 [post-v3-backlog-audit.md](post-v3-backlog-audit.md),
 [post-v4-backlog-audit.md](post-v4-backlog-audit.md) (source list for
-§9's picks).
+§9's picks), [custom-stems-spec.md](custom-stems-spec.md) (pre-v5 addition,
+scoped as its own point release rather than a v5 milestone),
+[ui-review-and-tonelab-redesign.md](ui-review-and-tonelab-redesign.md) and
+[rig-preset-chain-spec.md](rig-preset-chain-spec.md) (concrete designs for
+the Tone Lab redesign and GP-14, both candidates for §9's milestone list —
+not yet slotted in below, see each doc's own "fit" section),
+[free-distribution-license-audit.md](free-distribution-license-audit.md)
+(unrelated to feature work — the pre-friends-testing license check).
 
 ---
 
