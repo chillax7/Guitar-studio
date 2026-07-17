@@ -3,10 +3,21 @@
 **Status:** written at the user's request, alongside custom-stems-spec.md,
 as a UI/usability pass ahead of v5. §1 is commentary on the Mixer as it
 stands (no changes proposed — it reads as sound, just genuinely busy).
-§2–§4 are a full redesign proposal for Tone Lab, which the user
-specifically flagged as "amazing feature set, looks messy." Framed as its
-own milestone candidate for release-v5-spec.md — big enough to deserve
-scoping, not something to bolt on mid-sprint.
+§2–§4's Tone Lab redesign **shipped in v4.7**, alongside custom stems,
+rather than waiting for v5 — the user greenlit it directly and confirmed
+§4's open question (Option A: click an icon to open its panel; the
+panel's bypass control is the first thing shown, matching how it was
+already the first control on nearly every card). §5's icon glyph set
+shipped as simple single-color line icons (24×24, stroke=currentColor) in
+`playalong.js`'s `CHAIN_ICON_GLYPHS`, not the sprite-sheet/asset-file
+approach that might've been assumed — cheaper to maintain inline next to
+the labels they go with, and matches app-icon.svg's plain-shape style
+closely enough without a build step. The SVG signal-flow-arrow overlay
+(`#pa-flow-svg`/`paRedrawSignalFlow`) and the old per-card collapse system
+(`wirePedalboardCollapse`, localStorage collapse state) were both deleted
+outright rather than kept alongside the new icon row — the icon row's own
+order already answers "what feeds what," and "one panel open at a time"
+subsumes what per-card collapse was for.
 
 ---
 

@@ -896,85 +896,54 @@ button:disabled:hover { filter: none; }
 }
 .pa-top-card { min-width: 0; }
 
-/* The rig, packed like a masonry/Pinterest board rather than a uniform
-   grid: a real CSS grid gives every card in a row the same row height, so
-   when the Amp card is tall (Neural mode's metadata/tone-stack/output
-   controls run long) the whole row it shares becomes that tall, leaving a
-   large empty gap under every shorter card next to it — including Amp's
-   own former double-width span, which enlarged exactly the card causing
-   the problem. Multi-column flow instead lets each card take only the
-   height it needs and the next card in DOM order flow up to fill the
-   space beside a tall neighbor, in any column — 2-3 short pedal cards can
-   now sit alongside a tall Amp card instead of one wasted gap. Card DOM
-   order (and therefore reading/drag order) is unchanged; this is a pure
-   layout change. */
-#pa-pedalboard {
-  columns: 3 260px;
-  column-gap: 14px;
-  margin-bottom: 18px;
-  position: relative; /* v3.1 §3: anchors #pa-flow-svg's absolute overlay */
+/* v4.7 Tone Lab redesign (research/ui-review-and-tonelab-redesign.md §3):
+   one icon chip per rig stage, wrapping left-to-right in signal order.
+   Replaces the old masonry card stack + SVG flow-arrow overlay — the
+   icon row's own order IS the signal flow now, so no arrows are needed. */
+#pa-chain-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
 }
-#pa-pedalboard .pa-rig-card {
-  break-inside: avoid;
-  margin-bottom: 14px;
-  position: relative; /* keeps cards above the flow overlay's z-index */
-  z-index: 1;
-}
-@media (max-width: 900px) { #pa-pedalboard { columns: 1; } }
-
-/* v3.1 §3: signal-flow overlay — chain-order arrows between pedalboard
-   cards, redrawn from live getBoundingClientRect() positions by
-   paRedrawSignalFlow() (playalong.js) since the masonry layout above
-   doesn't put cards in predictable rows/columns a CSS-only line could
-   follow. Purely decorative: pointer-events none so it never intercepts
-   drag/click on the cards underneath. */
-#pa-flow-svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 0;
-  overflow: visible;
-}
-#pa-flow-svg path {
-  fill: none;
-  stroke: var(--text-dim);
-  stroke-width: 1.5;
-  opacity: 0.55;
-}
-
-.pa-card-head {
-  display: flex; align-items: center; gap: 6px;
-  margin-bottom: 10px;
-}
-.pa-card-head h3 { margin: 0; flex: 1; }
-.pa-collapse-btn {
-  background: none; border: none; color: var(--text-dim);
-  font-size: 11px; padding: 2px 4px; line-height: 1; cursor: pointer;
-}
-.pa-collapse-btn:hover { color: var(--text); }
-/* Collapsed: content hidden, header stays so the card is still a landmark
-   (and still shows its own bypass state via the browser's own summary if
-   ever added) rather than the whole card vanishing. */
-.pa-rig-card.collapsed .pa-card-content { display: none; }
-.pa-rig-card.collapsed .pa-collapse-btn { transform: rotate(-90deg); }
-
-/* GP-03: drag-to-reorder for the four post-amp effect cards. Only the
-   handle itself is draggable=true (not the whole card) so dragging a
-   slider/search box elsewhere in the card is never mistaken for a
-   reorder gesture; the drag preview still shows the whole card via
-   dataTransfer.setDragImage in wirePedalDragReorder. */
-.pa-drag-handle {
-  cursor: grab;
+.pa-chain-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 56px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
   color: var(--text-dim);
-  font-size: 13px;
-  line-height: 1;
-  flex: none;
+  cursor: pointer;
 }
-.pa-drag-handle:hover { color: var(--text); }
-.pa-pedal-draggable.dragging { opacity: 0.4; }
-.pa-pedal-draggable.drag-over { outline: 2px dashed var(--accent); outline-offset: 2px; }
+.pa-chain-icon svg { width: 22px; height: 22px; }
+.pa-chain-icon-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+/* Blue = on/available (this codebase's existing convention) — an active
+   (non-bypassed) stage lights up; a bypassed one stays dim. Whichever
+   icon's panel is currently open below also gets a highlighted border,
+   independent of its on/off color, since "open" and "on" are different
+   facts about a stage. */
+.pa-chain-icon.pa-chain-on { color: var(--accent); }
+.pa-chain-icon.pa-chain-open { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pa-chain-icon:hover { color: var(--text); }
+.pa-chain-icon.pa-chain-on:hover { color: var(--accent); }
+.pa-chain-icon.dragging { opacity: 0.4; }
+.pa-chain-icon.drag-over { outline: 2px dashed var(--accent); outline-offset: 2px; }
+
+/* Only the currently-selected stage's card is shown below the icon row —
+   "click an icon, its panel opens" replaces "all fifteen cards always
+   expanded." */
+#pa-pedalboard { margin-bottom: 18px; }
+#pa-pedalboard .pa-rig-card { display: none; }
+#pa-pedalboard .pa-rig-card.pa-chain-open { display: block; }
 
 /* V3-U1: setup-once controls (device pick/calibrate on the Input strip,
    camera/quality/sync in Record) fold into a plain <details> disclosure —

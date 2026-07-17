@@ -508,23 +508,20 @@
           <p class="hint" id="pa-preset-status"></p>
         </section>
 
-        <!-- V3-U1: the rig, pedalboard order left-to-right — Gate ->
-             Amp -> [12 reorderable stages] -> Output. Every card is
-             collapsible (wirePedalboardCollapse in playalong.js); collapse
-             state persists in localStorage today and will move into the
-             project file once XC-01 (project format v2) lands.
-             v3.1 §3: pa-flow-svg is an absolutely-positioned overlay (see
-             styles.css) that paRedrawSignalFlow() (playalong.js) draws
-             chain-order arrows into, computed from each card's live
-             getBoundingClientRect() since the masonry layout below doesn't
-             put cards in predictable rows/columns. -->
+        <!-- v4.7 Tone Lab redesign (research/ui-review-and-tonelab-redesign.md
+             §3): one small icon chip per rig stage, left-to-right in signal
+             order — Gate -> Amp -> [12 reorderable stages] -> Output.
+             #pa-chain-icons is built and kept in sync entirely by JS
+             (renderChainIcons in playalong.js), from the same PA.pedalOrder
+             array the audio graph itself uses, so the icon row's visual
+             order IS the chain order — no separate arrow overlay needed.
+             Clicking an icon opens its card below (only one open at a
+             time); every card's bypass control is still its first control,
+             so it's the first thing visible the moment a panel opens. -->
+        <div id="pa-chain-icons"></div>
         <div id="pa-pedalboard">
-          <svg id="pa-flow-svg"></svg>
           <section class="pa-card pa-rig-card" data-card-id="gate">
-            <div class="pa-card-head">
-              <h3>Noise Gate</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Noise Gate" title="Collapse">▾</button>
-            </div>
+            <h3>Noise Gate</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-gate-bypass"></div>
               <label>Threshold <span id="pa-gate-threshold-val">-50 dB</span></label>
@@ -533,10 +530,7 @@
           </section>
 
           <section class="pa-card pa-rig-card" data-card-id="amp">
-            <div class="pa-card-head">
-              <h3>Amp</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Amp" title="Collapse">▾</button>
-            </div>
+            <h3>Amp</h3>
             <div class="pa-card-content">
               <div id="pa-amp-modes" class="pa-tabs">
                 <button data-mode="clean" class="active">Clean</button>
@@ -598,12 +592,8 @@
             </div>
           </section>
 
-          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="ir">
-            <div class="pa-card-head">
-              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
-              <h3>Cab IR</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Cab IR" title="Collapse">▾</button>
-            </div>
+          <section class="pa-card pa-rig-card" data-card-id="ir">
+            <h3>Cab IR</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-ir-bypass" checked></div>
               <div class="model-browser" id="pa-ir-browser">
@@ -625,12 +615,8 @@
             </div>
           </section>
 
-          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="eq">
-            <div class="pa-card-head">
-              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
-              <h3>EQ</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse EQ" title="Collapse">▾</button>
-            </div>
+          <section class="pa-card pa-rig-card" data-card-id="eq">
+            <h3>EQ</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-eq-bypass"></div>
               <label>Bass <span id="pa-eq-bass-val">0 dB</span></label>
@@ -642,12 +628,8 @@
             </div>
           </section>
 
-          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="comp">
-            <div class="pa-card-head">
-              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
-              <h3>Compressor</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Compressor" title="Collapse">▾</button>
-            </div>
+          <section class="pa-card pa-rig-card" data-card-id="comp">
+            <h3>Compressor</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-comp-bypass" checked></div>
               <label>Threshold <span id="pa-comp-threshold-val">-24 dB</span></label>
@@ -657,12 +639,8 @@
             </div>
           </section>
 
-          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="fx">
-            <div class="pa-card-head">
-              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
-              <h3>Delay / Reverb</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Delay / Reverb" title="Collapse">▾</button>
-            </div>
+          <section class="pa-card pa-rig-card" data-card-id="fx">
+            <h3>Delay / Reverb</h3>
             <div class="pa-card-content">
               <div class="row"><label>Delay bypass</label><input type="checkbox" id="pa-delay-bypass" checked></div>
               <label>Time <span id="pa-delay-time-val">300 ms</span></label>
@@ -684,12 +662,8 @@
                is a stage exactly like ir/eq/comp/fx above: draggable,
                collapsible, with its own PA.pedalStages entry. -->
 
-          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="wah">
-            <div class="pa-card-head">
-              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
-              <h3>Auto-Wah</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Auto-Wah" title="Collapse">▾</button>
-            </div>
+          <section class="pa-card pa-rig-card" data-card-id="wah">
+            <h3>Auto-Wah</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-wah-bypass" checked></div>
               <p class="hint">LFO-driven sweep, not a treadle-controlled wah — there's no expression-pedal/MIDI input yet (that's GP-11).</p>
@@ -704,12 +678,8 @@
             </div>
           </section>
 
-          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="octaver">
-            <div class="pa-card-head">
-              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
-              <h3>Octaver</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Octaver" title="Collapse">▾</button>
-            </div>
+          <section class="pa-card pa-rig-card" data-card-id="octaver">
+            <h3>Octaver</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-octaver-bypass" checked></div>
               <p class="hint">Real octave-down via zero-crossing frequency division (classic analog-octave-pedal technique) — monophonic by construction, so it tracks single notes well and breaks up on chords.</p>
@@ -718,12 +688,8 @@
             </div>
           </section>
 
-          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="boost">
-            <div class="pa-card-head">
-              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
-              <h3>Boost / Overdrive</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Boost / Overdrive" title="Collapse">▾</button>
-            </div>
+          <section class="pa-card pa-rig-card" data-card-id="boost">
+            <h3>Boost / Overdrive</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-boost-bypass" checked></div>
               <label>Drive <span id="pa-boost-drive-val">30%</span></label>
@@ -733,12 +699,8 @@
             </div>
           </section>
 
-          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="geq">
-            <div class="pa-card-head">
-              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
-              <h3>Graphic EQ</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Graphic EQ" title="Collapse">▾</button>
-            </div>
+          <section class="pa-card pa-rig-card" data-card-id="geq">
+            <h3>Graphic EQ</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-geq-bypass"></div>
               <label>100 Hz <span id="pa-geq-100-val">0 dB</span></label>
@@ -754,12 +716,8 @@
             </div>
           </section>
 
-          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="chorus">
-            <div class="pa-card-head">
-              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
-              <h3>Chorus</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Chorus" title="Collapse">▾</button>
-            </div>
+          <section class="pa-card pa-rig-card" data-card-id="chorus">
+            <h3>Chorus</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-chorus-bypass" checked></div>
               <label>Rate <span id="pa-chorus-rate-val">1.2 Hz</span></label>
@@ -771,12 +729,8 @@
             </div>
           </section>
 
-          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="phaser">
-            <div class="pa-card-head">
-              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
-              <h3>Phaser</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Phaser" title="Collapse">▾</button>
-            </div>
+          <section class="pa-card pa-rig-card" data-card-id="phaser">
+            <h3>Phaser</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-phaser-bypass" checked></div>
               <label>Rate <span id="pa-phaser-rate-val">0.5 Hz</span></label>
@@ -788,12 +742,8 @@
             </div>
           </section>
 
-          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="flanger">
-            <div class="pa-card-head">
-              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
-              <h3>Flanger</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Flanger" title="Collapse">▾</button>
-            </div>
+          <section class="pa-card pa-rig-card" data-card-id="flanger">
+            <h3>Flanger</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-flanger-bypass" checked></div>
               <label>Rate <span id="pa-flanger-rate-val">0.3 Hz</span></label>
@@ -807,12 +757,8 @@
             </div>
           </section>
 
-          <section class="pa-card pa-rig-card pa-pedal-draggable" data-card-id="tremolo">
-            <div class="pa-card-head">
-              <span class="pa-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
-              <h3>Tremolo</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Tremolo" title="Collapse">▾</button>
-            </div>
+          <section class="pa-card pa-rig-card" data-card-id="tremolo">
+            <h3>Tremolo</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-tremolo-bypass" checked></div>
               <label>Rate <span id="pa-tremolo-rate-val">4.0 Hz</span></label>
@@ -823,10 +769,7 @@
           </section>
 
           <section class="pa-card pa-rig-card" data-card-id="output">
-            <div class="pa-card-head">
-              <h3>Output</h3>
-              <button class="pa-collapse-btn" aria-label="Collapse Output" title="Collapse">▾</button>
-            </div>
+            <h3>Output</h3>
             <div class="pa-card-content">
               <label>Level <span id="pa-output-val">0 dB</span></label>
               <input type="range" id="pa-output-level" min="-24" max="12" step="1" value="0">

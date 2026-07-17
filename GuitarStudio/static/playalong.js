@@ -421,10 +421,11 @@ async function ensurePAGraph() {
 
 // ---------------------------------------------------------------------------
 // GP-03: expanded pedalboard — IR/EQ/Comp/FX in any order, drag-to-reorder
-// (wirePedalDragReorder). PA.pedalOrder is the current sequence of those
-// four stage IDs; ampOut always feeds the first one and the last one always
-// feeds outputGain. Persisted in localStorage for continuity across
-// reloads and captured/applied by V3-T2's rig presets (paCaptureRigState/
+// (wireChainIconDragReorder, v4.7: dragging icons in #pa-chain-icons, not
+// full cards). PA.pedalOrder is the current sequence of those stage IDs;
+// ampOut always feeds the first one and the last one always feeds
+// outputGain. Persisted in localStorage for continuity across reloads
+// and captured/applied by V3-T2's rig presets (paCaptureRigState/
 // paApplyRigState) for the "save the whole rig" case.
 // ---------------------------------------------------------------------------
 const PA_PEDAL_ORDER_KEY = "gs_pa_pedal_order";
@@ -522,8 +523,8 @@ function setAmpMode(mode) {
 // microphone — live-monitored through speakers into an amp/distortion
 // chain, a textbook feedback loop (the exact scenario documented in
 // USER-MANUAL.md's auto-calibrate section, which hit the same issue from
-// the recording side). Two fixes, same idiom as pedal order/collapsed
-// cards (localStorage): remember whichever device was last actually used,
+// the recording side). Two fixes, same idiom as pedal order (localStorage):
+// remember whichever device was last actually used,
 // and — before any device has ever been chosen — prefer an input whose
 // label doesn't look like the built-in mic. Device labels are blank until
 // mic permission has been granted at least once for this origin, so on a
@@ -1818,150 +1819,154 @@ function paShowLatencyEstimate() {
 }
 
 // ---------------------------------------------------------------------------
-// V3-U1: pedalboard card collapse — every rig card (#pa-pedalboard .pa-card)
-// can fold itself down to its header. Collapse state persists in
-// localStorage per card-id today; it'll move into the project file (as UI
-// state) once XC-01 (project format v2) lands, at which point this becomes
-// the load/save path instead of the whole story.
+// v4.7 Tone Lab redesign (research/ui-review-and-tonelab-redesign.md §3):
+// one icon chip per rig stage in #pa-chain-icons, built from the same
+// PA.pedalOrder array the audio graph uses. Clicking an icon opens its
+// full card below (#pa-pedalboard .pa-rig-card.pa-chain-open) — only one
+// card is ever visible at a time, replacing the old always-all-expanded
+// card stack and its per-card collapse state. Dragging a reorderable
+// icon left/right rewrites PA.pedalOrder exactly the way dragging a full
+// card used to (same paSavePedalOrder/rewirePedalChain call, just driven
+// from the icon strip's DOM order instead of the card stack's).
 // ---------------------------------------------------------------------------
-const PA_COLLAPSE_STORAGE_KEY = "gs_pa_collapsed_cards";
+const CHAIN_ICON_LABELS = {
+  gate: "Gate", amp: "Amp", ir: "Cab IR", eq: "EQ", comp: "Comp",
+  fx: "Delay/Rev", wah: "Wah", octaver: "Octave", boost: "Boost",
+  geq: "Graphic EQ", chorus: "Chorus", phaser: "Phaser", flanger: "Flanger",
+  tremolo: "Tremolo", output: "Output",
+};
 
-function paLoadCollapsedCards() {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(PA_COLLAPSE_STORAGE_KEY) || "[]"));
-  } catch (e) {
-    return new Set(); // corrupt/foreign value — just start fresh, not fatal
+// Simple single-color line glyphs (24x24, stroke=currentColor), matching
+// app-icon.svg's plain style rather than emoji — one per stage, per
+// ui-review-and-tonelab-redesign.md §5. Chorus/phaser/flanger/tremolo are
+// deliberately variants of the same sine-wave base (a loop for phaser's
+// notch, a doubled offset wave for flanger, pulse ticks for tremolo's
+// volume wobble) since that's what actually distinguishes them sonically.
+const CHAIN_ICON_GLYPHS = {
+  gate: '<line x1="7" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="17" y2="20"/>',
+  amp: '<rect x="4" y="7" width="16" height="11" rx="1.5"/><circle cx="12" cy="12.5" r="3.2"/>',
+  ir: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><circle cx="8.5" cy="12" r="2.6"/><circle cx="15.5" cy="12" r="2.6"/>',
+  eq: '<line x1="6" y1="4" x2="6" y2="20"/><circle cx="6" cy="9" r="1.6"/><line x1="12" y1="4" x2="12" y2="20"/><circle cx="12" cy="15" r="1.6"/><line x1="18" y1="4" x2="18" y2="20"/><circle cx="18" cy="7" r="1.6"/>',
+  comp: '<polyline points="9,7 4,12 9,17"/><polyline points="15,7 20,12 15,17"/>',
+  fx: '<path d="M4 14a8 8 0 0 1 16 0"/><path d="M7.5 14a4.5 4.5 0 0 1 9 0"/>',
+  wah: '<polygon points="4,18 20,18 13,5"/>',
+  octaver: '<circle cx="12" cy="8.5" r="3.6"/><circle cx="12" cy="17" r="5.2"/>',
+  boost: '<polyline points="6,16 12,7 18,16"/><line x1="4" y1="19" x2="20" y2="19"/>',
+  geq: '<rect x="2.5" y="10" width="2.6" height="10"/><rect x="7.5" y="5" width="2.6" height="15"/><rect x="12.5" y="12" width="2.6" height="8"/><rect x="17.5" y="3" width="2.6" height="17"/>',
+  chorus: '<path d="M2 14 Q7 6 12 14 T22 14"/>',
+  phaser: '<path d="M2 14 Q7 6 12 14 T22 14"/><circle cx="12" cy="14" r="2"/>',
+  flanger: '<path d="M2 12 Q7 5 12 12 T22 12"/><path d="M2 17 Q7 10 12 17 T22 17" opacity="0.5"/>',
+  tremolo: '<path d="M2 14 Q7 6 12 14 T22 14"/><line x1="6" y1="18" x2="6" y2="21"/><line x1="12" y1="17" x2="12" y2="22"/><line x1="18" y1="18" x2="18" y2="21"/>',
+  output: '<line x1="4" y1="4" x2="4" y2="20"/><line x1="9" y1="12" x2="19" y2="12"/><polyline points="15,8 20,12 15,16"/>',
+};
+
+let paOpenChainStage = null;
+
+function paChainStageOrder() {
+  return ["gate", "amp", ...(PA.pedalOrder || paLoadPedalOrder()), "output"];
+}
+
+// Amp/Output are fixed chain endpoints with no bypass control of their
+// own — always "on". Delay/Reverb share one card (#pa-fx) but each has
+// its own bypass, so the icon lights up if either is active.
+function paChainStageIsOn(id) {
+  if (id === "amp" || id === "output") return true;
+  if (id === "fx") {
+    const d = document.getElementById("pa-delay-bypass");
+    const r = document.getElementById("pa-reverb-bypass");
+    return (d && !d.checked) || (r && !r.checked);
   }
+  const el = document.getElementById(`pa-${id}-bypass`);
+  return el ? !el.checked : true;
 }
 
-function paSaveCollapsedCards(collapsed) {
-  localStorage.setItem(PA_COLLAPSE_STORAGE_KEY, JSON.stringify([...collapsed]));
-}
-
-function wirePedalboardCollapse() {
-  const collapsed = paLoadCollapsedCards();
-  document.querySelectorAll("#pa-pedalboard .pa-rig-card").forEach((card) => {
-    const id = card.dataset.cardId;
-    const btn = card.querySelector(".pa-collapse-btn");
-    const applyState = () => card.classList.toggle("collapsed", collapsed.has(id));
-    applyState();
-    btn.addEventListener("click", () => {
-      if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
-      applyState();
-      paSaveCollapsedCards(collapsed);
-      paRedrawSignalFlow(); // v3.1 §3: card height just changed, arrows need to follow
-    });
+function paRefreshChainIconStates() {
+  document.querySelectorAll("#pa-chain-icons .pa-chain-icon").forEach((icon) => {
+    const id = icon.dataset.cardId;
+    icon.classList.toggle("pa-chain-on", paChainStageIsOn(id));
+    icon.classList.toggle("pa-chain-open", id === paOpenChainStage);
   });
 }
 
-// GP-03: rebuilds PA.pedalOrder from the DOM's current left-to-right order
-// of draggable cards, then persists and re-wires the live audio graph to
-// match — the DOM order IS the source of truth once a drag completes.
+// Click an icon -> its card becomes the one visible card below (the
+// user's confirmed interaction model: click opens the panel, and every
+// card's bypass control is already its first control, so it's the first
+// thing shown by default).
+function paOpenChainCard(id) {
+  document.querySelectorAll("#pa-pedalboard .pa-rig-card").forEach((card) => {
+    card.classList.toggle("pa-chain-open", card.dataset.cardId === id);
+  });
+  paOpenChainStage = id;
+  paRefreshChainIconStates();
+}
+
+function renderChainIcons() {
+  const strip = document.getElementById("pa-chain-icons");
+  strip.innerHTML = "";
+  paChainStageOrder().forEach((id) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pa-chain-icon";
+    btn.dataset.cardId = id;
+    btn.title = CHAIN_ICON_LABELS[id] || id;
+    if (id !== "gate" && id !== "amp" && id !== "output") btn.draggable = true;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${CHAIN_ICON_GLYPHS[id] || ""}</svg><span class="pa-chain-icon-label">${CHAIN_ICON_LABELS[id] || id}</span>`;
+    btn.addEventListener("click", () => paOpenChainCard(id));
+    strip.appendChild(btn);
+  });
+  wireChainIconDragReorder(strip);
+  paRefreshChainIconStates();
+}
+
+// Rebuilds PA.pedalOrder from the icon strip's current left-to-right
+// order (Gate/Amp/Output excluded — they're fixed, never draggable),
+// then persists and re-wires the live audio graph to match — the icon
+// strip's DOM order IS the source of truth once a drag completes, same
+// contract the old full-card drag reorder had.
 function paSyncPedalOrderFromDom() {
-  PA.pedalOrder = Array.from(document.querySelectorAll("#pa-pedalboard .pa-pedal-draggable"))
-    .map((el) => el.dataset.cardId);
+  PA.pedalOrder = Array.from(document.querySelectorAll("#pa-chain-icons .pa-chain-icon"))
+    .map((el) => el.dataset.cardId)
+    .filter((id) => id !== "gate" && id !== "amp" && id !== "output");
   paSavePedalOrder();
   rewirePedalChain();
-  paRedrawSignalFlow(); // v3.1 §3: order just changed, arrows need to follow
 }
 
-// ---------------------------------------------------------------------------
-// v3.1 §3 (post-v3-backlog-audit.md's requester asked for "a line with an
-// arrow between cards"): draws chain-order arrows into #pa-flow-svg, an
-// absolutely-positioned overlay sized to #pa-pedalboard (styles.css). Reads
-// each card's LIVE getBoundingClientRect() rather than assuming any grid —
-// #pa-pedalboard is CSS multi-column masonry (styles.css, deliberately not
-// a grid — see its own comment), so a card's visual position isn't
-// derivable from PA.pedalOrder's array order alone: consecutive cards in
-// chain order can be visually adjacent, stacked in the same column, or
-// scattered across columns depending on how tall each card is.
-//
-// Falls back to paLoadPedalOrder() when PA.pedalOrder isn't set yet (the
-// audio graph builds lazily on first "Enable Input" in ensurePAGraph, but
-// the cards themselves — and drag-reorder — are live from page load) so
-// the visual is correct even before a player has enabled their input.
-// ---------------------------------------------------------------------------
-function paRedrawSignalFlow() {
-  const svg = document.getElementById("pa-flow-svg");
-  const board = document.getElementById("pa-pedalboard");
-  if (!svg || !board) return;
+// HTML5 drag-and-drop reorder for the 12 post-amp effect icons. Icons sit
+// in a wrapping row rather than a single column or a single row, so
+// before/after is decided against the specific icon under the cursor
+// (clientX vs. its own horizontal midpoint) rather than any assumption
+// about global layout — the third variant of this drag-position math
+// this codebase has needed (vertical-column, then single-row-horizontal,
+// now a wrapping-row-horizontal).
+function wireChainIconDragReorder(strip) {
+  let draggingIcon = null;
 
-  const order = PA.pedalOrder || paLoadPedalOrder();
-  const chainIds = ["gate", "amp", ...order, "output"];
-  const cards = chainIds.map((id) => board.querySelector(`:scope > [data-card-id="${id}"]`));
-  const boardRect = board.getBoundingClientRect();
-
-  let paths = "";
-  for (let i = 0; i < cards.length - 1; i++) {
-    const a = cards[i], b = cards[i + 1];
-    if (!a || !b) continue; // defensive — shouldn't happen, but never worth a crash over a decoration
-    const ar = a.getBoundingClientRect(), br = b.getBoundingClientRect();
-    const x1 = ar.left - boardRect.left + ar.width / 2;
-    const y1 = ar.top - boardRect.top + ar.height;
-    const x2 = br.left - boardRect.left + br.width / 2;
-    const y2 = br.top - boardRect.top;
-    // Control points bow along the axis that actually separates the two
-    // cards, with a floor so same-row/adjacent cards still get a visible
-    // curve instead of a razor-straight line indistinguishable from a ruler.
-    const dx = x2 - x1, dy = y2 - y1;
-    const bow = Math.max(Math.abs(dy) * 0.5, 20) * (dy < 0 ? -1 : 1);
-    paths += `<path d="M${x1},${y1} C${x1 + dx * 0.15},${y1 + bow} ${x2 - dx * 0.15},${y2 - bow} ${x2},${y2}" marker-end="url(#pa-flow-arrow)"></path>`;
-  }
-
-  svg.innerHTML = `<defs><marker id="pa-flow-arrow" viewBox="0 0 10 10" refX="8" refY="5"
-    markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-    <path d="M0,0 L10,5 L0,10 z" style="fill: var(--text-dim); opacity: 0.7;"></path>
-  </marker></defs>${paths}`;
-}
-
-let paFlowRedrawTimer = null;
-function paScheduleFlowRedraw() {
-  clearTimeout(paFlowRedrawTimer);
-  paFlowRedrawTimer = setTimeout(paRedrawSignalFlow, 80);
-}
-
-// GP-03: HTML5 drag-and-drop reorder for the four post-amp effect cards
-// (IR/EQ/Comp/FX). Only the small grip handle in each card's header is
-// draggable=true — not the whole card — so dragging a slider or typing in
-// a model-browser search box elsewhere in the card is never mistaken for a
-// reorder gesture. setDragImage still shows the whole card being dragged.
-function wirePedalDragReorder() {
-  const pedalboard = document.getElementById("pa-pedalboard");
-  let draggingCard = null;
-
-  pedalboard.querySelectorAll(".pa-pedal-draggable").forEach((card) => {
-    const handle = card.querySelector(".pa-drag-handle");
-    handle.addEventListener("dragstart", (e) => {
-      draggingCard = card;
+  strip.querySelectorAll(".pa-chain-icon[draggable='true']").forEach((icon) => {
+    icon.addEventListener("dragstart", (e) => {
+      draggingIcon = icon;
       e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", card.dataset.cardId);
-      e.dataTransfer.setDragImage(card, 20, 20);
-      requestAnimationFrame(() => card.classList.add("dragging"));
+      e.dataTransfer.setData("text/plain", icon.dataset.cardId);
+      requestAnimationFrame(() => icon.classList.add("dragging"));
     });
-    handle.addEventListener("dragend", () => {
-      card.classList.remove("dragging");
-      pedalboard.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
-      draggingCard = null;
+    icon.addEventListener("dragend", () => {
+      icon.classList.remove("dragging");
+      strip.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
+      draggingIcon = null;
     });
 
-    card.addEventListener("dragover", (e) => {
-      if (!draggingCard || draggingCard === card) return;
+    icon.addEventListener("dragover", (e) => {
+      if (!draggingIcon || draggingIcon === icon) return;
       e.preventDefault(); // required for drop to fire at all
-      card.classList.add("drag-over");
+      icon.classList.add("drag-over");
     });
-    card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
-    card.addEventListener("drop", (e) => {
+    icon.addEventListener("dragleave", () => icon.classList.remove("drag-over"));
+    icon.addEventListener("drop", (e) => {
       e.preventDefault();
-      card.classList.remove("drag-over");
-      if (!draggingCard || draggingCard === card) return;
-      const rect = card.getBoundingClientRect();
-      // The pedalboard flows as CSS columns (top-to-bottom within each
-      // column, not left-to-right across a single row), so "before/after"
-      // is a vertical comparison — a horizontal one made sense for the
-      // old single-row grid but would misfire constantly when dragging
-      // within the same column now.
-      const before = e.clientY < rect.top + rect.height / 2;
-      card.parentNode.insertBefore(draggingCard, before ? card : card.nextSibling);
+      icon.classList.remove("drag-over");
+      if (!draggingIcon || draggingIcon === icon) return;
+      const rect = icon.getBoundingClientRect();
+      const before = e.clientX < rect.left + rect.width / 2;
+      icon.parentNode.insertBefore(draggingIcon, before ? icon : icon.nextSibling);
       paSyncPedalOrderFromDom();
     });
   });
@@ -2166,21 +2171,25 @@ async function paApplyRigState(state) {
   if (state.ampMode) setAmpMode(state.ampMode);
 }
 
-// GP-03: reorders the pedalboard's draggable card elements in the DOM to
-// match `order`, then syncs PA.pedalOrder/localStorage/the live audio
-// graph from that new DOM order — same call paSyncPedalOrderFromDom makes
-// after a manual drag, just driven by a preset instead of a mouse gesture.
+// GP-03 (v4.7: icon-strip version): reorders the icon strip's draggable
+// icon elements in the DOM to match `order`, then syncs PA.pedalOrder/
+// localStorage/the live audio graph from that new DOM order — same call
+// paSyncPedalOrderFromDom makes after a manual drag, just driven by a
+// preset instead of a mouse gesture. The underlying .pa-rig-card elements
+// don't need reordering at all now — only one is ever visible at a time
+// (paOpenChainCard), so their own DOM order is irrelevant to what the
+// player sees or drags.
 function paApplyPedalOrderToDom(order) {
-  const pedalboard = document.getElementById("pa-pedalboard");
+  const strip = document.getElementById("pa-chain-icons");
   // Gate/Amp/Output aren't draggable and must stay in their fixed slots —
-  // insert each reordered card right before Output (the fixed last card)
+  // insert each reordered icon right before Output (the fixed last icon)
   // rather than appendChild-ing to the container's end, which would push
-  // them past it.
-  const outputCard = pedalboard.querySelector('[data-card-id="output"]');
+  // it past it.
+  const outputIcon = strip.querySelector('[data-card-id="output"]');
   const byId = {};
-  pedalboard.querySelectorAll(".pa-pedal-draggable").forEach((el) => { byId[el.dataset.cardId] = el; });
+  strip.querySelectorAll(".pa-chain-icon").forEach((el) => { byId[el.dataset.cardId] = el; });
   for (const id of order) {
-    if (byId[id]) pedalboard.insertBefore(byId[id], outputCard);
+    if (byId[id]) strip.insertBefore(byId[id], outputIcon);
   }
   paSyncPedalOrderFromDom();
 }
@@ -2433,21 +2442,17 @@ function wireRiffCapture() {
 }
 
 wirePAControls();
-wirePedalboardCollapse();
-wirePedalDragReorder();
+renderChainIcons();
+paOpenChainCard("gate"); // panel is never empty on first load — Gate's bypass is the first thing shown
+// Any bypass checkbox changing (typed, dragged, or set by a rig preset
+// via paSetControlChecked, which redispatches the same "change" event)
+// should update the icon strip's on/dim state — one delegated listener
+// instead of every bypass wiring site remembering to call this itself.
+document.getElementById("pa-pedalboard").addEventListener("change", (e) => {
+  if (e.target.matches('input[type="checkbox"][id$="-bypass"]')) paRefreshChainIconStates();
+});
 wireRigPresets();
 wireRiffCapture();
 // #pa-latency-hint lives on the Output card, which moved into Tone Lab
 // along with the rest of #pa-pedalboard — this listener moved with it.
 document.getElementById("tonelab-open-btn").addEventListener("click", paShowLatencyEstimate);
-
-// v3.1 §3: initial draw + redraw on anything that can move a card — window
-// resize (covers the 900px single-column breakpoint) and a ResizeObserver
-// on the board itself (covers a card growing/shrinking for any other
-// reason, e.g. switching Amp to Neural mode, without needing every such
-// site to remember to call paRedrawSignalFlow directly).
-paRedrawSignalFlow();
-window.addEventListener("resize", paScheduleFlowRedraw);
-if (typeof ResizeObserver !== "undefined") {
-  new ResizeObserver(paScheduleFlowRedraw).observe(document.getElementById("pa-pedalboard"));
-}

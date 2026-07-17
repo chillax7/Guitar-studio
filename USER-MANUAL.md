@@ -609,10 +609,15 @@ presets); **Play Along** (§5) is where you practice and record with a rig
 you've already dialed in. Selecting a track in the Library always drops
 you back to the Mixer, closing whichever of the two rig screens was open.
 
-Every rig card, on either screen, has a collapse arrow (▾) in its header
-if you want to hide one you're not touching this session — collapse
-state is remembered between visits. A faint arrow between cards traces
-the signal-chain order live as you drag cards around.
+Tone Lab's rig is a row of small icon chips — Gate, Amp, then every pedal,
+then Output — in left-to-right signal order, wrapping to a second row if
+your window's narrow. Click an icon to open its controls in the panel
+below; only one panel is open at a time, so you're never scrolling past
+fourteen other cards to find the one you want. An icon lights up (blue)
+when its stage is active and dims when bypassed — a glance at the row
+tells you what's actually in the signal path before you open anything.
+The icon row's own left-to-right order **is** the signal-chain order, so
+there's no separate diagram to keep in sync with it.
 
 ![Tone Lab — Input strip, Rig Presets, and the pedalboard's first few cards.](docs/screenshots/tonelab-overview.jpg)
 
@@ -736,18 +741,14 @@ with a meter:
 
 **Drag-to-reorder:** all twelve of the above (Cab IR, EQ, Compressor,
 Delay/Reverb, and the eight new pedals) can be rearranged into any order —
-drag a card by the **⠿** handle in its header and drop it where you want
-it. Wah before the amp's drive, chorus after, whatever your ears want.
-Gate and Amp stay fixed at the front of the chain and Output stays fixed
-at the end; everything between them is reorderable. Order persists across
-reloads and is captured/recalled as part of a rig preset (§4.3) — save
-your whole rig, pedal order included.
-
-**Signal-flow arrows:** the pedalboard draws a faint arrow from each card
-to the next in chain order, redrawn live as you drag-reorder, collapse
-cards, or resize the window — a quick visual answer to "what feeds what"
-now that the board runs twelve-plus cards deep. Purely a visual aid; it
-has no effect on the actual audio routing.
+drag its icon left or right in the chain row and drop it where you want.
+Wah before the amp's drive, chorus after, whatever your ears want. Gate
+and Amp stay fixed at the front of the chain and Output stays fixed at
+the end; everything between them is reorderable, and dragging an icon
+past its neighbors moves its panel's place in the chain immediately, not
+just its picture. Order persists across reloads and is captured/recalled
+as part of a rig preset (§4.3) — save your whole rig, pedal order
+included.
 
 ### 4.6 Adding amp models & cab IRs
 

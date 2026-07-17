@@ -439,6 +439,8 @@ const DATA = [
     title: "11. Play Along — amp & pedalboard",
     note: "The tone-shaping heart of Play Along — work through it front-to-back.",
     items: [
+      "Tone Lab shows one small icon per stage (Gate, Amp, every pedal, Output) in a row, wrapping to a second line if the window's narrow; clicking an icon opens its controls below and only one panel is open at a time.",
+      "An icon lights up when its stage is switched on and dims when bypassed — toggling that stage's own bypass checkbox in the open panel updates its icon immediately.",
       "Switching between amp modes (Clean / Analog / Neural) is click-free, and only the active mode actually makes sound.",
       "Loading a <span class='mono'>.nam</span> capture shows either real metadata or an honest \"no metadata\" message, plus its architecture and a speed-probe result.",
       "The <strong>Drive</strong> knob audibly changes distortion character across its range.",
@@ -447,7 +449,7 @@ const DATA = [
       "Loading a parametric (non-WaveNet) capture shows a clear \"not yet supported\" message rather than failing confusingly.",
       "Picking a Cab IR turns its bypass off automatically, and toggling bypass by hand is clearly audible.",
       "EQ, Compressor, and Delay/Reverb each have an audible, independent bypass, and their sliders behave as labeled.",
-      "Dragging a pedal card by its <span class='mono'>⠿</span> handle to a new spot changes the actual signal order (compression before vs. after the cab sounds different) — Gate and Amp stay pinned at the front, Output stays pinned at the end.",
+      "Dragging a pedal's icon in the chain row to a new spot changes the actual signal order (compression before vs. after the cab sounds different) — Gate and Amp stay pinned at the front, Output stays pinned at the end.",
       "Reloading the page keeps your pedal order exactly as you left it.",
       "<strong>Suggest from this track's guitar stem</strong> proposes a plausible, clearly-labeled-as-rough tone based on the imported guitar part.",
       "The Output meter and level slider respond correctly, and a browser-reported latency estimate appears when Play Along opens.",
