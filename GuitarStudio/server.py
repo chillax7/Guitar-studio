@@ -553,7 +553,8 @@ def svc_import_stem_zip(zip_bytes: bytes, zip_filename: str) -> dict:
         "mix": {"gains": {}, "muted": {}, "solo": None, "muteRanges": {}, "eq": {}, "pan": {}},
         "ui": {"loop": None, "loopEnabled": False},
         "markers": [], "rigPresetChain": [], "rigPresetIndex": 0,
-        "rigPresetCycleKey": None, "bpmOverride": None,
+        "rigPresetCycleKeyForward": None, "rigPresetCycleKeyBackward": None,
+        "bpmOverride": None,
     })
 
     return {

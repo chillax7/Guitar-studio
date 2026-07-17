@@ -188,18 +188,22 @@ async function ensurePAGraph() {
 
   PA.ampOut = Audio.ctx.createGain();
   PA.namTonePresence.connect(PA.ampOut);
+  // v4.7: a fixed single entry point INTO the amp block, regardless of
+  // which of the 3 modes is active — lets Amp be just another stage in
+  // PA.pedalStages/PA.pedalOrder (a pedal like Wah or Boost can now sit
+  // between the guitar and the amp), without setAmpMode's own mode-switch
+  // fan-out (below) needing to know or care what precedes it in the chain.
+  PA.ampIn = Audio.ctx.createGain();
 
-  // GP-03: expanded pedalboard — IR/EQ/Comp/FX are reorderable, so unlike
-  // before, ampOut->IR->EQ->Comp->FX->output is no longer a hardwired
-  // sequence of .connect() calls. Each stage still wires its OWN internal
-  // nodes fixed (e.g. eqBass->eqMid->eqTreble, or IR's dry/wet split into
-  // its own merge) — only the boundary BETWEEN stages is dynamic, torn down
-  // and rebuilt by rewirePedalChain() according to PA.pedalOrder. Gate and
-  // Amp stay fixed at the front of the chain (see rewirePedalChain) — this
-  // is deliberately scoped to the four post-amp effects, since making Gate/
-  // Amp mode-switching itself reorderable would need new dedicated input
-  // taps decoupled from the live NAM/analog signal paths for comparatively
-  // little real benefit (gate-after-distortion is a rare want).
+  // GP-03/v4.7: IR/EQ/Comp/FX/Amp are all reorderable, so ampOut/ampIn-> IR
+  // ->EQ->Comp->FX->output is no longer a hardwired sequence of .connect()
+  // calls. Each stage still wires its OWN internal nodes fixed (e.g.
+  // eqBass->eqMid->eqTreble, or IR's dry/wet split into its own merge) —
+  // only the boundary BETWEEN stages is dynamic, torn down and rebuilt by
+  // rewirePedalChain() according to PA.pedalOrder (which now includes
+  // "amp" as one of its entries). Only Gate (always first — a noise gate
+  // ahead of any dirt pedal is the near-universal want) and Output (always
+  // last) stay genuinely fixed.
 
   // Cab IR (bypass = plain on/off, dry/wet gain pair)
   PA.convolver = Audio.ctx.createConvolver();
@@ -398,7 +402,14 @@ async function ensurePAGraph() {
   // GP-03: each stage's fan-in nodes (what the PREVIOUS stage's output must
   // connect to) and its single fan-out node (what feeds the NEXT stage).
   // v3.1: extended from 4 to 12 stages (post-v3-backlog-audit.md §2.2).
+  // v4.7: gate/amp joined this map too (previously hardcoded as fixed
+  // chain endpoints in rewirePedalChain) so Amp can be reordered like any
+  // other stage — gate's own node serves as both its fan-in and fan-out
+  // (a single AudioWorkletNode); amp's fan-in is PA.ampIn, the one node
+  // every mode's entry point fans out from (see setAmpMode).
   PA.pedalStages = {
+    gate: { inputs: [PA.gateNode], output: PA.gateNode },
+    amp: { inputs: [PA.ampIn], output: PA.ampOut },
     ir: { inputs: [PA.irDryGain, PA.convolver], output: PA.irMerge },
     eq: { inputs: [eqBass], output: eqTreble },
     comp: { inputs: [PA.compBypassDry, PA.compressor], output: PA.compMerge },
@@ -420,22 +431,26 @@ async function ensurePAGraph() {
 }
 
 // ---------------------------------------------------------------------------
-// GP-03: expanded pedalboard — IR/EQ/Comp/FX in any order, drag-to-reorder
-// (wireChainIconDragReorder, v4.7: dragging icons in #pa-chain-icons, not
-// full cards). PA.pedalOrder is the current sequence of those stage IDs;
-// ampOut always feeds the first one and the last one always feeds
-// outputGain. Persisted in localStorage for continuity across reloads
-// and captured/applied by V3-T2's rig presets (paCaptureRigState/
-// paApplyRigState) for the "save the whole rig" case.
+// GP-03: expanded pedalboard — IR/EQ/Comp/FX/Amp in any order, drag-to-
+// reorder (wireChainIconDragReorder, v4.7: dragging icons in
+// #pa-chain-icons, not full cards). PA.pedalOrder is the current sequence
+// of those stage IDs; gateNode always feeds the first one and the last
+// one always feeds outputGain. Persisted in localStorage for continuity
+// across reloads and captured/applied by V3-T2's rig presets
+// (paCaptureRigState/paApplyRigState) for the "save the whole rig" case.
 // ---------------------------------------------------------------------------
 const PA_PEDAL_ORDER_KEY = "gs_pa_pedal_order";
-// v3.1: grew from 4 to 12 stages (post-v3-backlog-audit.md §2.2). A stored
-// order that isn't a permutation of ALL 12 (e.g. an old 4-item order from
-// before this release) fails paLoadPedalOrder's validation below and falls
-// back to this default — no migration code needed, same self-healing
-// behavior the 4-stage version already had.
+// v3.1: grew from 4 to 12 stages (post-v3-backlog-audit.md §2.2). v4.7:
+// grew to 13 — Amp joined the reorderable set (a pedal like Wah or Boost
+// can now sit between the guitar and the amp), placed first by default so
+// today's "amp immediately follows gate" behavior is unchanged until a
+// player actually drags it. A stored order that isn't a permutation of
+// ALL of these (e.g. a pre-v4.7 12-item order with no "amp") fails
+// paLoadPedalOrder's validation below and falls back to this default — no
+// migration code needed, same self-healing behavior each prior stage-count
+// change already had.
 const PA_DEFAULT_PEDAL_ORDER = [
-  "wah", "octaver", "boost", "comp", "ir", "geq",
+  "amp", "wah", "octaver", "boost", "comp", "ir", "geq",
   "eq", "chorus", "phaser", "flanger", "tremolo", "fx",
 ];
 
@@ -460,12 +475,13 @@ function paSavePedalOrder() {
 // Disconnects the chain implied by PA._wiredPedalOrder (whatever's actually
 // live right now — undefined/empty the first time this runs, in which case
 // there's nothing to tear down) and connects the chain implied by
-// PA.pedalOrder. ampOut and outputGain are the fixed endpoints; everything
-// between them is exactly PA.pedalOrder, stage by stage.
+// PA.pedalOrder. gateNode and outputGain are the fixed endpoints; Amp is
+// now just one more entry inside PA.pedalOrder (v4.7) — everything between
+// gate and output is exactly PA.pedalOrder, stage by stage.
 function rewirePedalChain() {
-  const stageOutput = (id) => (id === "amp" ? PA.ampOut : PA.pedalStages[id].output);
+  const stageOutput = (id) => PA.pedalStages[id].output;
 
-  const prevChain = ["amp", ...(PA.wiredPedalOrder || [])];
+  const prevChain = ["gate", ...(PA.wiredPedalOrder || [])];
   for (let i = 0; i < prevChain.length - 1; i++) {
     const out = stageOutput(prevChain[i]);
     for (const inp of PA.pedalStages[prevChain[i + 1]].inputs) {
@@ -476,7 +492,7 @@ function rewirePedalChain() {
     try { stageOutput(prevChain[prevChain.length - 1]).disconnect(PA.outputGain); } catch (e) { /* wasn't connected */ }
   }
 
-  const chain = ["amp", ...PA.pedalOrder];
+  const chain = ["gate", ...PA.pedalOrder];
   for (let i = 0; i < chain.length - 1; i++) {
     const out = stageOutput(chain[i]);
     for (const inp of PA.pedalStages[chain[i + 1]].inputs) out.connect(inp);
@@ -488,24 +504,25 @@ function rewirePedalChain() {
 
 // ---------------------------------------------------------------------------
 // Amp mode switching — all three paths exist permanently; only the active
-// one is actually wired from the gate to ampOut (so an unselected NAM model
-// isn't burning CPU on inference nobody's listening to).
+// one is actually wired from PA.ampIn (whatever chain stage currently
+// precedes Amp — see rewirePedalChain) to ampOut, so an unselected NAM
+// model isn't burning CPU on inference nobody's listening to.
 // ---------------------------------------------------------------------------
 
 function setAmpMode(mode) {
   for (const [src, dst] of [
-    [PA.gateNode, PA.cleanGain], [PA.gateNode, PA.analogNodes.inputGain], [PA.gateNode, PA.namNode],
+    [PA.ampIn, PA.cleanGain], [PA.ampIn, PA.analogNodes.inputGain], [PA.ampIn, PA.namNode],
     [PA.cleanGain, PA.ampOut], [PA.analogNodes.output, PA.ampOut], [PA.namNode, PA.namToneBass],
   ]) {
     try { src.disconnect(dst); } catch (e) { /* wasn't connected */ }
   }
 
-  if (mode === "clean") { PA.gateNode.connect(PA.cleanGain); PA.cleanGain.connect(PA.ampOut); }
-  else if (mode === "analog") { PA.gateNode.connect(PA.analogNodes.inputGain); PA.analogNodes.output.connect(PA.ampOut); }
+  if (mode === "clean") { PA.ampIn.connect(PA.cleanGain); PA.cleanGain.connect(PA.ampOut); }
+  else if (mode === "analog") { PA.ampIn.connect(PA.analogNodes.inputGain); PA.analogNodes.output.connect(PA.ampOut); }
   // V3-T1: namNode feeds the post-NAM tone stack, not ampOut directly — the
   // tone stack's own output is permanently wired to ampOut (see
   // ensurePAGraph), so only this one connection needs to toggle with mode.
-  else if (mode === "neural") { PA.gateNode.connect(PA.namNode); PA.namNode.connect(PA.namToneBass); }
+  else if (mode === "neural") { PA.ampIn.connect(PA.namNode); PA.namNode.connect(PA.namToneBass); }
 
   PA.ampMode = mode;
   document.querySelectorAll("#pa-amp-modes button").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
@@ -1873,14 +1890,16 @@ const CHAIN_ICON_GLYPHS = {
 
 let paOpenChainStage = null;
 
+// v4.7: Amp is now part of PA.pedalOrder (reorderable, like any pedal —
+// see rewirePedalChain) rather than a separate fixed prepend; only Gate
+// (always first) and Output (always last) stay outside the array.
 function paChainStageOrder() {
-  return ["gate", "amp", ...(PA.pedalOrder || paLoadPedalOrder()), "output"];
+  return ["gate", ...(PA.pedalOrder || paLoadPedalOrder()), "output"];
 }
 
-// Amp is the one fixed chain endpoint with no bypass control of its own
-// (three modes instead) — always "on". Delay/Reverb share one card
-// (#pa-fx) but each has its own bypass, so the icon lights up if either
-// is active.
+// Amp has no bypass control of its own (three modes instead) — always
+// "on". Delay/Reverb share one card (#pa-fx) but each has its own bypass,
+// so the icon lights up if either is active.
 function paChainStageIsOn(id) {
   if (id === "amp") return true;
   if (id === "fx") {
@@ -1921,7 +1940,7 @@ function renderChainIcons() {
     btn.className = "pa-chain-icon";
     btn.dataset.cardId = id;
     btn.title = CHAIN_ICON_LABELS[id] || id;
-    if (id !== "gate" && id !== "amp" && id !== "output") btn.draggable = true;
+    if (id !== "gate" && id !== "output") btn.draggable = true;
     btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${CHAIN_ICON_GLYPHS[id] || ""}</svg><span class="pa-chain-icon-label">${CHAIN_ICON_LABELS[id] || id}</span>`;
     btn.addEventListener("click", () => paOpenChainCard(id));
     strip.appendChild(btn);
@@ -1931,20 +1950,22 @@ function renderChainIcons() {
 }
 
 // Rebuilds PA.pedalOrder from the icon strip's current left-to-right
-// order (Gate/Amp/Output excluded — they're fixed, never draggable),
-// then persists and re-wires the live audio graph to match — the icon
-// strip's DOM order IS the source of truth once a drag completes, same
-// contract the old full-card drag reorder had.
+// order (Gate/Output excluded — they're fixed, never draggable; Amp joins
+// v4.7's reorderable set, so a pedal can sit between the guitar and the
+// amp), then persists and re-wires the live audio graph to match — the
+// icon strip's DOM order IS the source of truth once a drag completes,
+// same contract the old full-card drag reorder had.
 function paSyncPedalOrderFromDom() {
   PA.pedalOrder = Array.from(document.querySelectorAll("#pa-chain-icons .pa-chain-icon"))
     .map((el) => el.dataset.cardId)
-    .filter((id) => id !== "gate" && id !== "amp" && id !== "output");
+    .filter((id) => id !== "gate" && id !== "output");
   paSavePedalOrder();
   rewirePedalChain();
 }
 
-// HTML5 drag-and-drop reorder for the 12 post-amp effect icons. Icons sit
-// in a wrapping row rather than a single column or a single row, so
+// HTML5 drag-and-drop reorder for the 13 non-fixed icons (Amp + 12
+// pedals). Icons sit in a wrapping row rather than a single column or a
+// single row, so
 // before/after is decided against the specific icon under the cursor
 // (clientX vs. its own horizontal midpoint) rather than any assumption
 // about global layout — the third variant of this drag-position math
@@ -2196,10 +2217,10 @@ async function paApplyRigState(state) {
 // player sees or drags.
 function paApplyPedalOrderToDom(order) {
   const strip = document.getElementById("pa-chain-icons");
-  // Gate/Amp/Output aren't draggable and must stay in their fixed slots —
-  // insert each reordered icon right before Output (the fixed last icon)
-  // rather than appendChild-ing to the container's end, which would push
-  // it past it.
+  // Gate/Output aren't draggable and must stay in their fixed slots —
+  // insert each reordered icon (which, since v4.7, may include "amp")
+  // right before Output (the fixed last icon) rather than appendChild-ing
+  // to the container's end, which would push it past it.
   const outputIcon = strip.querySelector('[data-card-id="output"]');
   const byId = {};
   strip.querySelectorAll(".pa-chain-icon").forEach((el) => { byId[el.dataset.cardId] = el; });
@@ -2273,8 +2294,16 @@ function paSyncPresetQuickpick() {
 // avoid an audible pop on a mid-song swap — reusing PA.outputMute, already
 // there for the tuner's instant mute, rather than adding new audio nodes.
 // ---------------------------------------------------------------------------
-const PA_DEFAULT_CYCLE_KEY = "\\";
+const PA_DEFAULT_CYCLE_KEY_FORWARD = "ArrowRight";
+const PA_DEFAULT_CYCLE_KEY_BACKWARD = "ArrowLeft";
 const PA_PRESET_SWITCH_FADE_MS = 20;
+
+// Arrow keys read as their own names ("ArrowRight") in KeyboardEvent.key —
+// display glyphs instead so the presets card doesn't spell that out.
+const PA_KEY_LABELS = { ArrowRight: "→", ArrowLeft: "←", ArrowUp: "↑", ArrowDown: "↓", " ": "Space", Escape: "Esc" };
+function paKeyLabel(key) {
+  return PA_KEY_LABELS[key] || key;
+}
 
 async function paApplyPresetWithFade(name) {
   if (!paRigPresets[name]) await paRefreshRigPresets();
@@ -2302,14 +2331,15 @@ async function paApplyPresetWithFade(name) {
   return true;
 }
 
-// Single key, single direction (advance-and-wrap), not prev/next —
-// deliberate: a real single-button footswitch (GP-11's eventual target)
-// sends one signal, not two, so the eventual MIDI/foot-pedal hookup binds
-// straight to this function with no redesign needed.
-async function paCyclePresetChain() {
+// Advance-and-wrap in either direction — forward (dir=1) and backward
+// (dir=-1) are each bound to their own key (right/left arrow by default;
+// see wireRigPresets). A single-button footswitch (GP-11's eventual
+// target) would only ever send the forward direction, so that binding
+// alone is still a straight 1:1 hookup with no redesign needed.
+async function paCyclePresetChain(dir) {
   const chain = State.rigPresetChain || [];
   if (chain.length < 2) return;
-  const nextIndex = (State.rigPresetIndex + 1) % chain.length;
+  const nextIndex = (State.rigPresetIndex + dir + chain.length) % chain.length;
   const name = chain[nextIndex];
   if (!(await paApplyPresetWithFade(name))) return;
   State.rigPresetIndex = nextIndex;
@@ -2387,8 +2417,10 @@ function renderPresetChainList() {
     row.addEventListener("click", () => paJumpToChainIndex(i));
     list.appendChild(row);
   });
-  const keyEl = document.getElementById("pa-cycle-key-display");
-  if (keyEl) keyEl.textContent = State.rigPresetCycleKey || PA_DEFAULT_CYCLE_KEY;
+  const fwdKeyEl = document.getElementById("pa-cycle-key-forward-display");
+  if (fwdKeyEl) fwdKeyEl.textContent = paKeyLabel(State.rigPresetCycleKeyForward || PA_DEFAULT_CYCLE_KEY_FORWARD);
+  const backKeyEl = document.getElementById("pa-cycle-key-backward-display");
+  if (backKeyEl) backKeyEl.textContent = paKeyLabel(State.rigPresetCycleKeyBackward || PA_DEFAULT_CYCLE_KEY_BACKWARD);
   wirePresetChainDragReorder(list);
 }
 
@@ -2518,36 +2550,47 @@ function wireRigPresets() {
 
   document.getElementById("pa-preset-chain-add-btn").addEventListener("click", paAddToChain);
 
-  document.getElementById("pa-cycle-key-change-btn").addEventListener("click", () => {
-    const statusEl = document.getElementById("pa-preset-status");
-    statusEl.textContent = "Press the key you want to use to cycle this song's rig presets… (Esc to cancel)";
-    const capture = (e) => {
-      if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return; // wait for a real key
-      e.preventDefault();
-      e.stopPropagation();
-      window.removeEventListener("keydown", capture, true);
-      if (e.key === "Escape") { statusEl.textContent = "Cycle key unchanged."; return; }
-      State.rigPresetCycleKey = e.key;
-      saveProjectDebounced();
-      renderPresetChainList();
-      statusEl.textContent = `Cycle key set to "${e.key}".`;
-    };
-    window.addEventListener("keydown", capture, true);
-  });
+  // Shared "press the next key" capture, reused for both the forward and
+  // backward rebind buttons.
+  function wireCycleKeyChangeBtn(btnId, stateField, directionLabel) {
+    document.getElementById(btnId).addEventListener("click", () => {
+      const statusEl = document.getElementById("pa-preset-status");
+      statusEl.textContent = `Press the key you want to cycle ${directionLabel}… (Esc to cancel)`;
+      const capture = (e) => {
+        if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return; // wait for a real key
+        e.preventDefault();
+        e.stopPropagation();
+        window.removeEventListener("keydown", capture, true);
+        if (e.key === "Escape") { statusEl.textContent = "Cycle key unchanged."; return; }
+        State[stateField] = e.key;
+        saveProjectDebounced();
+        renderPresetChainList();
+        statusEl.textContent = `Cycle ${directionLabel} key set to "${paKeyLabel(e.key)}".`;
+      };
+      window.addEventListener("keydown", capture, true);
+    });
+  }
+  wireCycleKeyChangeBtn("pa-cycle-key-forward-change-btn", "rigPresetCycleKeyForward", "forward");
+  wireCycleKeyChangeBtn("pa-cycle-key-backward-change-btn", "rigPresetCycleKeyBackward", "backward");
 
   // Only active while Tone Lab or Play Along is open — both share the same
   // live rig (paSetActiveScreen/openToneLab/openPlayAlong). The Mixer's own
   // shortcuts (M/S/loop/etc., app.js) are scoped to State.stems.length being
-  // loaded and stay completely unaffected, so there's no collision to
-  // design around here.
+  // loaded and stay unaffected; the one exception is Left/Right, which the
+  // Mixer's own nudge shortcut deliberately skips while either rig screen
+  // is open (app.js) so it doesn't fight this handler over the same key.
   document.addEventListener("keydown", (e) => {
     if (isTextInputFocused()) return;
     const toneLabOpen = document.getElementById("tonelab-overlay").classList.contains("show");
     const playAlongOpen = document.getElementById("playalong-overlay").classList.contains("show");
     if (!toneLabOpen && !playAlongOpen) return;
-    if (e.key !== (State.rigPresetCycleKey || PA_DEFAULT_CYCLE_KEY)) return;
-    e.preventDefault();
-    paCyclePresetChain();
+    if (e.key === (State.rigPresetCycleKeyForward || PA_DEFAULT_CYCLE_KEY_FORWARD)) {
+      e.preventDefault();
+      paCyclePresetChain(1);
+    } else if (e.key === (State.rigPresetCycleKeyBackward || PA_DEFAULT_CYCLE_KEY_BACKWARD)) {
+      e.preventDefault();
+      paCyclePresetChain(-1);
+    }
   });
 }
 

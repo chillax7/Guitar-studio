@@ -151,19 +151,22 @@
          #workspace (overflow:auto) is what makes it scrollable, no
          separate scroll wrapper needed. -->
     <div id="workspace">
-      <div id="markers-row">
-        <div class="timeline-gutter"></div>
-        <div id="markers-row-content"></div>
-      </div>
-      <!-- Chord ribbon + Click Track pinned together in one sticky wrapper
-           so both stay visible at the top of #workspace while the stem
-           lanes below scroll past vertically — a fixed pixel "top" offset
-           per row would break whenever #chord-lane is display:none (no
-           chords for this track), so the wrapper (whose height adapts
-           automatically) is sticky instead of each row individually.
+      <!-- Markers + Chord ribbon + Click Track pinned together in one
+           sticky wrapper so all three stay visible at the top of
+           #workspace while the stem lanes below scroll past vertically —
+           a fixed pixel "top" offset per row would break whenever
+           #chord-lane is display:none (no chords for this track), so the
+           wrapper (whose height adapts automatically) is sticky instead
+           of each row individually. Markers sit first so they read as
+           "just above the chord ribbon," matching where markers logically
+           belong (BT-08) rather than scrolling away with the lanes below.
            Horizontal scroll (continuous zoom) is untouched — sticky only
            pins the vertical axis. -->
       <div id="sticky-timeline-header">
+        <div id="markers-row">
+          <div class="timeline-gutter"></div>
+          <div id="markers-row-content"></div>
+        </div>
         <!-- V4-F1: one chip per beat-grid interval, positioned/widthed via
              timeToPct like every other ruler-aligned element — see
              renderChordLane in app.js. Hidden entirely (display:none) when
@@ -507,16 +510,20 @@
           <p class="hint" id="pa-preset-status"></p>
 
           <!-- GP-14: this song's ordered chain of presets (e.g.
-               Clean/Rhythm/Lead), cycled with a single key press instead of
-               always picking from the dropdown above mid-song. Clicking a
-               row jumps straight to it; dragging reorders the chain. See
-               research/rig-preset-chain-spec.md. -->
+               Pass Through/Rhythm/Lead), cycled forward/backward with a key
+               press instead of always picking from the dropdown above
+               mid-song. Clicking a row jumps straight to it; dragging
+               reorders the chain. See research/rig-preset-chain-spec.md. -->
           <label>This song's chain</label>
           <div id="pa-preset-chain-list"></div>
           <button id="pa-preset-chain-add-btn">+ Add to this song's chain</button>
           <div class="row">
-            <label style="margin:0">Cycle key: <kbd id="pa-cycle-key-display">\</kbd></label>
-            <button id="pa-cycle-key-change-btn">Change…</button>
+            <label style="margin:0">Cycle forward: <kbd id="pa-cycle-key-forward-display">→</kbd></label>
+            <button id="pa-cycle-key-forward-change-btn">Change…</button>
+          </div>
+          <div class="row">
+            <label style="margin:0">Cycle backward: <kbd id="pa-cycle-key-backward-display">←</kbd></label>
+            <button id="pa-cycle-key-backward-change-btn">Change…</button>
           </div>
         </section>
 
@@ -545,7 +552,7 @@
             <h3>Amp</h3>
             <div class="pa-card-content">
               <div id="pa-amp-modes" class="pa-tabs">
-                <button data-mode="clean" class="active">Clean</button>
+                <button data-mode="clean" class="active">Pass Through</button>
                 <button data-mode="analog">Analog</button>
                 <button data-mode="neural">Neural (NAM)</button>
               </div>

@@ -441,7 +441,7 @@ const DATA = [
     items: [
       "Tone Lab shows one small icon per stage (Gate, Amp, every pedal, Output) in a row, wrapping to a second line if the window's narrow; clicking an icon opens its controls below and only one panel is open at a time.",
       "An icon lights up when its stage is switched on and dims when bypassed — toggling that stage's own bypass checkbox in the open panel updates its icon immediately.",
-      "Switching between amp modes (Clean / Analog / Neural) is click-free, and only the active mode actually makes sound.",
+      "Switching between amp modes (Pass Through / Analog / Neural) is click-free, and only the active mode actually makes sound.",
       "Loading a <span class='mono'>.nam</span> capture shows either real metadata or an honest \"no metadata\" message, plus its architecture and a speed-probe result.",
       "The <strong>Drive</strong> knob audibly changes distortion character across its range.",
       "The post-amp tone stack (Bass / Mid / Treble / Presence) sits flat by default and each knob audibly reshapes the tone when moved.",
@@ -449,7 +449,7 @@ const DATA = [
       "Loading a parametric (non-WaveNet) capture shows a clear \"not yet supported\" message rather than failing confusingly.",
       "Picking a Cab IR turns its bypass off automatically, and toggling bypass by hand is clearly audible.",
       "EQ, Compressor, and Delay/Reverb each have an audible, independent bypass, and their sliders behave as labeled.",
-      "Dragging a pedal's icon in the chain row to a new spot changes the actual signal order (compression before vs. after the cab sounds different) — Gate and Amp stay pinned at the front, Output stays pinned at the end.",
+      "Dragging a pedal's icon in the chain row to a new spot changes the actual signal order (compression before vs. after the cab sounds different) — Gate stays pinned at the front, Output stays pinned at the end. Amp's own icon can be dragged too (e.g. Wah before the amp instead of after), same as any pedal.",
       "Reloading the page keeps your pedal order exactly as you left it.",
       "<strong>Suggest from this track's guitar stem</strong> proposes a plausible, clearly-labeled-as-rough tone based on the imported guitar part.",
       "The Output meter and level slider respond correctly, and a browser-reported latency estimate appears when Play Along opens.",
@@ -465,8 +465,8 @@ const DATA = [
       "<strong>Load</strong>ing that preset later restores every one of those settings, not just some of them.",
       "<strong>+ Add to this song's chain</strong> appends the selected preset to a numbered list; reopening Play Along on the same song automatically recalls whichever chain entry was active last, without you doing anything.",
       "Clicking a row in the chain jumps straight to it, and dragging a row reorders the chain — both persist across a reload.",
-      "Pressing the <strong>cycle key</strong> (default <span class='mono'>\\</span>) while Tone Lab or Play Along is open steps to the next chain entry and wraps back to the first after the last one; it does nothing outside those two screens or with fewer than two entries.",
-      "<strong>Change…</strong> next to the cycle key captures the next key you press (Esc cancels) and remembers it for this song specifically.",
+      "Pressing <strong>→</strong> (default forward) or <strong>←</strong> (default backward) while Tone Lab or Play Along is open steps through the chain and wraps around at either end; neither key does anything outside those two screens or with fewer than two entries — and back on the Mixer, the same arrow keys nudge the playhead as always.",
+      "<strong>Change…</strong> next to either cycle key captures the next key you press for that direction (Esc cancels) and remembers it for this song specifically.",
       "Deleting a preset that's in the current song's chain cleanly removes it from the chain too (no dangling reference, no error).",
     ]
   },

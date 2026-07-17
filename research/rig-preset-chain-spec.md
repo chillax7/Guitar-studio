@@ -6,13 +6,26 @@ under (post-v3-backlog-audit.md §4, carried into post-v4-backlog-audit.md
 §4, paired with GP-11 as **V5-B3** in release-v5-spec.md §9) — the user
 greenlit it directly. Everything below matches what shipped: the ordered
 chain (`State.rigPresetChain`/`rigPresetIndex`), the additive-field
-backfill from the old single `rigPreset` string (§2), the chain-list UI
-in Tone Lab's Rig Presets card with drag-reorder and click-to-jump (§3),
-the single advance-and-wrap cycle key with a "Change…" rebind affordance
-(§4), and the mute-ramp-unmute click-suppression around a live swap (§5),
-reusing `PA.outputMute` exactly as designed. GP-11 (the actual MIDI/
-foot-pedal mapping) remains unbuilt — `paCyclePresetChain()` is the single
-function it'll bind to, per §6's stated non-goal.
+backfill from the old single `rigPreset` string (§2), and the chain-list
+UI in Tone Lab's Rig Presets card with drag-reorder and click-to-jump
+(§3), and the mute-ramp-unmute click-suppression around a live swap (§5),
+reusing `PA.outputMute` exactly as designed.
+
+**One deviation from §4 as originally written:** after using it, the user
+asked for **two** keys instead of one — right arrow to cycle forward,
+left arrow to cycle backward, both independently rebindable — rather than
+a single advance-and-wrap key. `paCyclePresetChain(dir)` takes a direction
+(`+1`/`-1`) instead of always advancing; `State.rigPresetCycleKeyForward`/
+`rigPresetCycleKeyBackward` replace the single `rigPresetCycleKey` field
+(with a backfill: an old project's single key becomes its forward key).
+Choosing the arrow keys as the default created a real collision with the
+Mixer's own existing left/right nudge-playhead shortcut — resolved by
+having that Mixer shortcut (app.js) stand down whenever Tone Lab or Play
+Along is open, rather than having both fire on the same keypress. GP-11
+(the actual MIDI/foot-pedal mapping) remains unbuilt — a single-button
+footswitch would bind to the forward direction only, which is still a
+straight 1:1 hookup to `paCyclePresetChain(1)`, so this deviation doesn't
+cost that future integration anything.
 
 **One-line pitch:** attach an *ordered list* of rig presets to a song
 instead of just one — e.g. "Clean," "Rhythm," "Lead" for a song like

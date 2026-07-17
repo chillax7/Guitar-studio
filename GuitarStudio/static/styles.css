@@ -434,7 +434,9 @@ button:disabled:hover { filter: none; }
   display: none;
   flex: 1;
   overflow: auto;
-  padding: 10px 14px;
+  /* Top padding deliberately NOT here — see #sticky-timeline-header's own
+     padding-top for why. */
+  padding: 0 14px 10px;
   min-height: 0; /* same grid/flex shrink issue as #sidebar — otherwise a
     6-stem track grows #workspace past the viewport instead of scrolling. */
   position: relative; /* anchors #custom-stem-dropzone's overlay below */
@@ -463,17 +465,26 @@ button:disabled:hover { filter: none; }
 }
 #custom-stem-dropzone.show { display: flex; }
 
-/* Chord ribbon + Click Track: pinned to the top of #workspace's scroll
-   viewport (vertical only — horizontal continuous-zoom scrolling is
-   untouched) so both stay visible while the stems below scroll past. Sits
-   above .lane-header's z-index:3 so a lane scrolling up underneath doesn't
-   poke through; opaque background for the same reason .lane-header has
-   one. */
+/* Markers + Chord ribbon + Click Track: pinned to the top of #workspace's
+   scroll viewport (vertical only — horizontal continuous-zoom scrolling is
+   untouched) so all three stay visible while the stems below scroll past.
+   Sits above .lane-header's z-index:3 so a lane scrolling up underneath
+   doesn't poke through; opaque background for the same reason .lane-header
+   has one.
+   padding-top carries the visual gap that used to live on #workspace's own
+   top padding — position:sticky's "top" offset is measured from the
+   scrollport's PADDING edge, so a padding-top on the scroll container
+   itself leaves an always-transparent band between the scrollport's
+   visible top edge and where this element actually sticks, and once
+   scrolled, a lane scrolls right up into that band since nothing opaque
+   claims it. Moving the same 10px in here instead means it's inside this
+   element's own opaque box, not a gap outside it. */
 #sticky-timeline-header {
   position: sticky;
   top: 0;
   z-index: 4;
   background: var(--bg);
+  padding-top: 10px;
 }
 
 .lane {

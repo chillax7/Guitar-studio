@@ -19,6 +19,18 @@ outright rather than kept alongside the new icon row — the icon row's own
 order already answers "what feeds what," and "one panel open at a time"
 subsumes what per-card collapse was for.
 
+**One later change to §3's design:** Amp joined the reorderable set
+instead of staying a fixed anchor alongside Gate/Output (a follow-up
+request, after using it — pedals like Wah or Boost need to sit *between*
+the guitar and the amp for some rigs, not always after it). §4.2's "Gate/
+Amp/Output keep a subtle visual distinction" line below was never actually
+built as CSS, so nothing needed unwinding there; the only real changes
+were in `playalong.js` (`PA.ampIn` as a fixed entry point into whichever
+amp mode is active, `PA.pedalStages.amp`/`.gate` joining the same generic
+fan-in/fan-out map every pedal already used, and Amp joining
+`PA_DEFAULT_PEDAL_ORDER`/the icon row's draggable set). Gate and Output
+remain the only two genuinely fixed positions.
+
 ---
 
 ## 1. Mixer — commentary

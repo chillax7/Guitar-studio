@@ -61,7 +61,8 @@ const State = {
   // selectTrack for the backfill from that older shape).
   rigPresetChain: [],
   rigPresetIndex: 0,
-  rigPresetCycleKey: null, // null = use the app-wide default ("\") — see playalong.js
+  rigPresetCycleKeyForward: null, // null = use the app-wide default ("ArrowRight") — see playalong.js
+  rigPresetCycleKeyBackward: null, // null = use the app-wide default ("ArrowLeft") — see playalong.js
   rigPresetApplied: false, // has paApplyAttachedRigPreset already run for the current track
   bpmOverride: null, // user-corrected BPM (×2/½ octave-error fix), overrides State.analysis.bpm once loaded
 };
@@ -625,7 +626,8 @@ function migrateProjectV2(raw) {
     markers: [], // BT-08 (M4) — empty until that lands
     rigPresetChain: [], // GP-14 — no presets attached to a v1 project
     rigPresetIndex: 0,
-    rigPresetCycleKey: null,
+    rigPresetCycleKeyForward: null,
+    rigPresetCycleKeyBackward: null,
     bpmOverride: null, // no tempo correction recorded on a v1 project
   };
 }
@@ -645,7 +647,8 @@ function saveProjectDebounced() {
         markers: State.markers || [],
         rigPresetChain: State.rigPresetChain || [],
         rigPresetIndex: State.rigPresetIndex || 0,
-        rigPresetCycleKey: State.rigPresetCycleKey || null,
+        rigPresetCycleKeyForward: State.rigPresetCycleKeyForward || null,
+        rigPresetCycleKeyBackward: State.rigPresetCycleKeyBackward || null,
         bpmOverride: State.bpmOverride || null,
       },
     }).catch(() => { /* best-effort */ });
@@ -1324,7 +1327,13 @@ async function selectTrack(name) {
   State.rigPresetChain = (project && project.rigPresetChain) ||
     (project && project.rigPreset ? [project.rigPreset] : []);
   State.rigPresetIndex = (project && project.rigPresetIndex) || 0;
-  State.rigPresetCycleKey = (project && project.rigPresetCycleKey) || null;
+  // Backfill: a project saved under the original single-cycle-key design
+  // (before forward/backward split) has the old rigPresetCycleKey field —
+  // carry it over as the forward key so an existing custom binding isn't
+  // silently lost.
+  State.rigPresetCycleKeyForward = (project && project.rigPresetCycleKeyForward) ||
+    (project && project.rigPresetCycleKey) || null;
+  State.rigPresetCycleKeyBackward = (project && project.rigPresetCycleKeyBackward) || null;
   State.rigPresetApplied = false;
   State.bpmOverride = (project && project.bpmOverride) || null;
   toggleTransportClass("loop-toggle-btn", "active", State.ui.loopEnabled);
@@ -3018,14 +3027,22 @@ function wireKeyboardShortcuts() {
         if (typeof toggleRecording === "function") toggleRecording();
         break;
       case "ArrowLeft":
+      case "ArrowRight":
+        // Right/Left are now the default rig-preset cycle keys (GP-14)
+        // while either rig screen is open — the Mixer's own nudge action
+        // for these keys only applies when it's actually what's showing,
+        // so it doesn't fight playalong.js's keydown handler over the
+        // same keypress.
+        if (document.getElementById("tonelab-overlay").classList.contains("show") ||
+            document.getElementById("playalong-overlay").classList.contains("show")) break;
         e.preventDefault();
         // BT-17: Alt = finer 100ms nudge, for lining up a loop/mute edge to
         // an exact transient rather than the plain 1s step's coarse range.
-        seekTo(Math.max(0, currentPosition() - (e.shiftKey ? 5 : e.altKey ? 0.1 : 1)));
-        break;
-      case "ArrowRight":
-        e.preventDefault();
-        seekTo(Math.min(Audio.duration, currentPosition() + (e.shiftKey ? 5 : e.altKey ? 0.1 : 1)));
+        if (e.key === "ArrowLeft") {
+          seekTo(Math.max(0, currentPosition() - (e.shiftKey ? 5 : e.altKey ? 0.1 : 1)));
+        } else {
+          seekTo(Math.min(Audio.duration, currentPosition() + (e.shiftKey ? 5 : e.altKey ? 0.1 : 1)));
+        }
         break;
       default:
         break;

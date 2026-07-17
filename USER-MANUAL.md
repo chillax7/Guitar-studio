@@ -643,7 +643,7 @@ clipping.
 
 ### 4.2 Amp — three modes
 
-- **Clean:** dry signal, no coloration — just gate → EQ → comp → delay/reverb.
+- **Pass Through:** dry signal, no coloration — just gate → EQ → comp → delay/reverb.
 - **Analog:** a drive stage (soft-clip waveshaper) plus a 3-band tone
   stack (bass/mid/treble).
 - **Neural (NAM):** loads a `.nam` neural amp capture and runs real-time
@@ -697,25 +697,24 @@ drag a chain row up or down to reorder it, or click **✕** to remove it.
 Clicking any row in the chain jumps straight to it, live. The active entry
 is highlighted so a glance at Tone Lab tells you which one is playing.
 
-**Cycle key** steps through this song's chain one at a time, wrapping back
-to the top after the last entry — deliberately a single advance-and-wrap
-key rather than separate next/previous keys, since a real single-button
-footswitch (planned for later) sends one signal, not two. The default key
-is **\\** (backslash); click **Change…** next to it and press whatever key
-you'd rather use — it's remembered per song, right alongside the chain
-itself. The cycle key only does anything while Tone Lab or Play Along is
-open (both screens share the same live rig), so it never collides with the
-Mixer's own shortcuts. Switching presets this way — by cycle key or by
-clicking a chain row — fades the output down and back up in ~20ms around
-the swap so the parameter jump underneath never reaches the speaker as a
-click; if the new preset loads a different NAM capture or IR, the fade
-stays down for however long that takes to load, which can be longer than
-20ms on a slower switch.
+**Cycle forward / Cycle backward** step through this song's chain,
+wrapping around at either end — **→** (right arrow) advances, **←** (left
+arrow) goes back, by default. Click **Change…** next to either one and
+press whatever key you'd rather use for it — each direction is remembered
+per song, right alongside the chain itself. These only do anything while
+Tone Lab or Play Along is open (both screens share the same live rig); the
+Mixer's own left/right nudge shortcut deliberately steps aside while
+either rig screen is open, so the two never fight over the same keypress.
+Switching presets this way — cycling or clicking a chain row — fades the
+output down and back up in ~20ms around the swap so the parameter jump
+underneath never reaches the speaker as a click; if the new preset loads a
+different NAM capture or IR, the fade stays down for however long that
+takes to load, which can be longer than 20ms on a slower switch.
 
 Play Along carries a lighter **Rig Preset** picker in its own top strip —
 just a dropdown, no Save/Delete/chain controls, for a one-off load of any
 preset without leaving the practice screen (this doesn't touch the song's
-chain — use the cycle key or Tone Lab's chain list for that). Picking a
+chain — use the cycle keys or Tone Lab's chain list for that). Picking a
 name there applies it immediately; both dropdowns always show the same
 selection.
 
@@ -761,16 +760,18 @@ with a meter:
   on chords, same honesty-note spirit as the guitar-split and
   chord-detection features elsewhere in this app.
 
-**Drag-to-reorder:** all twelve of the above (Cab IR, EQ, Compressor,
-Delay/Reverb, and the eight new pedals) can be rearranged into any order —
-drag its icon left or right in the chain row and drop it where you want.
-Wah before the amp's drive, chorus after, whatever your ears want. Gate
-and Amp stay fixed at the front of the chain and Output stays fixed at
-the end; everything between them is reorderable, and dragging an icon
-past its neighbors moves its panel's place in the chain immediately, not
-just its picture. Order persists across reloads and is captured/recalled
-as part of a rig preset (§4.3) — save your whole rig, pedal order
-included.
+**Drag-to-reorder:** the twelve pedals above (Cab IR, EQ, Compressor,
+Delay/Reverb, and the eight new pedals) **and the Amp itself** can all be
+rearranged into any order — drag an icon left or right in the chain row
+and drop it where you want. Wah before the amp's drive, chorus after,
+whatever your ears want — and since Amp is just another icon in the row
+now, a pedal like Wah or Boost can sit *before* it too (guitar → Wah →
+Amp → …), the way it would on a real pedalboard. Only Gate (always first)
+and Output (always last) stay fixed; everything between them, Amp
+included, is reorderable, and dragging an icon past its neighbors moves
+its panel's place in the chain immediately, not just its picture. Order
+persists across reloads and is captured/recalled as part of a rig preset
+(§4.3) — save your whole rig, pedal order (Amp's position included).
 
 ### 4.6 Adding amp models & cab IRs
 
@@ -1047,15 +1048,15 @@ For reference:
 | `[` / `]` | Set loop start / end to the current playhead |
 | `M` / `S` | Mute / solo the lane under the mouse |
 | `R` | Start / stop recording |
-| `←` / `→` | Nudge playhead (hold Shift for 5-second steps) |
+| `←` / `→` | Nudge playhead (hold Shift for 5-second steps) — only while Tone Lab and Play Along are both closed |
 | `?` | Toggle the shortcuts legend |
 
 Shortcuts don't fire while a text field has focus.
 
-Tone Lab and Play Along have one more key of their own, not shown in this
-legend since it's per-song and changeable: the **rig-preset cycle key**
-(§4.3), default **\\** (backslash), steps through whichever chain of
-presets the current song has attached.
+Tone Lab and Play Along repurpose `←`/`→` for their own two keys, not
+shown in this legend since they're per-song and changeable: **cycle
+backward / cycle forward** (§4.3) through whichever chain of presets the
+current song has attached.
 
 ---
 
