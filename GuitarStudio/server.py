@@ -552,7 +552,8 @@ def svc_import_stem_zip(zip_bytes: bytes, zip_filename: str) -> dict:
         "version": 2, "model": IMPORTED_MODEL_NAME,
         "mix": {"gains": {}, "muted": {}, "solo": None, "muteRanges": {}, "eq": {}, "pan": {}},
         "ui": {"loop": None, "loopEnabled": False},
-        "markers": [], "rigPreset": None, "bpmOverride": None,
+        "markers": [], "rigPresetChain": [], "rigPresetIndex": 0,
+        "rigPresetCycleKey": None, "bpmOverride": None,
     })
 
     return {
@@ -1240,9 +1241,10 @@ def svc_save_project(track: str, project: dict) -> dict:
     return {"ok": True, "path": str(path)}
 
 
-# GP-02: rig presets — unlike per-track projects, these are cross-song (a
-# preset is recallable from any song, and a song's project just carries the
-# NAME of one it wants auto-applied — see State.rigPreset/XC-01), so they
+# GP-02/GP-14: rig presets — unlike per-track projects, these are cross-song
+# (a preset is recallable from any song, and a song's project just carries an
+# ORDERED LIST of names it wants auto-applied/cycled through — see
+# State.rigPresetChain/XC-01), so they
 # live in one shared file rather than PROJECTS_DIR's per-track ones. Same
 # dumb-blob-store pattern as svc_load_project/svc_save_project: the server
 # doesn't interpret a preset's shape at all, just stores whatever dict the

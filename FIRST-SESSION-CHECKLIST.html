@@ -457,13 +457,16 @@ const DATA = [
   },
   {
     id: "presets",
-    title: "12. Rig presets",
-    note: "Save a tone once, recall it instantly next time.",
+    title: "12. Rig presets & this song's chain",
+    note: "Save a tone once, recall it instantly next time — then string a few together per song.",
     items: [
       "<strong>Save current rig as…</strong> captures the full chain: amp mode, loaded capture + tweaker knobs, cab IR, EQ, Compressor, Delay/Reverb, Output level, and pedal order.",
       "<strong>Load</strong>ing that preset later restores every one of those settings, not just some of them.",
-      "Checking \"attach to this song\" and reopening Play Along on the same song automatically recalls that preset without you doing anything.",
-      "Deleting a preset that's attached to the current song cleanly detaches it (no dangling reference, no error).",
+      "<strong>+ Add to this song's chain</strong> appends the selected preset to a numbered list; reopening Play Along on the same song automatically recalls whichever chain entry was active last, without you doing anything.",
+      "Clicking a row in the chain jumps straight to it, and dragging a row reorders the chain — both persist across a reload.",
+      "Pressing the <strong>cycle key</strong> (default <span class='mono'>\\</span>) while Tone Lab or Play Along is open steps to the next chain entry and wraps back to the first after the last one; it does nothing outside those two screens or with fewer than two entries.",
+      "<strong>Change…</strong> next to the cycle key captures the next key you press (Esc cancels) and remembers it for this song specifically.",
+      "Deleting a preset that's in the current song's chain cleanly removes it from the chain too (no dangling reference, no error).",
     ]
   },
   {

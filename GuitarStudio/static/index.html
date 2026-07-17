@@ -486,11 +486,13 @@
           </section>
         </div>
 
-        <!-- V3-T2/GP-02: rig presets — full rack state, named, recallable,
-             attachable to the current song (XC-01's project.rigPreset)
-             so loading the song loads the rig. Presets are cross-song,
-             stored server-side (/api/rig_presets); the "Attach" checkbox
-             just writes this song's project to carry the name. -->
+        <!-- V3-T2/GP-02/GP-14: rig presets — full rack state, named,
+             recallable, and attachable to the current song as an ORDERED
+             CHAIN (XC-01's project.rigPresetChain) so loading the song
+             loads the rig and lets you cycle Clean/Rhythm/Lead-style
+             variants with a single key. Presets themselves are cross-song,
+             stored server-side (/api/rig_presets); a song's chain just
+             carries an ordered list of names. -->
         <section class="pa-card" id="pa-presets-card">
           <h3>Rig Presets</h3>
           <div class="row">
@@ -499,13 +501,23 @@
             <button id="pa-preset-delete-btn">Delete</button>
           </div>
           <div class="row">
-            <label style="margin:0"><input type="checkbox" id="pa-preset-attach"> Attach to this song</label>
-          </div>
-          <div class="row">
             <input type="text" id="pa-preset-name" placeholder="New preset name…">
             <button id="pa-preset-save-btn" class="primary">Save current rig as…</button>
           </div>
           <p class="hint" id="pa-preset-status"></p>
+
+          <!-- GP-14: this song's ordered chain of presets (e.g.
+               Clean/Rhythm/Lead), cycled with a single key press instead of
+               always picking from the dropdown above mid-song. Clicking a
+               row jumps straight to it; dragging reorders the chain. See
+               research/rig-preset-chain-spec.md. -->
+          <label>This song's chain</label>
+          <div id="pa-preset-chain-list"></div>
+          <button id="pa-preset-chain-add-btn">+ Add to this song's chain</button>
+          <div class="row">
+            <label style="margin:0">Cycle key: <kbd id="pa-cycle-key-display">\</kbd></label>
+            <button id="pa-cycle-key-change-btn">Change…</button>
+          </div>
         </section>
 
         <!-- v4.7 Tone Lab redesign (research/ui-review-and-tonelab-redesign.md

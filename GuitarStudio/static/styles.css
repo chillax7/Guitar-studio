@@ -880,6 +880,33 @@ button:disabled:hover { filter: none; }
 #pa-presets-card { margin-bottom: 18px; }
 #pa-presets-card select { width: auto; flex: 1; margin-right: 8px; }
 #pa-presets-card input[type=text] { flex: 1; margin-right: 8px; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 5px 6px; }
+#pa-presets-card kbd {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 3px;
+  padding: 1px 6px; font-family: monospace; font-size: 11px;
+}
+
+/* GP-14: this song's rig-preset chain — a small vertical drag-reorderable
+   list, same drag-position idiom as the old vertical pedal-card reorder
+   (clientY vs. the hovered row's own midpoint). */
+#pa-preset-chain-list { margin: 6px 0 10px; }
+.pa-preset-chain-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; margin-bottom: 4px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px;
+  cursor: pointer;
+}
+.pa-preset-chain-row .pa-drag-handle { cursor: grab; color: var(--text-dim); font-size: 13px; }
+.pa-preset-chain-name { flex: 1; font-size: 12px; }
+.pa-preset-chain-row.pa-preset-chain-active {
+  border-color: var(--accent); color: var(--accent);
+}
+.pa-preset-chain-remove-btn {
+  background: none; border: none; color: var(--text-dim);
+  font-size: 12px; padding: 2px 4px; cursor: pointer;
+}
+.pa-preset-chain-remove-btn:hover { color: var(--text); }
+.pa-preset-chain-row.dragging { opacity: 0.4; }
+.pa-preset-chain-row.drag-over { outline: 2px dashed var(--accent); outline-offset: 2px; }
 
 .pa-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
 .pa-tabs button { flex: 1; font-size: 11px; }

@@ -1,11 +1,18 @@
 # Per-Song Rig Preset Chain + Cycle Key — Design Spec (GP-14)
 
-**Status:** design spec for GP-14, a logged-but-never-built idea
-(post-v3-backlog-audit.md §4, carried into post-v4-backlog-audit.md §4,
-paired with GP-11 as **V5-B3** in release-v5-spec.md §9). This document
-is the concrete design release-v5-spec.md's V5-B3 milestone needs before
-it can actually be built — that spec named the pairing and flagged the
-one open question (click-suppression); this fills in the rest.
+**Status: shipped in v4.7**, alongside the Tone Lab icon-chain redesign,
+rather than waiting for the V5-B3 milestone this was originally scoped
+under (post-v3-backlog-audit.md §4, carried into post-v4-backlog-audit.md
+§4, paired with GP-11 as **V5-B3** in release-v5-spec.md §9) — the user
+greenlit it directly. Everything below matches what shipped: the ordered
+chain (`State.rigPresetChain`/`rigPresetIndex`), the additive-field
+backfill from the old single `rigPreset` string (§2), the chain-list UI
+in Tone Lab's Rig Presets card with drag-reorder and click-to-jump (§3),
+the single advance-and-wrap cycle key with a "Change…" rebind affordance
+(§4), and the mute-ramp-unmute click-suppression around a live swap (§5),
+reusing `PA.outputMute` exactly as designed. GP-11 (the actual MIDI/
+foot-pedal mapping) remains unbuilt — `paCyclePresetChain()` is the single
+function it'll bind to, per §6's stated non-goal.
 
 **One-line pitch:** attach an *ordered list* of rig presets to a song
 instead of just one — e.g. "Clean," "Rhythm," "Lead" for a song like

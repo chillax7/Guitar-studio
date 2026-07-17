@@ -1417,7 +1417,11 @@ function paUpdateSuggestVisibility() {
 async function paEnsureRigSessionReady() {
   await ensurePAGraph();
   await paRefreshRigPresets();
-  await paApplyAttachedRigPreset(); // GP-02 — no-op if this track has none, or it's already been applied
+  await paApplyAttachedRigPreset(); // GP-02/GP-14 — no-op if this track's chain is empty, or it's already been applied
+  // Unconditional (unlike the line above): a track switch while Tone Lab
+  // stayed open needs the chain list to reflect the NEW track's chain (or
+  // its absence) even when there's nothing to auto-apply.
+  renderPresetChainList();
   await ensureRiffCapture(); // GP-07 — starts rolling as soon as the rig exists; no-op if already running
 }
 
@@ -1973,12 +1977,12 @@ function wireChainIconDragReorder(strip) {
 }
 
 // ---------------------------------------------------------------------------
-// V3-T2 / GP-02: rig presets — full rack state (amp mode, capture, tweaker
-// knobs, IR, FX, output), named and recallable, attachable to a song so
-// loading the song loads the rig. Presets themselves are cross-song and
-// live server-side in one shared store (/api/rig_presets); a song's own
-// project (XC-01, project format v2) just carries the NAME of one it wants
-// auto-applied, in State.rigPreset.
+// V3-T2 / GP-02 / GP-14: rig presets — full rack state (amp mode, capture,
+// tweaker knobs, IR, FX, output), named and recallable. Presets themselves
+// are cross-song and live server-side in one shared store
+// (/api/rig_presets); a song's own project (XC-01, project format v2)
+// carries an ORDERED CHAIN of names it wants attached, in
+// State.rigPresetChain — see the chain-management section further down.
 // ---------------------------------------------------------------------------
 
 function paCaptureRigState() {
@@ -2223,18 +2227,11 @@ async function paRefreshRigPresets() {
     sel.appendChild(opt);
   }
   if (names.includes(prev)) sel.value = prev;
-  paUpdateAttachCheckbox();
   paSyncPresetQuickpick();
 }
 
 async function paSaveRigPresetsToServer() {
   await Api.post("/api/rig_presets", { presets: paRigPresets });
-}
-
-function paUpdateAttachCheckbox() {
-  const sel = document.getElementById("pa-preset-select");
-  const attachEl = document.getElementById("pa-preset-attach");
-  attachEl.checked = !!(sel.value && State.rigPreset === sel.value);
 }
 
 // v3.2: Play Along carries a lighter "quick pick" dropdown for rig presets
@@ -2256,43 +2253,216 @@ function paSyncPresetQuickpick() {
   qp.value = src.value;
 }
 
-// GP-02: applied once per track load, the first time Play Along opens for
-// it — not at selectTrack() time, since the PA audio graph doesn't exist
-// until ensurePAGraph runs (see openPlayAlong).
+// ---------------------------------------------------------------------------
+// GP-14: this song's ordered rig-preset CHAIN (research/rig-preset-chain-
+// spec.md) — replaces GP-02's single attached preset. State.rigPresetChain
+// is an ordered list of preset names; State.rigPresetIndex is which one is
+// currently active. Cycling/jumping re-applies the rig live, so both go
+// through paApplyPresetWithFade's mute-ramp-unmute (§5 of the spec) to
+// avoid an audible pop on a mid-song swap — reusing PA.outputMute, already
+// there for the tuner's instant mute, rather than adding new audio nodes.
+// ---------------------------------------------------------------------------
+const PA_DEFAULT_CYCLE_KEY = "\\";
+const PA_PRESET_SWITCH_FADE_MS = 20;
+
+async function paApplyPresetWithFade(name) {
+  if (!paRigPresets[name]) await paRefreshRigPresets();
+  const state = paRigPresets[name];
+  if (!state) return false;
+  // No live audio graph yet (rig never enabled this session) — just apply
+  // the controls, nothing to fade around.
+  const hasGraph = !!(PA.built && PA.outputMute);
+  if (hasGraph) {
+    const now = Audio.ctx.currentTime;
+    PA.outputMute.gain.cancelScheduledValues(now);
+    PA.outputMute.gain.setValueAtTime(PA.outputMute.gain.value, now);
+    PA.outputMute.gain.linearRampToValueAtTime(0, now + PA_PRESET_SWITCH_FADE_MS / 1000);
+  }
+  // The mute has to stay down for the WHOLE await, not just the fixed fade
+  // window above — a preset that swaps to a different NAM capture/IR can
+  // take much longer than 20ms to finish loading (paLoadNamModel/paLoadIr),
+  // and un-muting before that resolves would let the old tone bleed through.
+  await paApplyRigState(state);
+  if (hasGraph) {
+    const now2 = Audio.ctx.currentTime;
+    PA.outputMute.gain.setValueAtTime(0, now2);
+    PA.outputMute.gain.linearRampToValueAtTime(1, now2 + PA_PRESET_SWITCH_FADE_MS / 1000);
+  }
+  return true;
+}
+
+// Single key, single direction (advance-and-wrap), not prev/next —
+// deliberate: a real single-button footswitch (GP-11's eventual target)
+// sends one signal, not two, so the eventual MIDI/foot-pedal hookup binds
+// straight to this function with no redesign needed.
+async function paCyclePresetChain() {
+  const chain = State.rigPresetChain || [];
+  if (chain.length < 2) return;
+  const nextIndex = (State.rigPresetIndex + 1) % chain.length;
+  const name = chain[nextIndex];
+  if (!(await paApplyPresetWithFade(name))) return;
+  State.rigPresetIndex = nextIndex;
+  saveProjectDebounced();
+  renderPresetChainList();
+  document.getElementById("pa-preset-status").textContent = `Cycled to "${name}".`;
+}
+
+// The mouse-driven equivalent of the cycle key — pick a specific chain
+// entry out of order instead of stepping through the others.
+async function paJumpToChainIndex(i) {
+  const chain = State.rigPresetChain || [];
+  if (i < 0 || i >= chain.length || i === State.rigPresetIndex) return;
+  const name = chain[i];
+  if (!(await paApplyPresetWithFade(name))) return;
+  State.rigPresetIndex = i;
+  saveProjectDebounced();
+  renderPresetChainList();
+  document.getElementById("pa-preset-status").textContent = `Loaded "${name}" from this song's chain.`;
+}
+
+function paAddToChain() {
+  const name = document.getElementById("pa-preset-select").value;
+  const statusEl = document.getElementById("pa-preset-status");
+  if (!name) { statusEl.textContent = "Pick a preset above before adding it to the chain."; return; }
+  State.rigPresetChain = [...(State.rigPresetChain || []), name];
+  if (State.rigPresetChain.length === 1) State.rigPresetIndex = 0; // first entry becomes the active one
+  saveProjectDebounced();
+  renderPresetChainList();
+  statusEl.textContent = `Added "${name}" to this song's chain.`;
+}
+
+// Removing a chain entry never touches the live rig itself (only cycling/
+// jumping does that) — just bookkeeping so the active index still points
+// at a valid row, same "no audio surprise from organizing your list"
+// posture as the rest of this feature.
+function paRemoveFromChain(i) {
+  const chain = [...(State.rigPresetChain || [])];
+  if (i < 0 || i >= chain.length) return;
+  chain.splice(i, 1);
+  if (i < State.rigPresetIndex) State.rigPresetIndex -= 1;
+  else State.rigPresetIndex = Math.min(State.rigPresetIndex, Math.max(0, chain.length - 1));
+  State.rigPresetChain = chain;
+  saveProjectDebounced();
+  renderPresetChainList();
+}
+
+function renderPresetChainList() {
+  const list = document.getElementById("pa-preset-chain-list");
+  if (!list) return;
+  list.innerHTML = "";
+  const chain = State.rigPresetChain || [];
+  chain.forEach((name, i) => {
+    const row = document.createElement("div");
+    row.className = "pa-preset-chain-row" + (i === State.rigPresetIndex ? " pa-preset-chain-active" : "");
+    row.draggable = true;
+    row.dataset.index = String(i);
+
+    const handle = document.createElement("span");
+    handle.className = "pa-drag-handle";
+    handle.title = "Drag to reorder";
+    handle.textContent = "⠿";
+
+    const label = document.createElement("span");
+    label.className = "pa-preset-chain-name";
+    label.textContent = `${i + 1}. ${name}`;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "pa-preset-chain-remove-btn";
+    removeBtn.title = "Remove from this song's chain";
+    removeBtn.textContent = "✕";
+    removeBtn.addEventListener("click", (e) => { e.stopPropagation(); paRemoveFromChain(i); });
+
+    row.append(handle, label, removeBtn);
+    row.addEventListener("click", () => paJumpToChainIndex(i));
+    list.appendChild(row);
+  });
+  const keyEl = document.getElementById("pa-cycle-key-display");
+  if (keyEl) keyEl.textContent = State.rigPresetCycleKey || PA_DEFAULT_CYCLE_KEY;
+  wirePresetChainDragReorder(list);
+}
+
+// Vertical drag-reorder for the chain list — same clientY-vs-hovered-row-
+// midpoint idiom the old pedal-card reorder used (this list is a single
+// column, not a wrapping row, so vertical is the right axis here).
+function wirePresetChainDragReorder(list) {
+  let draggingRow = null;
+
+  list.querySelectorAll(".pa-preset-chain-row").forEach((row) => {
+    row.addEventListener("dragstart", (e) => {
+      draggingRow = row;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", row.dataset.index);
+      requestAnimationFrame(() => row.classList.add("dragging"));
+    });
+    row.addEventListener("dragend", () => {
+      row.classList.remove("dragging");
+      list.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
+      draggingRow = null;
+    });
+    row.addEventListener("dragover", (e) => {
+      if (!draggingRow || draggingRow === row) return;
+      e.preventDefault();
+      row.classList.add("drag-over");
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      row.classList.remove("drag-over");
+      if (!draggingRow || draggingRow === row) return;
+      const fromIndex = Number(draggingRow.dataset.index);
+      const targetIndex = Number(row.dataset.index);
+      const rect = row.getBoundingClientRect();
+      const before = e.clientY < rect.top + rect.height / 2;
+      let toIndex = before ? targetIndex : targetIndex + 1;
+      if (fromIndex < toIndex) toIndex -= 1; // account for the removal shifting indices below it
+
+      const chain = [...State.rigPresetChain];
+      const activeName = chain[State.rigPresetIndex];
+      const [moved] = chain.splice(fromIndex, 1);
+      chain.splice(toIndex, 0, moved);
+      State.rigPresetChain = chain;
+      State.rigPresetIndex = chain.indexOf(activeName); // keep pointing at the same preset, wherever it landed
+      saveProjectDebounced();
+      renderPresetChainList();
+    });
+  });
+}
+
+// GP-02/GP-14: applied once per track load, the first time Play Along opens
+// for it — not at selectTrack() time, since the PA audio graph doesn't
+// exist until ensurePAGraph runs (see openPlayAlong). Applies whichever
+// entry in this song's chain is currently active (State.rigPresetIndex),
+// not necessarily the first one, so reopening a song resumes on the same
+// preset it was left on last time.
 async function paApplyAttachedRigPreset() {
-  if (!State.rigPreset || State.rigPresetApplied) return;
+  const chain = State.rigPresetChain || [];
+  if (!chain.length || State.rigPresetApplied) return;
   State.rigPresetApplied = true; // before the await — openPlayAlong can be called again while this is in flight
-  if (!paRigPresets[State.rigPreset]) await paRefreshRigPresets();
-  const state = paRigPresets[State.rigPreset];
+  const name = chain[State.rigPresetIndex] || chain[0];
+  if (!paRigPresets[name]) await paRefreshRigPresets();
+  const state = paRigPresets[name];
   if (state) {
     await paApplyRigState(state);
-    // The rig itself just recalled correctly, but the dropdown was still
-    // sitting on whatever it last showed (or its own default) — without
-    // pointing it at the preset that just auto-applied, the next line's
-    // paUpdateAttachCheckbox() compares State.rigPreset against the WRONG
-    // dropdown value and shows "attach" as unchecked despite it being live.
-    // Left alone, a user who then re-checks the box to "fix" it would
-    // attach whatever preset the dropdown happened to be on instead.
     const sel = document.getElementById("pa-preset-select");
-    if ([...sel.options].some((o) => o.value === State.rigPreset)) sel.value = State.rigPreset;
+    if ([...sel.options].some((o) => o.value === name)) sel.value = name;
     paSyncPresetQuickpick();
   }
-  paUpdateAttachCheckbox();
+  renderPresetChainList();
 }
 
 function wireRigPresets() {
   document.getElementById("pa-preset-select").addEventListener("change", () => {
-    paUpdateAttachCheckbox();
     paSyncPresetQuickpick();
   });
 
   // Play Along's quick-picker has no separate Load button — selecting a
-  // name applies it immediately, mirroring the choice back onto Tone
-  // Lab's dropdown so the two never disagree about which preset is live.
+  // name applies it immediately, mirroring the choice back onto Tone Lab's
+  // dropdown so the two never disagree about which preset is live. This is
+  // a raw one-off load, same as Tone Lab's own Load button below — it does
+  // NOT touch this song's chain (paJumpToChainIndex/paAddToChain do that).
   document.getElementById("pa-preset-quickpick").addEventListener("change", async (e) => {
     const name = e.target.value;
     document.getElementById("pa-preset-select").value = name;
-    paUpdateAttachCheckbox();
     if (!name) return;
     await paApplyRigState(paRigPresets[name]);
   });
@@ -2326,21 +2496,47 @@ function wireRigPresets() {
     if (!name || !(name in paRigPresets)) return;
     delete paRigPresets[name];
     await paSaveRigPresetsToServer();
-    if (State.rigPreset === name) { State.rigPreset = null; saveProjectDebounced(); }
+    // GP-14: a preset that's part of this song's chain gets removed from
+    // the chain too — a chain entry pointing at a deleted preset would
+    // otherwise be silently unloadable the next time it's cycled to.
+    const idx = (State.rigPresetChain || []).indexOf(name);
+    if (idx !== -1) paRemoveFromChain(idx);
     await paRefreshRigPresets();
     statusEl.textContent = `Deleted rig preset "${name}".`;
   });
 
-  // Attaching a preset to the current song means loading that song again
-  // auto-applies it (paApplyAttachedRigPreset, called from openPlayAlong).
-  document.getElementById("pa-preset-attach").addEventListener("change", (e) => {
-    const name = document.getElementById("pa-preset-select").value;
-    State.rigPreset = e.target.checked ? (name || null) : null;
-    State.rigPresetApplied = true; // already matches what's live — don't re-apply on next open
-    saveProjectDebounced();
-    document.getElementById("pa-preset-status").textContent = State.rigPreset
-      ? `"${State.rigPreset}" will auto-load with this song from now on.`
-      : "No rig preset attached to this song.";
+  document.getElementById("pa-preset-chain-add-btn").addEventListener("click", paAddToChain);
+
+  document.getElementById("pa-cycle-key-change-btn").addEventListener("click", () => {
+    const statusEl = document.getElementById("pa-preset-status");
+    statusEl.textContent = "Press the key you want to use to cycle this song's rig presets… (Esc to cancel)";
+    const capture = (e) => {
+      if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return; // wait for a real key
+      e.preventDefault();
+      e.stopPropagation();
+      window.removeEventListener("keydown", capture, true);
+      if (e.key === "Escape") { statusEl.textContent = "Cycle key unchanged."; return; }
+      State.rigPresetCycleKey = e.key;
+      saveProjectDebounced();
+      renderPresetChainList();
+      statusEl.textContent = `Cycle key set to "${e.key}".`;
+    };
+    window.addEventListener("keydown", capture, true);
+  });
+
+  // Only active while Tone Lab or Play Along is open — both share the same
+  // live rig (paSetActiveScreen/openToneLab/openPlayAlong). The Mixer's own
+  // shortcuts (M/S/loop/etc., app.js) are scoped to State.stems.length being
+  // loaded and stay completely unaffected, so there's no collision to
+  // design around here.
+  document.addEventListener("keydown", (e) => {
+    if (isTextInputFocused()) return;
+    const toneLabOpen = document.getElementById("tonelab-overlay").classList.contains("show");
+    const playAlongOpen = document.getElementById("playalong-overlay").classList.contains("show");
+    if (!toneLabOpen && !playAlongOpen) return;
+    if (e.key !== (State.rigPresetCycleKey || PA_DEFAULT_CYCLE_KEY)) return;
+    e.preventDefault();
+    paCyclePresetChain();
   });
 }
 

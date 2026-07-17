@@ -680,22 +680,44 @@ plugin does:
   honest "not yet supported" message instead of a confusing generic
   failure or silently misreading the weights.
 
-### 4.3 Rig presets (plus a quick picker on Play Along)
+### 4.3 Rig presets, per-song chains, and the cycle key
 
 The **Rig Presets** card (above the pedalboard, on Tone Lab) saves the
 *entire* rig — amp mode, NAM capture + Tweaker knobs (or Analog's tone
 stack), Cab IR, EQ, Compressor, Delay/Reverb, all the pedals, and Output
 level — as a named preset. Presets are shared across every song (stored
-server-side, not per-track). **Attach to this song** writes the preset's
-name into the current song's saved project, so reopening that song
-automatically recalls the rig the next time you open either rig screen —
-build the tone once, never rebuild it by hand again for that song.
+server-side, not per-track): pick one from the dropdown and **Load** it
+any time you just want to try a tone.
+
+**This song's chain** (below the Save/Load controls) is where a song gets
+its *own* ordered list of presets — e.g. **Clean**, **Rhythm**, **Lead**
+for one tune — instead of just a single attached preset. Pick a preset in
+the dropdown above and click **+ Add to this song's chain** to append it;
+drag a chain row up or down to reorder it, or click **✕** to remove it.
+Clicking any row in the chain jumps straight to it, live. The active entry
+is highlighted so a glance at Tone Lab tells you which one is playing.
+
+**Cycle key** steps through this song's chain one at a time, wrapping back
+to the top after the last entry — deliberately a single advance-and-wrap
+key rather than separate next/previous keys, since a real single-button
+footswitch (planned for later) sends one signal, not two. The default key
+is **\\** (backslash); click **Change…** next to it and press whatever key
+you'd rather use — it's remembered per song, right alongside the chain
+itself. The cycle key only does anything while Tone Lab or Play Along is
+open (both screens share the same live rig), so it never collides with the
+Mixer's own shortcuts. Switching presets this way — by cycle key or by
+clicking a chain row — fades the output down and back up in ~20ms around
+the swap so the parameter jump underneath never reaches the speaker as a
+click; if the new preset loads a different NAM capture or IR, the fade
+stays down for however long that takes to load, which can be longer than
+20ms on a slower switch.
 
 Play Along carries a lighter **Rig Preset** picker in its own top strip —
-just a dropdown, no Save/Delete/Attach controls, for switching between
-rigs you've already built (e.g. Clean/Rhythm/Solo for one song) without
-leaving the practice screen. Picking a name there applies it immediately;
-both dropdowns always show the same selection.
+just a dropdown, no Save/Delete/chain controls, for a one-off load of any
+preset without leaving the practice screen (this doesn't touch the song's
+chain — use the cycle key or Tone Lab's chain list for that). Picking a
+name there applies it immediately; both dropdowns always show the same
+selection.
 
 ### 4.4 Cab IR
 
@@ -1029,6 +1051,11 @@ For reference:
 | `?` | Toggle the shortcuts legend |
 
 Shortcuts don't fire while a text field has focus.
+
+Tone Lab and Play Along have one more key of their own, not shown in this
+legend since it's per-song and changeable: the **rig-preset cycle key**
+(§4.3), default **\\** (backslash), steps through whichever chain of
+presets the current song has attached.
 
 ---
 

@@ -55,7 +55,13 @@ const State = {
   ui: { loop: null, loopEnabled: false },
   // XC-01 (project format v2)
   markers: [], // BT-08 (M4) — not populated until that lands
-  rigPreset: null, // GP-02 — name of the rig preset attached to this song, if any
+  // GP-14: an ORDERED LIST of rig presets attached to this song (e.g.
+  // ["Clean", "Rhythm", "Lead"]), plus which one is currently active —
+  // replaces GP-02's single rigPreset string (see migrateProjectV2/
+  // selectTrack for the backfill from that older shape).
+  rigPresetChain: [],
+  rigPresetIndex: 0,
+  rigPresetCycleKey: null, // null = use the app-wide default ("\") — see playalong.js
   rigPresetApplied: false, // has paApplyAttachedRigPreset already run for the current track
   bpmOverride: null, // user-corrected BPM (×2/½ octave-error fix), overrides State.analysis.bpm once loaded
 };
@@ -617,7 +623,9 @@ function migrateProjectV2(raw) {
     mix: raw.mix || { gains: {}, muted: {}, solo: null, muteRanges: {}, eq: {}, pan: {} },
     ui: raw.ui || { loop: null, loopEnabled: false },
     markers: [], // BT-08 (M4) — empty until that lands
-    rigPreset: null, // GP-02 (M3) — no preset attached to a v1 project
+    rigPresetChain: [], // GP-14 — no presets attached to a v1 project
+    rigPresetIndex: 0,
+    rigPresetCycleKey: null,
     bpmOverride: null, // no tempo correction recorded on a v1 project
   };
 }
@@ -635,7 +643,9 @@ function saveProjectDebounced() {
         mix: State.mix,
         ui: State.ui,
         markers: State.markers || [],
-        rigPreset: State.rigPreset || null,
+        rigPresetChain: State.rigPresetChain || [],
+        rigPresetIndex: State.rigPresetIndex || 0,
+        rigPresetCycleKey: State.rigPresetCycleKey || null,
         bpmOverride: State.bpmOverride || null,
       },
     }).catch(() => { /* best-effort */ });
@@ -1304,10 +1314,17 @@ async function selectTrack(name) {
   State.mix.pan = State.mix.pan || {};
   State.ui = (project && project.ui) || { loop: null, loopEnabled: false };
   State.markers = (project && project.markers) || [];
-  // GP-02: a rig preset attached to this song — applied once Play Along is
-  // next opened for it (paApplyAttachedRigPreset in playalong.js), not
-  // here, since the PA audio graph doesn't exist until ensurePAGraph runs.
-  State.rigPreset = (project && project.rigPreset) || null;
+  // GP-14: the ordered chain of rig presets attached to this song — applied
+  // once Play Along/Tone Lab is next opened for it (paApplyAttachedRigPreset
+  // in playalong.js), not here, since the PA audio graph doesn't exist until
+  // ensurePAGraph runs. Backfill: a project saved before GP-14 (or offline
+  // during the transition) has the old single rigPreset string instead of
+  // rigPresetChain — synthesize a one-item chain from it so nothing about an
+  // existing song's attached preset is lost.
+  State.rigPresetChain = (project && project.rigPresetChain) ||
+    (project && project.rigPreset ? [project.rigPreset] : []);
+  State.rigPresetIndex = (project && project.rigPresetIndex) || 0;
+  State.rigPresetCycleKey = (project && project.rigPresetCycleKey) || null;
   State.rigPresetApplied = false;
   State.bpmOverride = (project && project.bpmOverride) || null;
   toggleTransportClass("loop-toggle-btn", "active", State.ui.loopEnabled);
