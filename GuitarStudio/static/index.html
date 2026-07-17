@@ -12,7 +12,7 @@
   <div id="top-banner">
     <img id="app-logo" src="app-icon.svg" alt="">
     <span id="app-title">Orpheus Guitar Studio</span>
-    <span id="app-version">v4.6</span>
+    <span id="app-version">v4.7</span>
     <!-- Centered on the full window width (not just the canvas column) via
          absolute positioning in CSS — see #top-banner-screen-label. Kept in
          sync with the current screen by paSetActiveScreen (playalong.js),
@@ -183,6 +183,11 @@
         </div>
       </div>
       <div id="lanes"></div>
+      <!-- custom-stems-spec.md: shown only while a file is being dragged
+           over the workspace AND a track is already separated (guarded in
+           wireCustomStemDrop, app.js) — a distinct drop target from the
+           sidebar's "import a new song" zone. -->
+      <div id="custom-stem-dropzone">Drop to add as a new stem</div>
     </div>
   </div>
 

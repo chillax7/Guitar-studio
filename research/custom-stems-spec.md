@@ -1,12 +1,16 @@
 # Custom Stems — Design Spec
 
-**Status:** design spec, written pre-v5 at the user's request ("first can
-we add custom stems" before starting the v5 milestone sequence). Scoped
-as a self-contained addition — doesn't block or get blocked by anything
-in [release-v5-spec.md](release-v5-spec.md), and is small enough to ship
-as its own point release (v4.7) ahead of v5's larger AI Lab work, the
+**Status: shipped in v4.7.** Written pre-v5 at the user's request ("first
+can we add custom stems" before starting the v5 milestone sequence).
+Shipped as its own point release ahead of v5's larger AI Lab work, the
 same way v3.1/v3.2/v4.5/v4.6 each shipped a coherent slice between the
-numbered spec documents.
+numbered spec documents. Everything below matches what shipped — the
+one implementation detail worth noting: `safe_name()` in this codebase
+is deliberately permissive (spaces/case/punctuation preserved, only path
+traversal and NUL/slash characters stripped), so an on-disk custom-stem
+key can contain spaces (e.g. "My Guitar Take.wav" stays "My Guitar
+Take"); this works fine everywhere a stem name is used (filesystem,
+URL-encoded query param) and needed no extra normalization.
 
 **One-line pitch:** drag an MP3/WAV onto the mixer of a song that's
 already separated, and it appears as one more stem — mute, solo, fader,

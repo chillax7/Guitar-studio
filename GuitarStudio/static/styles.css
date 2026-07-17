@@ -437,8 +437,31 @@ button:disabled:hover { filter: none; }
   padding: 10px 14px;
   min-height: 0; /* same grid/flex shrink issue as #sidebar — otherwise a
     6-stem track grows #workspace past the viewport instead of scrolling. */
+  position: relative; /* anchors #custom-stem-dropzone's overlay below */
 }
 #workspace.show { display: block; }
+
+/* custom-stems-spec.md: covers the whole lane area while a file is being
+   dragged over it. pointer-events: none so it's purely visual — the real
+   dragover/dragleave/drop listeners are on #workspace itself (app.js),
+   which still receives them regardless of which descendant is the actual
+   event target underneath this overlay. */
+#custom-stem-dropzone {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.55);
+  border: 2px dashed var(--accent);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+#custom-stem-dropzone.show { display: flex; }
 
 /* Chord ribbon + Click Track: pinned to the top of #workspace's scroll
    viewport (vertical only — horizontal continuous-zoom scrolling is
@@ -485,6 +508,17 @@ button:disabled:hover { filter: none; }
    into the waveform. */
 .lane-name { font-size: 12px; display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
 .lane-derived-badge { font-size: 9px; color: var(--text-dim); background: var(--panel-2); padding: 1px 4px; border-radius: 3px; }
+.lane-custom-badge { font-size: 9px; color: var(--accent); background: var(--panel-2); padding: 1px 4px; border-radius: 3px; }
+.lane-delete-btn {
+  flex: none;
+  width: 16px; height: 16px;
+  padding: 0;
+  font-size: 9px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+.lane-delete-btn:hover { color: #fff; background: var(--danger); border-color: var(--danger); }
 .lane-rename-btn {
   flex: none;
   width: 16px; height: 16px;

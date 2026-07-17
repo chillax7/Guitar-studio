@@ -30,6 +30,11 @@ instead — open it directly in a browser, no server required.
 - [ ] BPM, beat grid, chord lane, and detected key all populate for an imported stem pack, matching a real reference (not blank/zero) — this depends on fuzzy stem-name matching since an imported pack's names won't match the app's usual fixed vocabulary.
 - [ ] A zip with two files that would collide to the same sanitized stem name fails up front with a message naming both files, rather than silently overwriting one.
 - [ ] A non-zip file or a zip with no usable audio inside fails with a clear message, not a crash; `__MACOSX/`/`._*` junk entries in a real Finder-compressed zip are silently ignored, not shown as broken stems.
+- [ ] **Custom stems (v4.7):** dragging an MP3/WAV onto the mixer's lane area for an already-separated track shows the "Drop to add as a new stem" overlay while dragging, and adds it as a new lane tagged **custom** on drop — mute/solo/fader/pan/EQ/mute-painting/export all work on it identically to a model-produced stem. Dropping onto the lane area on a track with **no** separated stems yet does nothing (no overlay, no upload attempt).
+- [ ] A custom stem survives switching to a different separation model for the same song (it isn't tied to whichever model produced the other stems) **and** survives re-separating (even with force/Re-separate) — it should never disappear or need re-adding.
+- [ ] Dragging in a same-named file again replaces the existing custom stem rather than erroring or duplicating it.
+- [ ] The **✕** next to a custom stem's name removes it (after a confirmation) and it's gone from the lane list immediately.
+- [ ] A custom stem literally named "guitar" does **not** trigger the Guitar Split panel (§5) — only a real model-produced `guitar` stem should.
 
 ## 2. Rip system audio
 

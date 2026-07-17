@@ -188,6 +188,17 @@ def track_stem_dir(input_path: Path, model: str) -> Path:
     return hashed_dir
 
 
+def custom_stems_dir(digest: str) -> Path:
+    """Where user-dropped custom stems (custom-stems-spec.md) live for a
+    track — keyed by content hash only, NOT by separation model, unlike
+    track_stem_dir above. Two reasons: run_demucs_backend shutil.rmtrees
+    a model's own stem_dir on re-separation (a custom stem stored there
+    would be silently destroyed), and a stem the user physically provided
+    has nothing to do with which ML model is currently active for the
+    other stems — switching models shouldn't make it vanish."""
+    return SEPARATED_DIR / "_custom" / digest
+
+
 def track_output_dir(track_name: str) -> Path:
     """One folder per song under output/, holding both a copy of its stems
     and whatever mixes get exported for it."""

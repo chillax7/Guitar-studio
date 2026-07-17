@@ -1418,7 +1418,9 @@ function renderLanes() {
     header.innerHTML = `
       <div class="lane-name">${escapeHtml(stemDisplayName(name, stem.label))}
         ${stem.is_derived ? '<span class="lane-derived-badge">derived</span>' : ""}
-        <button class="lane-rename-btn" title="Rename this stem (display name only — doesn't touch its saved mix)">✎</button></div>
+        ${stem.is_custom ? '<span class="lane-custom-badge" title="Added by you — not produced by the separation model">custom</span>' : ""}
+        <button class="lane-rename-btn" title="Rename this stem (display name only — doesn't touch its saved mix)">✎</button>
+        ${stem.is_custom ? '<button class="lane-delete-btn" title="Remove this custom stem">✕</button>' : ""}</div>
       <div class="lane-buttons">
         <button class="mute-btn ${State.mix.muted[name] ? "on" : ""}">M</button>
         <button class="solo-btn ${State.mix.solo === name ? "on" : ""}">S</button>
@@ -1476,6 +1478,18 @@ function renderLanes() {
         alert(`Rename failed: ${err.message || err}`);
       }
     });
+    if (stem.is_custom) {
+      header.querySelector(".lane-delete-btn").addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Remove the custom stem "${stemDisplayName(name, stem.label)}"? This can't be undone.`)) return;
+        try {
+          await Api.post("/api/custom_stem/remove", { source_path: State.track, stem: name });
+          await refreshStemsForCurrentModelAndTrack();
+        } catch (err) {
+          alert(`Could not remove stem: ${err.message || err}`);
+        }
+      });
+    }
     header.querySelector(".mute-btn").addEventListener("click", () => toggleMute(name));
     header.querySelector(".solo-btn").addEventListener("click", () => toggleSolo(name));
     const fader = header.querySelector(".lane-gain-input");
@@ -2375,7 +2389,11 @@ function renderInspector() {
     : "";
   renderChordLane();
 
-  const hasGuitar = State.stems.some((s) => s.name === "guitar");
+  // custom-stems-spec.md §5: only a genuine model-produced "guitar" stem
+  // should trigger this panel — a custom/derived stem that happens to be
+  // named "guitar" (e.g. a dropped-in real DI take) isn't the separator's
+  // guitar stem this panning-guess split exists for.
+  const hasGuitar = State.stems.some((s) => s.name === "guitar" && !s.is_derived && !s.is_custom);
   document.getElementById("split-panel").style.display = hasGuitar ? "block" : "none";
 }
 
@@ -2626,6 +2644,53 @@ function wireImport() {
   zipInputEl.addEventListener("change", (e) => {
     if (e.target.files[0]) importStemZip(e.target.files[0]);
   });
+}
+
+// custom-stems-spec.md: a separate drop target from the sidebar's "import
+// a new song" zone — dropping a file onto the mixer's own lane area for a
+// track that's ALREADY separated adds it as one more stem instead. Kept
+// deliberately distinct (not merged into the sidebar's drop zone) so the
+// two never get confused with each other: sidebar = new song, workspace =
+// add to this song.
+function wireCustomStemDrop() {
+  const workspaceEl = document.getElementById("workspace");
+  const overlayEl = document.getElementById("custom-stem-dropzone");
+
+  workspaceEl.addEventListener("dragover", (e) => {
+    if (!State.stems.length) return; // nothing separated yet to add to
+    e.preventDefault();
+    overlayEl.classList.add("show");
+  });
+  workspaceEl.addEventListener("dragleave", (e) => {
+    if (!workspaceEl.contains(e.relatedTarget)) overlayEl.classList.remove("show");
+  });
+  workspaceEl.addEventListener("drop", (e) => {
+    overlayEl.classList.remove("show");
+    if (!State.stems.length) return;
+    e.preventDefault();
+    e.stopPropagation(); // don't also let wireImport's sidebar/document handlers see this drop
+    const f = e.dataTransfer.files[0];
+    if (f) addCustomStem(f);
+  });
+}
+
+async function addCustomStem(file) {
+  const overlayEl = document.getElementById("custom-stem-dropzone");
+  const originalText = overlayEl.textContent;
+  overlayEl.classList.add("show");
+  overlayEl.textContent = `Adding "${file.name}"…`;
+  try {
+    const buf = await file.arrayBuffer();
+    await Api.postRaw(
+      `/api/custom_stem?source_path=${encodeURIComponent(State.track)}&filename=${encodeURIComponent(file.name)}`,
+      buf);
+    await refreshStemsForCurrentModelAndTrack();
+  } catch (err) {
+    alert(`Could not add "${file.name}" as a stem: ${err.message || err}`);
+  } finally {
+    overlayEl.textContent = originalText;
+    overlayEl.classList.remove("show");
+  }
 }
 
 async function importFile(file) {
@@ -2960,6 +3025,7 @@ async function init() {
   wireSeparateButton();
   wireStaleBanner();
   wireImport();
+  wireCustomStemDrop();
   wireRip();
   wireSpeedTune();
   wireSpeedTrainer();

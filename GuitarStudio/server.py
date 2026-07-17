@@ -148,7 +148,7 @@ def resolve_source_path(source_path: str) -> Path:
 # one request). Raising ApiError here keeps every error request-scoped.
 # ---------------------------------------------------------------------------
 
-def stem_info(out_dir: Path, model: str) -> list:
+def stem_info(out_dir: Path, model: str, digest: str | None = None) -> list:
     known_stems = set(engine.ALL_KNOWN_MODELS.get(model, ()))
     # Imported stem packs (multi-stem-import-spec.md) have safe_name()'d
     # on-disk keys that don't round-trip back to the original filename —
@@ -164,6 +164,32 @@ def stem_info(out_dir: Path, model: str) -> list:
             "duration": info.duration,
             "sample_rate": info.samplerate,
             "is_derived": wav_path.stem not in known_stems,
+            "is_custom": False,
+        })
+    # custom-stems-spec.md: user-dropped stems live in a track-scoped (not
+    # model-scoped) directory so they survive re-separation and model
+    # switches — merged in here so every model's stem list includes them.
+    if digest:
+        stems.extend(custom_stem_info(digest))
+    return stems
+
+
+def custom_stem_info(digest: str) -> list:
+    custom_dir = engine.custom_stems_dir(digest)
+    if not custom_dir.exists():
+        return []
+    labels_path = custom_dir / "stem_labels.json"
+    labels = json.loads(labels_path.read_text()) if labels_path.exists() else {}
+    stems = []
+    for wav_path in sorted(custom_dir.glob("*.wav")):
+        info = engine.sf.info(str(wav_path))
+        stems.append({
+            "name": wav_path.stem,
+            "label": labels.get(wav_path.stem),
+            "duration": info.duration,
+            "sample_rate": info.samplerate,
+            "is_derived": False,
+            "is_custom": True,
         })
     return stems
 
@@ -532,7 +558,7 @@ def svc_import_stem_zip(zip_bytes: bytes, zip_filename: str) -> dict:
     return {
         "name": input_path.name,
         "model": IMPORTED_MODEL_NAME,
-        "stems": stem_info(out_dir, IMPORTED_MODEL_NAME),
+        "stems": stem_info(out_dir, IMPORTED_MODEL_NAME, digest),
     }
 
 
@@ -607,7 +633,7 @@ def svc_separate(source_path: str, model: str, force: bool) -> dict:
             result = {
                 "cache_dir": str(out_dir),
                 "output_dir": str(engine.track_output_dir(input_path.stem)),
-                "stems": stem_info(out_dir, model),
+                "stems": stem_info(out_dir, model, engine.content_hash(input_path)),
                 "analysis": engine.ensure_analysis(out_dir),
                 "stale": engine.fingerprint_is_stale(out_dir, input_path) if reused else False,
                 "reused_cache": reused,
@@ -631,7 +657,7 @@ def svc_list_stems(source_path: str, model: str) -> dict:
         raise ApiError(404, f"No stems found for {input_path.name} with model '{model}'. "
                              f"Run separate first.")
     return {
-        "stems": stem_info(out_dir, model),
+        "stems": stem_info(out_dir, model, engine.content_hash(input_path)),
         "stale": engine.fingerprint_is_stale(out_dir, input_path),
         "analysis": engine.ensure_analysis(out_dir),
     }
@@ -663,6 +689,83 @@ def svc_stem_rename(source_path: str, model: str, stem: str, new_label: str) -> 
     labels[stem_key] = new_label.strip()
     labels_path.write_text(json.dumps(labels, indent=2))
     return {"ok": True, "name": stem_key, "label": labels[stem_key]}
+
+
+# ---------------------------------------------------------------------------
+# Custom stems (custom-stems-spec.md) — drag an external mp3/wav onto an
+# already-separated song's mixer and have it behave as a full stem from
+# then on. Stored track-scoped (custom_stems_dir, keyed by content hash
+# only), NOT inside any model's own stem-cache dir — that dir gets
+# shutil.rmtree'd by run_demucs_backend on re-separation, and a stem the
+# user physically provided has nothing to do with which ML model is
+# currently active for the others. stem_info() merges these into every
+# model's stem list; svc_mix() and resolve_stem_file() both know to look
+# here when a stem isn't found in the active model's own out_dir.
+# ---------------------------------------------------------------------------
+
+def svc_add_custom_stem(source_path: str, filename: str, audio_bytes: bytes) -> dict:
+    if not audio_bytes:
+        raise ApiError(400, "Empty upload")
+    input_path = resolve_source_path(source_path)
+
+    # This adds to an already-separated track; it doesn't seed a bare
+    # import. While checking that, also grab an existing stem's sample
+    # rate to match the new one to (so it sums correctly in the same
+    # Web Audio graph / svc_mix, regardless of which model is active).
+    target_sr = None
+    for m in engine.ALL_KNOWN_MODELS:
+        d = engine.track_stem_dir(input_path, m)
+        existing = sorted(d.glob("*.wav")) if d.exists() else []
+        if existing:
+            target_sr = engine.sf.info(str(existing[0])).samplerate
+            break
+    if target_sr is None:
+        raise ApiError(404, f"{input_path.name} has no separated stems yet — separate it first.")
+
+    raw_label = Path(filename).stem
+    safe_key = safe_name(raw_label)
+    digest = engine.content_hash(input_path)
+    custom_dir = engine.custom_stems_dir(digest)
+    custom_dir.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="gs_custom_stem_") as tmp_dir_str:
+        tmp_dir = Path(tmp_dir_str)
+        src_path = tmp_dir / f"src{Path(filename).suffix.lower() or '.bin'}"
+        src_path.write_bytes(audio_bytes)
+        wav_path = tmp_dir / f"{safe_key}.wav"
+        _ffmpeg_convert_to_wav(src_path, wav_path, target_sr=target_sr)
+        # Re-dropping a file with the same resulting name intentionally
+        # replaces it (re-recording an improved take is the expected
+        # workflow), not an error — same as any other overwrite-by-name.
+        wav_path.replace(custom_dir / f"{safe_key}.wav")
+
+    labels_path = custom_dir / "stem_labels.json"
+    labels = json.loads(labels_path.read_text()) if labels_path.exists() else {}
+    labels[safe_key] = raw_label
+    labels_path.write_text(json.dumps(labels, indent=2))
+
+    info = engine.sf.info(str(custom_dir / f"{safe_key}.wav"))
+    return {
+        "name": safe_key, "label": raw_label,
+        "duration": info.duration, "sample_rate": info.samplerate,
+        "is_derived": False, "is_custom": True,
+    }
+
+
+def svc_remove_custom_stem(source_path: str, stem: str) -> dict:
+    input_path = resolve_source_path(source_path)
+    custom_dir = engine.custom_stems_dir(engine.content_hash(input_path))
+    stem_key = safe_name(stem)
+    stem_path = custom_dir / f"{stem_key}.wav"
+    if not stem_path.exists():
+        raise ApiError(404, f"No custom stem named '{stem}' for this track.")
+    stem_path.unlink()
+    labels_path = custom_dir / "stem_labels.json"
+    if labels_path.exists():
+        labels = json.loads(labels_path.read_text())
+        labels.pop(stem_key, None)
+        labels_path.write_text(json.dumps(labels, indent=2))
+    return {"ok": True}
 
 
 def svc_split_guitar(source_path: str, model: str, stem: str, method: str) -> dict:
@@ -705,7 +808,7 @@ def svc_split_guitar(source_path: str, model: str, stem: str, method: str) -> di
     engine.sf.write(str(sides_path), sides, sr)
     engine.export_stem_files([center_path, sides_path], input_path.stem, model)
 
-    updated = stem_info(out_dir, model)
+    updated = stem_info(out_dir, model, engine.content_hash(input_path))
     new_stems = [s for s in updated if s["name"] in (f"{stem}_center", f"{stem}_sides")]
     return {"new_stems": new_stems, "correlation": correlation}
 
@@ -719,7 +822,12 @@ def svc_mix(source_path: str, model: str, gains: dict, mute_ranges: dict,
         raise ApiError(404, f"No stems found for {input_path.name} with model '{model}'. "
                              f"Run separate first.")
 
-    valid_stems = engine.existing_stems(out_dir)
+    # custom-stems-spec.md: a custom stem's file lives in the track-scoped
+    # custom dir, not out_dir — existing_stems() only sees out_dir, so
+    # union in whatever custom stems this track has for every model.
+    custom_dir = engine.custom_stems_dir(engine.content_hash(input_path))
+    custom_stem_names = tuple(sorted(p.stem for p in custom_dir.glob("*.wav"))) if custom_dir.exists() else ()
+    valid_stems = engine.existing_stems(out_dir) + custom_stem_names
     unknown = set(gains) - set(valid_stems)
     if unknown:
         raise ApiError(400, f"Unknown stem name(s): {', '.join(sorted(unknown))}. "
@@ -735,6 +843,8 @@ def svc_mix(source_path: str, model: str, gains: dict, mute_ranges: dict,
     samplerate = None
     for stem in active_stems:
         stem_path = out_dir / f"{stem}.wav"
+        if not stem_path.exists() and stem in custom_stem_names:
+            stem_path = custom_dir / f"{stem}.wav"
         if not stem_path.exists():
             raise ApiError(500, f"Missing stem file: {stem_path.name}")
         audio, sr = engine.sf.read(str(stem_path), dtype="float32")
@@ -819,9 +929,15 @@ def resolve_stem_file(source_path: str, model: str, stem: str) -> Path:
     if not engine.has_cached_stems(out_dir):
         raise ApiError(404, f"No stems found for {input_path.name} with model '{model}'.")
     stem_path = out_dir / f"{safe_name(stem)}.wav"
-    if not stem_path.exists():
-        raise ApiError(404, f"No '{stem}' stem found in this track/model.")
-    return stem_path
+    if stem_path.exists():
+        return stem_path
+    # custom-stems-spec.md: a custom stem lives in the track-scoped (not
+    # model-scoped) custom dir, so it won't be found in out_dir above
+    # regardless of which model is currently selected.
+    custom_path = engine.custom_stems_dir(engine.content_hash(input_path)) / f"{safe_name(stem)}.wav"
+    if custom_path.exists():
+        return custom_path
+    raise ApiError(404, f"No '{stem}' stem found in this track/model.")
 
 
 def resolve_output_file(rel_path: str) -> Path:
@@ -1540,6 +1656,18 @@ class Handler(BaseHTTPRequestHandler):
                                           body.get("model", engine.DEFAULT_MODEL),
                                           body.get("stem", ""),
                                           body.get("new_label", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/custom_stem":
+                _, query = self._query()
+                result = svc_add_custom_stem(query.get("source_path", ""),
+                                              query.get("filename", ""),
+                                              self._read_body())
+                return self._send_json(200, result)
+
+            if path == "/api/custom_stem/remove":
+                body = self._read_json_body()
+                result = svc_remove_custom_stem(body.get("source_path", ""), body.get("stem", ""))
                 return self._send_json(200, result)
 
             if path == "/api/split_guitar":

@@ -427,6 +427,28 @@ listening level, not something that belongs to any one song.
 
 ![The toolbar with Loop active (solid green) next to Zoom to loop, the Zoom slider, Click with its volume slider, and Count-in.](docs/screenshots/toolbar-loop-active.png)
 
+### 3.6a Adding a custom stem
+
+Drag an MP3 or WAV onto the mixer's lane area (anywhere over the
+waveforms/ruler, not the sidebar — a dashed overlay reading "Drop to add
+as a new stem" confirms you're over the right spot) and it appears as one
+more stem, tagged **custom** in its lane header. From that point on it
+behaves exactly like every other stem: mute, solo, fader, pan, EQ, mute-
+painting, and export all just work, no different treatment needed. Use
+it for anything the separation model can't isolate well, or doesn't
+produce at all — your own recorded guitar take played over the mix,
+a purchased single-instrument backing track, a reference click track.
+
+This needs a track that's **already separated** — drop before that and
+you'll be told to separate first, since there's no stem lane to add
+alongside yet. A custom stem is remembered for the song itself, not for
+whichever separation model happens to be selected — switch between
+`htdemucs_6s` and `bs_roformer_sw` to A/B them and it stays put in both,
+and re-separating (even with **Re-separate**) never touches it. Dragging
+in a new file with the same name replaces the old one, for re-recording
+an improved take without any extra cleanup step. A small **✕** next to a
+custom stem's name removes it for good (with a confirmation first).
+
 ### 3.7 Timeline, looping, and the chord lane
 
 **Chord ribbon and Click Track stay pinned to the top of the workspace**
@@ -1050,6 +1072,7 @@ Shortcuts don't fire while a text field has focus.
 ```
 input/                          source songs you've imported
 separated/<model>/<hash>/       cached stems (content-hash keyed)
+separated/_custom/<hash>/       your own dropped-in stems (§3.6a) — one per song, shared across every model
 output/<song>/                  exported mixes + a copy of every stem
 output/<song>/recordings/       takes (video + audio-only) and saved riffs
 GuitarStudio/models/nam/        .nam amp captures (subfolders OK)
