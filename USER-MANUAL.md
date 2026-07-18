@@ -768,7 +768,10 @@ with a meter:
   Feedback on the Flanger for its resonant edge).
 - **Phaser** — a 4-stage sweep (Rate/Depth/Mix).
 - **Tremolo** — amplitude modulation (Rate/Depth), no dry/wet mix since
-  there's nothing to blend.
+  there's nothing to blend. Depth genuinely reaches full chop-to-silence
+  at 100% (a real hardware tremolo's own "depth" knob does the same) —
+  low settings stay subtle on purpose, so dial it up if you want it more
+  dramatic.
 - **Auto-Wah** — an LFO-swept bandpass (Rate/Depth/Center/Mix). Named
   "Auto-Wah," not "Wah," on purpose: this sweeps on its own timer, it
   doesn't track an expression pedal — there's no MIDI/expression input

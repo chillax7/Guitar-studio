@@ -346,9 +346,15 @@ async function ensurePAGraph() {
 
   // Tremolo — pure amplitude modulation in place (no dry/wet split
   // needed): the LFO's depth-scaled output additively modulates a gain
-  // node sitting at baseline 1. Bypass disconnects the LFO from the gain
-  // param instead of zeroing a wet send, since there's nothing to mix —
-  // see updateTremoloBypass in wirePAControls.
+  // node whose OWN baseline also moves with depth (see
+  // updateTremoloDepthGain) so the gain swings between (1-depth) and 1 —
+  // full depth genuinely dips to silence at the trough, the way a real
+  // tremolo pedal does, instead of just oscillating around a fixed
+  // unity baseline (which capped the loudest possible dip at -6dB
+  // regardless of the Depth slider — the "even at 100% it's subtle" bug).
+  // Bypass disconnects the LFO from the gain param and resets the
+  // baseline to 1 instead of zeroing a wet send, since there's nothing to
+  // mix — see updateTremoloBypass in wirePAControls.
   PA.tremoloGain = Audio.ctx.createGain(); PA.tremoloGain.gain.value = 1;
   PA.tremoloLfo = Audio.ctx.createOscillator();
   PA.tremoloLfo.type = "sine"; PA.tremoloLfo.frequency.value = 4.0;
@@ -1541,7 +1547,21 @@ function updateTremoloBypass() {
   const bypassed = document.getElementById("pa-tremolo-bypass").checked;
   try { PA.tremoloDepthGain.disconnect(PA.tremoloGain.gain); } catch (e) { /* wasn't connected */ }
   if (bypassed) { PA.tremoloGain.gain.value = 1; }
-  else { PA.tremoloDepthGain.connect(PA.tremoloGain.gain); }
+  else { PA.tremoloDepthGain.connect(PA.tremoloGain.gain); updateTremoloDepthGain(); }
+}
+
+// PA.tremoloGain.gain's own value is the modulation's BASELINE, which the
+// connected LFO signal adds to continuously — moving it with depth (not
+// leaving it fixed at 1) is what makes full depth swing all the way down
+// to silence (0) instead of just dipping to 0.5 regardless of the slider.
+// gain(t) = (1 - depth/2) + (depth/2)*sin(t): at depth=0 that's a constant
+// 1 (no effect); at depth=1 it swings the full [0, 1] range.
+function updateTremoloDepthGain() {
+  const depth = parseFloat(document.getElementById("pa-tremolo-depth").value) / 100;
+  PA.tremoloDepthGain.gain.value = depth * 0.5;
+  if (!document.getElementById("pa-tremolo-bypass").checked) {
+    PA.tremoloGain.gain.value = 1 - depth * 0.5;
+  }
 }
 
 function wirePAControls() {
@@ -1785,7 +1805,7 @@ function wirePAControls() {
     document.getElementById("pa-tremolo-rate-val").textContent = e.target.value + " Hz";
   });
   document.getElementById("pa-tremolo-depth").addEventListener("input", (e) => {
-    PA.tremoloDepthGain.gain.value = (parseFloat(e.target.value) / 100) * 0.5;
+    updateTremoloDepthGain();
     document.getElementById("pa-tremolo-depth-val").textContent = e.target.value + "%";
   });
 
