@@ -740,12 +740,24 @@ selection.
 ### 4.4 Cab IR
 
 Loads a cabinet impulse response (`.wav`) via convolution. Simple on/off —
-if your NAM capture already includes cabinet coloration (many do), leave
-this off to avoid doubling up; it's there for the Analog/Clean paths or if
-you want to experiment. Picking an IR automatically turns bypass off, so
-you actually hear it. Each IR is peak-normalized on load so a quiet/
+if your NAM capture already includes cabinet coloration (many do — often
+labeled "full rig" or "combo" on TONE3000/ToneHunt), leave this off to
+avoid doubling up. Picking an IR automatically turns bypass off, so you
+actually hear it. Each IR is peak-normalized on load so a quiet/
 unnormalized file doesn't cut your overall volume — loudness should stay
 roughly consistent switching between different IRs.
+
+**If a NAM capture sounds artificial, fizzy, or harsh, check this card
+first.** A capture of just the amp head/preamp (no cabinet in the signal
+path — the far more common kind, since it's what most captures are built
+from for exactly this reason: pair it with whichever cab you want) still
+has the full, unfiltered 20Hz–20kHz distortion spectrum a real guitar
+speaker would never actually produce — a real 12" guitar speaker rolls
+off hard above roughly 5-6kHz, and that rolled-off top end is most of
+what makes a distorted amp sound like an amp instead of a swarm of angry
+bees. If Cab IR is bypassed (its default state) and the capture is an
+amp-only one, that's almost always the entire "fizzy" complaint — turn it
+on and load a matching cab before concluding a capture itself is bad.
 
 **Tone shaper:** a low-cut and high-cut filter on the loaded IR's wet
 signal only (the dry bypass path is never touched), for trimming a cab
