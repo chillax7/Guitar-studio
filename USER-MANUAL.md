@@ -214,6 +214,11 @@ a browser — no server needed.
 
 ### 3.1 Library & importing songs
 
+The left sidebar's width is adjustable — drag the seam right where it
+meets the canvas (cursor turns to ↔) to widen or narrow it, e.g. for
+longer song/playlist names; double-click the seam to reset it back to
+the default width. It's remembered across reloads.
+
 The left sidebar lists your songs. **All Tracks** is its own collapsible
 group (click the ▸/▾ arrow, or its name) and always shows every imported
 song, regardless of playlist membership. Drag an audio file onto the

@@ -3103,6 +3103,53 @@ function toggleHelp() {
   document.getElementById("help-overlay").classList.toggle("show");
 }
 
+// Sidebar's fixed 240px was getting cramped (long stem names, playlist
+// names) — drag #sidebar-resize-handle left/right to resize it, persisted
+// across reloads like the other per-user (not per-project) UI prefs this
+// app already keeps in localStorage (pedal order, collapsed cards before
+// v4.7's redesign, etc).
+const SIDEBAR_WIDTH_KEY = "gs_sidebar_width";
+const SIDEBAR_WIDTH_DEFAULT = 240;
+const SIDEBAR_WIDTH_MIN = 180;
+const SIDEBAR_WIDTH_MAX = 480;
+
+function applySidebarWidth(px) {
+  const clamped = Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, px));
+  document.documentElement.style.setProperty("--sidebar-width", clamped + "px");
+  return clamped;
+}
+
+function wireSidebarResize() {
+  const handle = document.getElementById("sidebar-resize-handle");
+  const stored = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY), 10);
+  applySidebarWidth(Number.isFinite(stored) ? stored : SIDEBAR_WIDTH_DEFAULT);
+
+  let dragging = false;
+  handle.addEventListener("mousedown", (e) => {
+    dragging = true;
+    handle.classList.add("dragging");
+    e.preventDefault(); // don't let the drag select page text
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    // #sidebar is the grid's first column, flush against the window's own
+    // left edge, so the pointer's viewport-relative X is already exactly
+    // the width the sidebar should be — no rect math needed.
+    applySidebarWidth(e.clientX);
+  });
+  window.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove("dragging");
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, parseInt(
+      getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width"), 10));
+  });
+  handle.addEventListener("dblclick", () => {
+    applySidebarWidth(SIDEBAR_WIDTH_DEFAULT);
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, SIDEBAR_WIDTH_DEFAULT);
+  });
+}
+
 function wireHelp() {
   document.getElementById("help-open-btn").addEventListener("click", toggleHelp);
   document.getElementById("help-close-btn").addEventListener("click", toggleHelp);
@@ -3208,6 +3255,7 @@ async function init() {
   wireKeyboardShortcuts();
   wireHelp();
   wirePlaylists();
+  wireSidebarResize();
 
   const modelsResp = await Api.get("/api/models");
   State.models = modelsResp.models;

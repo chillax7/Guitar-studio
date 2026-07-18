@@ -89,6 +89,7 @@ instead — open it directly in a browser, no server required.
 - [ ] Opening Tone Lab while Play Along is open closes Play Along, and vice versa — never both visible at once; Mixer closes whichever is open.
 - [ ] Selecting a track in the Library from either Tone Lab or Play Along drops back to the Mixer (both overlays close).
 - [ ] Opening either Tone Lab or Play Along for the first time after a track loads builds the rig (Enable Input becomes usable, meters move) without needing to visit the other screen first.
+- [ ] **Sidebar resize:** dragging the seam where the sidebar meets the canvas (cursor turns to ↔) resizes it live; it won't go narrower/wider than the set min/max; double-clicking the seam resets it to the default width; the chosen width survives a page reload; nothing in the sidebar (buttons, track rows, playlist names) overlaps or clips oddly at a much narrower or much wider setting.
 
 ## 7. Play Along — top strip
 

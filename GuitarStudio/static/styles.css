@@ -13,6 +13,7 @@
   --mute: #55596a;
   --solo: #e0c34a;
   --topbar-height: 44px;
+  --sidebar-width: 240px; /* wireSidebarResize (app.js) overrides this live + persists it */
   font-size: 14px;
 }
 
@@ -29,9 +30,32 @@ body {
 
 #app {
   display: grid;
-  grid-template-columns: 240px 1fr 280px;
+  grid-template-columns: var(--sidebar-width) 1fr 280px;
   grid-template-rows: auto 1fr;
   height: 100vh;
+  position: relative; /* anchors #sidebar-resize-handle, which sits outside the grid flow */
+}
+
+/* Drag left/right to resize #sidebar — a hit-target wider than its visible
+   line (position:absolute so it isn't itself a grid item/column) sitting
+   right on the sidebar/canvas seam. Hidden until hovered/dragging so it
+   doesn't read as a permanent visual divider on top of #sidebar's own
+   border-right. */
+#sidebar-resize-handle {
+  position: absolute;
+  top: var(--topbar-height);
+  bottom: 0;
+  left: var(--sidebar-width);
+  width: 7px;
+  margin-left: -3px;
+  cursor: col-resize;
+  z-index: 50;
+  background: transparent;
+}
+#sidebar-resize-handle:hover,
+#sidebar-resize-handle.dragging {
+  background: var(--accent);
+  opacity: 0.5;
 }
 
 /* ---------- Top banner ---------- */
