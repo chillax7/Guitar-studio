@@ -1024,7 +1024,13 @@ The card shows, in order:
   went. Unrated sessions are simply skipped when computing it, not
   counted as a zero.
 - **Individual sessions**, most recent first, up to 10 visible at a time
-  with the list scrolling for more. Each row has:
+  with the list scrolling for more. A pause on the same song — even a
+  long one, like stopping to retune or think through a part — keeps
+  adding to the same row rather than starting a new one, as long as you
+  never actually switch to and practice a different song in the
+  meantime (switching away for a real stretch, or coming back after
+  several hours even without ever touching another song, does start a
+  fresh row). Each row has:
   - Date, time, and duration.
   - Five rating buttons (😖 Crap · 😕 Bad · 😐 OK · 🙂 Good · 🤩 Awesome) —
     click one to rate that session; it feeds directly into the score

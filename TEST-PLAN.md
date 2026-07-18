@@ -53,6 +53,7 @@ instead — open it directly in a browser, no server required.
 - [ ] Playlists persist across a server restart (stored server-side, shared across songs like rig presets).
 - [ ] **Practice log:** a song's Library row shows a small dim time readout (e.g. "12m") once you've played it for at least a minute, with the exact total + last-practiced date in the tooltip; time accumulates during real playback (Mixer or Play Along, any reason playback is running) and stops accumulating when paused/stopped.
 - [ ] Practice time follows a renamed source file (content-hash keyed) the same way projects do.
+- [ ] **Practice log session grouping:** playing a song, pausing for several minutes (well past the old 120s gap) without selecting a different song, then resuming and playing more — should land in the SAME session row, not a new one. Switching to a different song for a real stretch and then back should still start a new row. Leaving the same song loaded and idle for several hours (a genuinely new sitting, even with no other song touched in between) should also start a new row rather than merging into a days-old one.
 
 ## 4. Mixer
 

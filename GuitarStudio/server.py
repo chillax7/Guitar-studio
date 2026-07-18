@@ -1327,14 +1327,23 @@ def _read_practice_log() -> dict:
 
 # A session is a run of flush increments with no gap between them bigger
 # than this — comfortably above the ~15-20s cadence flushPracticeLog (app.js)
-# flushes at during continuous play, but short enough that stepping away for
-# a few minutes (or longer) starts a new row in the log rather than silently
-# padding the last one.
+# flushes at during continuous play, but short enough that stepping away to
+# a DIFFERENT song for a few minutes (or longer) starts a new row rather
+# than silently padding the last one.
 SESSION_STITCH_GAP_SEC = 120
+# `continuous=True` (app.js) means the player never actually switched to and
+# practiced a different song between this flush and the last one for this
+# same track — just paused, or the periodic flush cadence happened to land
+# a while apart. That's still "the same song played over again without
+# switching to a new session," so it gets a much longer allowance instead
+# of the short one above — capped, not unlimited, so leaving a tab open for
+# days without ever touching another song doesn't merge unrelated sittings
+# together into one absurd row.
+SESSION_CONTINUOUS_MAX_GAP_SEC = 4 * 3600
 PRACTICE_SESSIONS_MAX = 500  # per track — oldest sessions drop off past this
 
 
-def svc_practice_log_add(track: str, seconds: float) -> dict:
+def svc_practice_log_add(track: str, seconds: float, continuous: bool = False) -> dict:
     if seconds <= 0:
         raise ApiError(400, "seconds must be positive")
     if seconds > 300:
@@ -1351,7 +1360,8 @@ def svc_practice_log_add(track: str, seconds: float) -> dict:
     entry["track_name"] = track  # keeps the display name fresh across renames
 
     sessions = entry.setdefault("sessions", [])
-    if sessions and now - sessions[-1]["end"] <= SESSION_STITCH_GAP_SEC:
+    allowed_gap = SESSION_CONTINUOUS_MAX_GAP_SEC if continuous else SESSION_STITCH_GAP_SEC
+    if sessions and now - sessions[-1]["end"] <= allowed_gap:
         sessions[-1]["end"] = now
         sessions[-1]["seconds"] += seconds
     else:
@@ -1770,7 +1780,8 @@ class Handler(BaseHTTPRequestHandler):
 
             if path == "/api/practice_log":
                 body = self._read_json_body()
-                result = svc_practice_log_add(body.get("track", ""), float(body.get("seconds", 0)))
+                result = svc_practice_log_add(body.get("track", ""), float(body.get("seconds", 0)),
+                                               bool(body.get("continuous", False)))
                 return self._send_json(200, result)
 
             if path == "/api/practice_session/update":

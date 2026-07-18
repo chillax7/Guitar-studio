@@ -961,6 +961,14 @@ const PRACTICE_TICK_MS = 5000;
 const PRACTICE_FLUSH_THRESHOLD_SEC = 15;
 let practiceLogPendingSeconds = 0;
 let practiceLogAccumTrack = null;
+// Which track's flush most recently reached the server — lets flushPracticeLog
+// tell the server whether THIS flush is still "the same song played over
+// again" (nothing else was ever flushed in between) or a genuine return after
+// actually practicing something else. Pausing playback on the same song for
+// a while (no flush happens while paused — see the early return below) and
+// then resuming still counts as continuous, even though real time passed,
+// since the player never left this song for another one in between.
+let practiceLogLastFlushedTrack = null;
 
 function practiceLogTick() {
   if (!Audio.playing || !State.track) return;
@@ -978,9 +986,11 @@ function flushPracticeLog() {
   }
   const track = practiceLogAccumTrack;
   const seconds = practiceLogPendingSeconds;
+  const continuous = practiceLogLastFlushedTrack === null || practiceLogLastFlushedTrack === track;
   practiceLogPendingSeconds = 0;
   practiceLogAccumTrack = null;
-  Api.post("/api/practice_log", { track, seconds }).then((r) => {
+  Api.post("/api/practice_log", { track, seconds, continuous }).then((r) => {
+    practiceLogLastFlushedTrack = track;
     const t = State.tracks.find((x) => x.name === track);
     if (t) {
       t.practice_seconds = r.seconds;
