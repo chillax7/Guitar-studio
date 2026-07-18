@@ -1324,19 +1324,6 @@ async function refreshPlaylists() {
   }
 }
 
-function wirePlaylists() {
-  document.getElementById("playlist-new-btn").addEventListener("click", async () => {
-    const name = prompt("New playlist name:");
-    if (!name || !name.trim()) return;
-    const trimmed = name.trim();
-    if (State.playlists[trimmed]) { alert(`A playlist named "${trimmed}" already exists.`); return; }
-    State.playlists[trimmed] = { tracks: State.track ? [State.track] : [] };
-    State.expandedPlaylists.add(trimmed);
-    await persistPlaylists();
-    renderTrackList();
-  });
-}
-
 let selectTrackEpoch = 0;
 
 async function selectTrack(name) {
@@ -3264,7 +3251,6 @@ async function init() {
   wireVolumeSlider();
   wireKeyboardShortcuts();
   wireHelp();
-  wirePlaylists();
   wireSidebarResize();
 
   const modelsResp = await Api.get("/api/models");

@@ -33,18 +33,15 @@
       <button id="help-open-btn" class="nav-screen-btn">❓ Help</button>
     </div>
     <!-- A playlist is just an ordering over a subset of the same Library
-         list — no separate "current playlist" view anymore. #track-list
-         renders "All Tracks" (anything not in any playlist) followed by
-         each playlist as its own collapsible group (see renderTrackList in
-         app.js). A track can belong to any number of playlists at once
-         (added via the "+" on its row); nothing about a song's own
-         settings lives here — selecting a row still goes through the
+         list — no separate "current playlist" view, and no standalone
+         "new playlist" control here either: that's created via the "+" on
+         a track's own row (renderAddToPlaylistControl in app.js), the same
+         place a track gets added to one. #track-list renders "All Tracks"
+         (anything not in any playlist) followed by each playlist as its
+         own collapsible group (see renderTrackList in app.js). A track can
+         belong to any number of playlists at once; nothing about a song's
+         own settings lives here — selecting a row still goes through the
          normal selectTrack() -> /api/project auto-recall. -->
-    <h2>Playlists</h2>
-    <div id="playlist-bar">
-      <button id="playlist-new-btn" title="New playlist">+ New playlist</button>
-    </div>
-
     <h2>Library</h2>
     <div id="track-list"></div>
     <div id="import-drop">Drop an audio file here<br>or click to import</div>

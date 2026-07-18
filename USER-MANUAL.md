@@ -290,15 +290,17 @@ than silently overwriting one.
 
 ### 3.4 Playlists / setlists
 
-**Playlists** sits above the Library. **+ New playlist** creates one. A
-playlist is its own collapsible group in the same tree as All Tracks —
-give it a name, and it appears alphabetically below All Tracks. **A song
-can belong to any number of playlists at once, and always still shows
-under All Tracks too** — adding it to a playlist is never a move, only an
-extra listing. Add a song to a playlist from its own row (click the
-**+**, tick the playlist(s) you want — the popover closes as soon as you
-tick one) or from the playlist's own header (a **+** there adds whatever
-song is currently loaded).
+A playlist is its own collapsible group in the same tree as All Tracks,
+right there in the Library — no separate playlist picker or management
+screen. Create one from any song's own row: click the **+**, then **+ New
+playlist…**, give it a name, and it appears alphabetically below All
+Tracks with that song already in it. **A song can belong to any number of
+playlists at once, and always still shows under All Tracks too** — adding
+it to a playlist is never a move, only an extra listing. Add an already-
+loaded song to more playlists the same way (click its **+**, tick
+whichever playlist(s) you want — the popover closes as soon as you tick
+one) or from the playlist's own header (a **+** there adds whatever song
+is currently loaded).
 
 Each playlist's header also carries:
 - **◀ / ▶** — step to the previous/next song *in that playlist*
