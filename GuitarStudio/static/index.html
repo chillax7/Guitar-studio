@@ -403,37 +403,44 @@
               <p class="hint" id="takes-trim-result"></p>
             </div>
           </section>
-
-          <!-- VD-08: both takes already contain the backing track baked in
-               (see recorder.js's Recorder.recordBus comment), so "synced"
-               just means starting both from 0 together and keeping their
-               clocks from drifting apart — see wireCompareControls. -->
-          <section class="pa-card" id="takes-compare-card" style="display:none">
-            <h3>Compare takes</h3>
-            <p class="hint">Both play together, in sync — the toggle switches which one you hear.</p>
-            <div id="takes-compare-row">
-              <div class="takes-compare-slot">
-                <p class="hint" id="compare-a-label">A: —</p>
-                <video id="compare-video-a" playsinline></video>
-              </div>
-              <div class="takes-compare-slot">
-                <p class="hint" id="compare-b-label">B: —</p>
-                <video id="compare-video-b" playsinline></video>
-              </div>
-            </div>
-            <input type="range" id="compare-seek" min="0" max="100" step="0.1" value="0">
-            <div class="row">
-              <button id="compare-play-btn" class="primary">▶ Play both</button>
-              <button id="compare-pause-btn">Pause</button>
-              <button id="compare-stop-btn">■ Stop</button>
-            </div>
-            <div class="row">
-              <button id="compare-listen-a-btn" class="active">🔊 Listening: A</button>
-              <button id="compare-listen-b-btn">Listening: B</button>
-            </div>
-            <p class="hint" id="compare-status"></p>
-          </section>
         </div>
+
+        <!-- VD-08: full-width, outside the Record/Takes grid — two side-by-
+             side videos need real width to be worth comparing, and were
+             getting squeezed to that grid's ~300px column when this card
+             lived inside it. Sits just above Practice Log (same "full-width
+             card below the grid" treatment) so it reads as its own
+             temporary panel that appears once two takes are checked, not a
+             permanent fixture crowding the Record/Takes row. Both takes
+             already contain the backing track baked in (see recorder.js's
+             Recorder.recordBus comment), so "synced" just means starting
+             both from 0 together and keeping their clocks from drifting
+             apart — see wireCompareControls. -->
+        <section class="pa-card" id="takes-compare-card" style="display:none">
+          <h3>Compare takes</h3>
+          <p class="hint">Both play together, in sync — the toggle switches which one you hear.</p>
+          <div id="takes-compare-row">
+            <div class="takes-compare-slot">
+              <p class="hint" id="compare-a-label">A: —</p>
+              <video id="compare-video-a" playsinline></video>
+            </div>
+            <div class="takes-compare-slot">
+              <p class="hint" id="compare-b-label">B: —</p>
+              <video id="compare-video-b" playsinline></video>
+            </div>
+          </div>
+          <input type="range" id="compare-seek" min="0" max="100" step="0.1" value="0">
+          <div class="row">
+            <button id="compare-play-btn" class="primary">▶ Play both</button>
+            <button id="compare-pause-btn">Pause</button>
+            <button id="compare-stop-btn">■ Stop</button>
+          </div>
+          <div class="row">
+            <button id="compare-listen-a-btn" class="active">🔊 Listening: A</button>
+            <button id="compare-listen-b-btn">Listening: B</button>
+          </div>
+          <p class="hint" id="compare-status"></p>
+        </section>
 
         <!-- V4-F4 follow-up: full-width, below the Record/Takes grid rather
              than inside it — a log reads as a list of rows, not a card

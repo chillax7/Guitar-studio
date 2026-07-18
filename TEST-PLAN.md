@@ -136,6 +136,7 @@ instead — open it directly in a browser, no server required.
 - [ ] Takes list: star/rename/reveal/delete all work; Play loads a take into the inline player; Trim start/end produces a new, losslessly-trimmed file without touching the original.
 - [ ] **Practice mode (auto-retake on loop):** with a loop region set and Loop on, checking "Practice mode: auto-retake each loop pass" starts the backing track from the top of the loop and begins recording; each time playback wraps the loop, the just-finished pass saves as its own take and a new recording starts immediately, with the backing track never stopping in between; unchecking the box (or stopping playback) saves whatever pass was in progress as a normal take and re-enables the manual Record button.
 - [ ] **Compare two takes:** checking the box on two rows in the Takes list opens a Compare Takes card; both takes play back together from the same starting point and stay in sync; the Listening: A/B toggle switches which one is audible without breaking sync or restarting either; the shared seek bar scrubs both at once; a third checkbox can't be selected until one of the first two is unchecked.
+- [ ] **Compare Takes layout:** the card is full-width (same width as Practice Log below it, not squeezed into the narrower Record/Takes column width) and sits just above Practice Log; both videos have real, comparable size side by side, not cramped.
 
 ## 10. Projects
 
