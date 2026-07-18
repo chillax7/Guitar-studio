@@ -378,6 +378,17 @@ async function ensurePAGraph() {
   // Auto-Wah — LFO-swept bandpass (not treadle-controlled: there's no
   // expression-pedal/MIDI input yet, that's GP-11 — named "Auto-Wah" in
   // the UI to say so honestly).
+  //
+  // v4.7 fix: unlike Chorus/Flanger/Phaser (where the dry signal is
+  // deliberately ALWAYS present at full strength underneath the wet
+  // signal — that's what makes a doubled/modulated copy sound like
+  // chorus at all), a wah is supposed to fully reshape the tone: a narrow
+  // bandpass sweep added on TOP of an always-full-volume, unfiltered dry
+  // signal barely moves the overall tonal balance, since the swept band
+  // is already present in the dry signal at the same unity gain — that
+  // was the actual cause of "faint even at 100% mix," not a perception
+  // issue. PA.wahDryGain makes Mix a real crossfade (dry fades out as wet
+  // fades in) instead of always-on-dry plus scaled wet.
   PA.wahFilter = Audio.ctx.createBiquadFilter();
   PA.wahFilter.type = "bandpass"; PA.wahFilter.frequency.value = 800; PA.wahFilter.Q.value = 3;
   PA.wahLfo = Audio.ctx.createOscillator();
@@ -387,8 +398,10 @@ async function ensurePAGraph() {
   PA.wahLfo.start();
   PA.wahWetGain = Audio.ctx.createGain(); PA.wahWetGain.gain.value = 0;
   PA.wahFilter.connect(PA.wahWetGain);
+  PA.wahDryGain = Audio.ctx.createGain(); PA.wahDryGain.gain.value = 1; // bypass default — see updateWahWet
   PA.wahMerge = Audio.ctx.createGain();
   PA.wahWetGain.connect(PA.wahMerge);
+  PA.wahDryGain.connect(PA.wahMerge);
 
   // Octaver — real octave-down via zero-crossing frequency division
   // (octave-processor.js AudioWorklet), same technique classic analog
@@ -437,7 +450,7 @@ async function ensurePAGraph() {
     flanger: { inputs: [PA.flangerDelay, PA.flangerMerge], output: PA.flangerMerge },
     phaser: { inputs: [PA.phaserStages[0], PA.phaserMerge], output: PA.phaserMerge },
     tremolo: { inputs: [PA.tremoloGain], output: PA.tremoloGain },
-    wah: { inputs: [PA.wahFilter, PA.wahMerge], output: PA.wahMerge },
+    wah: { inputs: [PA.wahFilter, PA.wahDryGain], output: PA.wahMerge },
     octaver: { inputs: [PA.octaverDryGain, PA.octaveNode], output: PA.octaverMerge },
   };
   PA.pedalOrder = paLoadPedalOrder();
@@ -1573,10 +1586,15 @@ function updatePhaserWet() {
   const mix = parseFloat(document.getElementById("pa-phaser-mix").value) / 100;
   PA.phaserWetGain.gain.value = bypassed ? 0 : mix;
 }
+// A real crossfade (unlike Chorus/Flanger/Phaser's always-on-dry-plus-
+// scaled-wet — see the comment on PA.wahDryGain in ensurePAGraph): dry
+// fades out as wet fades in, so 100% mix is the swept bandpass alone,
+// not the bandpass added on top of a still-full-volume dry signal.
 function updateWahWet() {
   const bypassed = document.getElementById("pa-wah-bypass").checked;
   const mix = parseFloat(document.getElementById("pa-wah-mix").value) / 100;
   PA.wahWetGain.gain.value = bypassed ? 0 : mix;
+  PA.wahDryGain.gain.value = bypassed ? 1 : (1 - mix);
 }
 // Tremolo has no Mix knob (pure in-place amplitude modulation) — bypass
 // disconnects the LFO from the gain param entirely rather than zeroing a

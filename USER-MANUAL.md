@@ -777,7 +777,11 @@ with a meter:
 - **Auto-Wah** — an LFO-swept bandpass (Rate/Depth/Center/Mix). Named
   "Auto-Wah," not "Wah," on purpose: this sweeps on its own timer, it
   doesn't track an expression pedal — there's no MIDI/expression input
-  wired up yet.
+  wired up yet. Mix is a real dry/wet crossfade here (unlike Chorus/
+  Flanger/Phaser, where the dry signal deliberately always stays at full
+  volume underneath the wet — that's what makes those sound like
+  chorus/flanger at all): 100% is the swept filter alone, with none of
+  the unfiltered dry signal left underneath it.
 - **Octaver** — a real octave-down via zero-crossing frequency division
   (Blend knob), the same technique classic analog octave pedals use.
   Monophonic by construction; it's cleanest on single notes and breaks up
