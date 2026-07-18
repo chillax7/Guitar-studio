@@ -25,12 +25,30 @@ class OctaveProcessor extends AudioWorkletProcessor {
     super();
     this.envelope = 0;
     this.envCoeff = Math.exp(-1 / (0.01 * sampleRate)); // 10ms follower — tracks picking dynamics
-    this.prevSample = 0;
+    this.prevFiltered = 0;
     this.square = 1;
     this.smoothed = 0;
     // Softens the raw square wave's harsh edges a little without eating
     // the "synthy" character that makes an octave-down effect recognizable.
     this.smoothCoeff = Math.exp(-1 / (0.0015 * sampleRate));
+
+    // v4.7 fix: zero-crossing tracking needs a near-sinusoidal signal to
+    // stay locked to the true fundamental — the raw guitar waveform is
+    // rich in harmonics, and each of those adds its OWN spurious rising
+    // zero-crossing within a single fundamental period. Every spurious
+    // crossing flips the divider at the wrong moment, which is what
+    // "wavers around and doesn't stay on pitch" actually was — not noise
+    // or mistracking the note, but the divider literally getting extra,
+    // wrong flip events from harmonic content in an otherwise-correctly-
+    // detected note. Three cascaded one-pole lowpass stages ahead of the
+    // crossing detector (not touching the actual output path, which is
+    // still the square wave itself, generated from the UNFILTERED
+    // envelope) strip most of that harmonic content first — the same
+    // "clean up the input before dividing it" step a real analog octave
+    // pedal's own buffer/filter stage does before its flip-flop divider.
+    const cutoffHz = 300;
+    this.lpCoeff = 1 - Math.exp(-2 * Math.PI * cutoffHz / sampleRate);
+    this.lp1 = 0; this.lp2 = 0; this.lp3 = 0;
   }
 
   process(inputs, outputs, parameters) {
@@ -47,16 +65,22 @@ class OctaveProcessor extends AudioWorkletProcessor {
       const x = input[i];
       this.envelope = Math.max(Math.abs(x), this.envelope * this.envCoeff);
 
+      this.lp1 += (x - this.lp1) * this.lpCoeff;
+      this.lp2 += (this.lp1 - this.lp2) * this.lpCoeff;
+      this.lp3 += (this.lp2 - this.lp3) * this.lpCoeff;
+      const filtered = this.lp3;
+
       // A sine has exactly ONE rising zero-crossing per cycle, so flipping
       // the square's sign on every rising crossing gives it a full cycle
       // (two flips) every TWO input cycles — half the frequency, one
       // octave down. (Flipping on every OTHER crossing, tried first here,
       // actually divides by 4: two crossings per flip x two flips per
-      // square cycle.)
-      if (this.envelope > NOISE_FLOOR && this.prevSample <= 0 && x > 0) {
+      // square cycle.) Tracked against the LOWPASSED signal now, not the
+      // raw input, so harmonics can't inject extra crossings.
+      if (this.envelope > NOISE_FLOOR && this.prevFiltered <= 0 && filtered > 0) {
         this.square = -this.square;
       }
-      this.prevSample = x;
+      this.prevFiltered = filtered;
 
       const target = this.envelope > NOISE_FLOOR ? this.square * this.envelope : 0;
       this.smoothed = target + (this.smoothed - target) * this.smoothCoeff;
