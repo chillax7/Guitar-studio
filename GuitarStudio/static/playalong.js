@@ -207,6 +207,17 @@ async function ensurePAGraph() {
 
   // Cab IR (bypass = plain on/off, dry/wet gain pair)
   PA.convolver = Audio.ctx.createConvolver();
+  // ConvolverNode's own built-in auto-normalize (on by default) scales the
+  // IR by a generic energy-based formula that's really tuned for reverb-
+  // style impulses — it's known to under-compensate for typical short,
+  // sparse guitar cab IRs, leaving a real (sometimes large) volume drop
+  // the moment one's loaded. Disabling it and doing our own peak-based
+  // make-up gain (computed per file in paLoadIr, applied via
+  // PA.irMakeupGain below) gives predictable, consistent loudness across
+  // different IR files instead of however the browser's heuristic happens
+  // to land on any given one.
+  PA.convolver.normalize = false;
+  PA.irMakeupGain = Audio.ctx.createGain(); PA.irMakeupGain.gain.value = 1;
   PA.irDryGain = Audio.ctx.createGain(); PA.irDryGain.gain.value = 1;
   PA.irWetGain = Audio.ctx.createGain(); PA.irWetGain.gain.value = 0;
   // v3.1 §2 (post-v3-backlog-audit.md §2.3): IR tone shaper — low/high-cut
@@ -218,7 +229,7 @@ async function ensurePAGraph() {
   PA.irLowCut.type = "highpass"; PA.irLowCut.frequency.value = 20;
   PA.irHighCut = Audio.ctx.createBiquadFilter();
   PA.irHighCut.type = "lowpass"; PA.irHighCut.frequency.value = 20000;
-  PA.convolver.connect(PA.irLowCut).connect(PA.irHighCut).connect(PA.irWetGain);
+  PA.convolver.connect(PA.irMakeupGain).connect(PA.irLowCut).connect(PA.irHighCut).connect(PA.irWetGain);
   PA.irMerge = Audio.ctx.createGain();
   PA.irDryGain.connect(PA.irMerge);
   PA.irWetGain.connect(PA.irMerge);
@@ -1272,15 +1283,42 @@ function paHandleNamLiveOverrun(rtFactor) {
   paHighlightBrowserSelection("nam", prev || null);
 }
 
+// Cab IR make-up gain: peak-normalize the loaded impulse to unity (instead
+// of relying on ConvolverNode's own disabled auto-normalize — see
+// ensurePAGraph) so a quiet/unnormalized IR file doesn't cut the overall
+// volume once it's loaded. Clamped well short of what a broken/near-silent
+// IR would otherwise demand (dividing by a near-zero peak) — a IR that
+// quiet is almost certainly not a real IR, and boosting 20+ dB into it is
+// far more likely to just amplify noise than to be the fix.
+const IR_MAKEUP_GAIN_MAX = 6; // ~+15.6dB ceiling
+function computeIrMakeupGain(buffer) {
+  let peak = 0;
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = 0; i < data.length; i++) {
+      const v = Math.abs(data[i]);
+      if (v > peak) peak = v;
+    }
+  }
+  return peak > 0 ? Math.min(IR_MAKEUP_GAIN_MAX, 1 / peak) : 1;
+}
+
 async function paLoadIr(filename) {
   const statusEl = document.getElementById("pa-ir-status");
-  if (!filename) { PA.convolver.buffer = null; PA.irLoaded = null; statusEl.textContent = ""; return; }
+  if (!filename) {
+    PA.convolver.buffer = null;
+    PA.irMakeupGain.gain.value = 1;
+    PA.irLoaded = null;
+    statusEl.textContent = "";
+    return;
+  }
   statusEl.textContent = "Loading…";
   try {
     const resp = await fetch(`/api/ir_model_file?filename=${encodeURIComponent(filename)}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const arrBuf = await resp.arrayBuffer();
     PA.convolver.buffer = await Audio.ctx.decodeAudioData(arrBuf);
+    PA.irMakeupGain.gain.value = computeIrMakeupGain(PA.convolver.buffer);
     PA.irLoaded = filename; // GP-02: so a rig preset capture knows which IR is active
     statusEl.textContent = `Loaded: ${filename}`;
   } catch (e) {

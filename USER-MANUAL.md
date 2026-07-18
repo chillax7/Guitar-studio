@@ -743,7 +743,9 @@ Loads a cabinet impulse response (`.wav`) via convolution. Simple on/off —
 if your NAM capture already includes cabinet coloration (many do), leave
 this off to avoid doubling up; it's there for the Analog/Clean paths or if
 you want to experiment. Picking an IR automatically turns bypass off, so
-you actually hear it.
+you actually hear it. Each IR is peak-normalized on load so a quiet/
+unnormalized file doesn't cut your overall volume — loudness should stay
+roughly consistent switching between different IRs.
 
 **Tone shaper:** a low-cut and high-cut filter on the loaded IR's wet
 signal only (the dry bypass path is never touched), for trimming a cab
