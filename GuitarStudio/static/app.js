@@ -925,6 +925,7 @@ function renderAddToPlaylistControl(trackName) {
     if (State.playlists[trimmed]) { alert(`A playlist named "${trimmed}" already exists.`); return; }
     State.playlists[trimmed] = { tracks: [trackName] };
     State.expandedPlaylists.add(trimmed);
+    openAddToPlaylistFor = null; // same "a selection is a done signal" close as picking an existing playlist above
     await persistPlaylists();
     renderTrackList();
   });
