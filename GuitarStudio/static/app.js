@@ -3133,6 +3133,13 @@ function wireSidebarResize() {
     // left edge, so the pointer's viewport-relative X is already exactly
     // the width the sidebar should be — no rect math needed.
     applySidebarWidth(e.clientX);
+    // #lanes' width only changes because this grid column did — no native
+    // "resize" event fires for that (window.addEventListener("resize", ...)
+    // only sees actual viewport changes), so applyZoomWidth's own
+    // lanesEl.clientWidth read would otherwise go stale here forever.
+    // Cheap on every tick, same as the zoom slider's own "input" handler;
+    // the waveform bitmap itself just stretches until the drag settles.
+    applyZoomWidth();
   });
   window.addEventListener("mouseup", () => {
     if (!dragging) return;
@@ -3140,10 +3147,14 @@ function wireSidebarResize() {
     handle.classList.remove("dragging");
     localStorage.setItem(SIDEBAR_WIDTH_KEY, parseInt(
       getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width"), 10));
+    // Redraw waveforms at the new resolution now the drag has settled —
+    // same "cheap during, full redraw after" split as the zoom slider.
+    if (State.track) renderLanes();
   });
   handle.addEventListener("dblclick", () => {
     applySidebarWidth(SIDEBAR_WIDTH_DEFAULT);
     localStorage.setItem(SIDEBAR_WIDTH_KEY, SIDEBAR_WIDTH_DEFAULT);
+    if (State.track) renderLanes();
   });
 }
 

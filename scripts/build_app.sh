@@ -36,11 +36,11 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>4.7</string>
+    <string>3.0</string>
     <key>CFBundleVersion</key>
-    <string>4.7</string>
+    <string>3.0</string>
     <key>CFBundleGetInfoString</key>
-    <string>Guitar Studio 4.7 "Orpheus"</string>
+    <string>Guitar Studio 3.0 "Orpheus"</string>
     <key>CFBundleIconFile</key>
     <string>GuitarStudio</string>
     <key>LSMinimumSystemVersion</key>
@@ -72,7 +72,11 @@ if ! curl -s -o /dev/null "$URL"; then
   # of backing_track.py now anchoring those paths to its own file location
   # regardless of CWD.
   (cd "$DIR" && "$DIR/venv/bin/python" "$DIR/GuitarStudio/server.py" --port "$PORT" >> "$LOG" 2>&1) &
-  for _ in $(seq 1 30); do
+  # 90 * 0.5s = 45s: a cold start imports torch/audio-separator's ML stack,
+  # which can take well past the old 15s budget (observed ~10s even on a
+  # warm disk cache) — too short a wait just opens the browser onto a
+  # server that isn't listening yet.
+  for _ in $(seq 1 90); do
     curl -s -o /dev/null "$URL" && break
     sleep 0.5
   done

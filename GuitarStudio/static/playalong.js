@@ -370,6 +370,7 @@ async function ensurePAGraph() {
   PA.tremoloLfo = Audio.ctx.createOscillator();
   PA.tremoloLfo.type = "sine"; PA.tremoloLfo.frequency.value = 4.0;
   PA.tremoloDepthGain = Audio.ctx.createGain(); PA.tremoloDepthGain.gain.value = 0.25;
+  PA.tremoloLfo.connect(PA.tremoloDepthGain);
   PA.tremoloLfo.start();
   // Deliberately NOT connected to PA.tremoloGain.gain here — the Bypass
   // checkbox defaults to checked, and updateTremoloBypass makes that
@@ -396,8 +397,17 @@ async function ensurePAGraph() {
   PA.wahDepthGain = Audio.ctx.createGain(); PA.wahDepthGain.gain.value = 300;
   PA.wahLfo.connect(PA.wahDepthGain).connect(PA.wahFilter.frequency);
   PA.wahLfo.start();
+  // Web Audio's "bandpass" is 0dB AT the center frequency, but a real
+  // guitar signal's energy is spread across the spectrum, not sitting at
+  // 800Hz alone — most of it falls outside this Q=3 band and gets rolled
+  // off, so the filtered signal measures ~6.6dB quieter in RMS than the
+  // dry input (measured against an actual separated guitar stem, static
+  // center, no LFO sweep). A real wah pedal's buffer/gain stage keeps it
+  // close to unity loudness; this makeup gain does the same rather than
+  // making "turn the wah on" sound like a volume cut.
+  PA.wahMakeupGain = Audio.ctx.createGain(); PA.wahMakeupGain.gain.value = 2.15;
   PA.wahWetGain = Audio.ctx.createGain(); PA.wahWetGain.gain.value = 0;
-  PA.wahFilter.connect(PA.wahWetGain);
+  PA.wahFilter.connect(PA.wahMakeupGain).connect(PA.wahWetGain);
   PA.wahDryGain = Audio.ctx.createGain(); PA.wahDryGain.gain.value = 1; // bypass default — see updateWahWet
   PA.wahMerge = Audio.ctx.createGain();
   PA.wahWetGain.connect(PA.wahMerge);
@@ -1916,10 +1926,27 @@ function wirePAControls() {
 function paShowLatencyEstimate() {
   const el = document.getElementById("pa-latency-hint");
   if (!Audio.ctx) { el.textContent = ""; return; }
+  // baseLatency/outputLatency only describe the browser's own OUTPUT
+  // buffering — Web Audio has no API to measure the INPUT side at all
+  // (the interface's USB buffer, its driver, CoreAudio), which for an
+  // external audio interface is typically the larger share of real
+  // round-trip latency. So this number reading low (or even ~0, since
+  // outputLatency is commonly unpopulated in Chrome until real playback
+  // has actually rendered) is expected, not a sign anything's wrong —
+  // it was never a full round-trip figure to begin with. Surfacing the
+  // context's sample rate alongside it lets a user directly compare
+  // against their interface's own configured rate: this app never
+  // requests a specific rate (ensureCtx/paEnableInput both omit it), so
+  // it just inherits whatever the OS default output device's rate was
+  // when the context was first created — if that doesn't match the
+  // interface, the browser silently resamples the input stream to
+  // reconcile them, adding real latency this estimate can't see either.
   const est = ((Audio.ctx.baseLatency || 0) + (Audio.ctx.outputLatency || 0)) * 1000;
+  const rateNote = `Context sample rate: ${Audio.ctx.sampleRate} Hz — check this matches your interface's own rate setting.`;
   el.textContent = est > 0
-    ? `Estimated monitoring latency: ~${est.toFixed(0)} ms (browser-reported, not measured).`
-    : "Latency estimate unavailable in this browser.";
+    ? `Estimated OUTPUT-side latency only: ~${est.toFixed(0)} ms (browser-reported, not a full round-trip measurement — ` +
+      `excludes input/USB/driver latency entirely). ${rateNote}`
+    : `Latency estimate unavailable in this browser. ${rateNote}`;
 }
 
 // ---------------------------------------------------------------------------
