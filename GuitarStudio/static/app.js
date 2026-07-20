@@ -524,7 +524,33 @@ async function setSpeedTune(speed, pitchRatio) {
   Audio.playing = false;
   Audio.playStartOffset = pos;
   Audio.processedPosition = pos;
-  if (newMode === "processed") await ensureStretchNodes();
+  if (newMode === "processed") {
+    try {
+      await ensureStretchNodes();
+    } catch (e) {
+      // A transient failure here (worklet module fetch hiccup, a single
+      // AudioWorkletNode construction error) used to leave Audio.mode
+      // stuck at "processed" with only a partial set of stretch nodes
+      // built and playback never resumed — direct sources were already
+      // stopped above, so the result was total, silent playback loss
+      // recoverable only by reloading the page. Fall back to unmodified
+      // direct playback instead of leaving the graph half-built, and
+      // reset Speed/Tune's own UI so it doesn't keep claiming an effect
+      // that silently isn't applied anymore.
+      teardownStretchNodes();
+      Audio.mode = "direct";
+      Audio.speed = 1.0;
+      Audio.pitchRatio = 1.0;
+      setTransportValue("speed-slider", "1");
+      setTransportValue("tune-slider", "0");
+      setTransportText("speed-display", "1.00×");
+      setTransportText("tune-display", "+0¢");
+      updateBpmDisplay();
+      updateKeyHint();
+      renderChordLane();
+      alert("Speed/Tune couldn't be applied (" + e.message + ") — reverted to normal playback.");
+    }
+  }
   if (wasPlaying) startPlaybackAt(pos);
 }
 
