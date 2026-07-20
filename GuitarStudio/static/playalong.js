@@ -675,6 +675,78 @@ async function paRefreshDevices() {
   if (nonBuiltIn) sel.value = nonBuiltIn.deviceId;
 }
 
+// Output device picker (Tone Lab's Output card) — routes the ENTIRE
+// shared AudioContext (backing-track mix, click, and the live rig alike)
+// to a chosen device via AudioContext.setSinkId, so Guitar Studio can
+// monitor through the audio interface while the rest of the Mac stays on
+// its speakers. Using the interface for BOTH input and output puts the
+// whole monitoring path on one clock at one rate — no cross-device
+// resampling/drift buffering, the single biggest practical latency lever
+// left after the v4.7 latencyHint work. Recording is unaffected either
+// way: takes tap the graph's record bus (recorder.js), not any output
+// device. Same localStorage idiom as the input picker above; the saved
+// sink is applied at context creation (ensureCtx, app.js) so mixer-only
+// sessions honor it too, not just ones that open Tone Lab.
+const GS_OUTPUT_DEVICE_KEY = "gs_output_device";
+
+async function paRefreshOutputDevices() {
+  const sel = document.getElementById("pa-output-device-select");
+  if (!("setSinkId" in AudioContext.prototype)) {
+    sel.style.display = "none";
+    document.getElementById("pa-output-device-hint").textContent =
+      "Output device selection isn't supported in this browser — use the OS sound settings instead.";
+    return;
+  }
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const outputs = devices.filter((d) => d.kind === "audiooutput");
+  const prevValue = sel.value;
+  sel.innerHTML = "";
+  const defaultOpt = document.createElement("option");
+  defaultOpt.value = "";
+  defaultOpt.textContent = "System default";
+  sel.appendChild(defaultOpt);
+  for (const d of outputs) {
+    // Skip Chrome's synthetic "default" entry (the explicit option above
+    // covers it) and permission-stripped entries with blank deviceIds —
+    // before mic permission is granted, enumerateDevices returns devices
+    // with empty ids/labels that can't actually be selected (and an empty
+    // value would collide with "System default").
+    if (d.deviceId === "default" || !d.deviceId) continue;
+    const opt = document.createElement("option");
+    opt.value = d.deviceId;
+    opt.textContent = d.label || `Output ${sel.children.length}`;
+    sel.appendChild(opt);
+  }
+  if (sel.options.length === 1) {
+    document.getElementById("pa-output-device-hint").textContent =
+      "Device names appear after input permission is granted — click Enable input once.";
+  }
+  const saved = localStorage.getItem(GS_OUTPUT_DEVICE_KEY);
+  for (const candidate of [prevValue, saved]) {
+    if (candidate && [...sel.options].some((o) => o.value === candidate)) {
+      sel.value = candidate;
+      break;
+    }
+  }
+}
+
+async function paApplyOutputDevice(deviceId) {
+  const hintEl = document.getElementById("pa-output-device-hint");
+  ensureCtx(); // picker can be used before anything has played
+  try {
+    await Audio.ctx.setSinkId(deviceId);
+    localStorage.setItem(GS_OUTPUT_DEVICE_KEY, deviceId);
+    const sel = document.getElementById("pa-output-device-select");
+    const label = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : "device";
+    hintEl.textContent = deviceId
+      ? `All Guitar Studio audio now outputs to ${label} — listen there (headphones/monitors on the interface). Recording is unaffected.`
+      : "Following the system default output.";
+    paShowLatencyEstimate(); // sink change can change the reported numbers
+  } catch (e) {
+    hintEl.textContent = `Couldn't switch output: ${e.message}`;
+  }
+}
+
 async function paEnableInput() {
   await ensurePAGraph();
   const deviceId = document.getElementById("pa-device-select").value;
@@ -707,6 +779,7 @@ async function paEnableInput() {
 
     hintEl.textContent = "Input enabled.";
     await paRefreshDevices(); // device labels only populate after permission is granted
+    paRefreshOutputDevices(); // same permission gate applies to output labels
     // v3.1: persist whichever device actually just succeeded — including
     // the very first auto-picked default — so future sessions start here
     // instead of re-deriving the same heuristic from scratch every time.
@@ -1596,6 +1669,7 @@ async function openToneLab() {
   document.getElementById("tonelab-overlay").classList.add("show");
   document.getElementById("playalong-overlay").classList.remove("show");
   paRefreshDevices();
+  paRefreshOutputDevices();
   paRefreshNamModels();
   paRefreshIrModels();
   paUpdateSuggestVisibility();
@@ -1986,6 +2060,9 @@ function wirePAControls() {
   document.getElementById("pa-output-bypass").addEventListener("change", (e) => {
     const level = parseFloat(document.getElementById("pa-output-level").value);
     PA.outputGain.gain.value = e.target.checked ? 1 : dbToLin(level);
+  });
+  document.getElementById("pa-output-device-select").addEventListener("change", (e) => {
+    paApplyOutputDevice(e.target.value);
   });
 }
 

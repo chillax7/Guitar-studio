@@ -292,6 +292,14 @@ function ensureCtx() {
     // the same rate), and the Tone Lab latency hint surfaces the context
     // rate for exactly that check.
     Audio.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 0 });
+    // Re-apply the persisted output-device choice (Tone Lab's Output card
+    // picker, playalong.js) as soon as the context exists, so a
+    // mixer-only session honors it without ever opening Tone Lab.
+    // Best-effort: if the saved device is unplugged today, setSinkId
+    // rejects and the system default silently wins — the picker shows
+    // what's actually available whenever Tone Lab is next opened.
+    const savedSink = localStorage.getItem("gs_output_device");
+    if (savedSink && Audio.ctx.setSinkId) Audio.ctx.setSinkId(savedSink).catch(() => {});
     Audio.master = Audio.ctx.createGain();
     // V3-E2: mute lives on its own node so the tuner's mute and the volume
     // slider's level never fight over the same gain param (the pre-v3 bug:
