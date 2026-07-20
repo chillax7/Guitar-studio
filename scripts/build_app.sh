@@ -65,7 +65,16 @@ PORT=8765
 URL="http://127.0.0.1:$PORT/"
 
 if ! curl -s -o /dev/null "$URL"; then
-  LOG="$DIR/GuitarStudio/server.log"
+  # The log deliberately lives OUTSIDE the project tree. When the project
+  # sits in an OneDrive-synced location (this user's Desktop is
+  # Known-Folder-Moved into ~/Library/CloudStorage), appending to a file
+  # there from a double-clicked unsigned .app gets "Operation not
+  # permitted" (File Provider/TCC denies the launcher context — reads and
+  # the python server's own writes are fine, only this bash redirect
+  # died), and with set -e that silently killed the server before it ever
+  # started: bouncing Dock icon, then nothing. /tmp also spares OneDrive
+  # re-syncing a log that grows on every request.
+  LOG="/tmp/guitar-studio-server.log"
   # cd first: a double-clicked .app's working directory is whatever Finder
   # gives it (not this project folder), and the engine's relative paths
   # (separated/, output/) resolve against it — belt-and-suspenders on top
