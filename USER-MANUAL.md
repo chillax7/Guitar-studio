@@ -402,12 +402,17 @@ bar** below it has the playback essentials:
   ¢-value to reset to 0. The inspector panel shows a **detected key** (a
   heuristic — confirm by ear) and, once you move Tune off zero, what key
   that transposition actually lands you in (e.g. "Transposed +2
-  semitones → A major"). Once the chord lane (§3.7) has confident
-  chords, the key reading is based on those (whichever chord shows up
-  most often, in practice usually the tonic) rather than raw
-  pitch-content correlation — noticeably more reliable on blues/rock,
-  where a lot of dominant-7 chords can otherwise fool a plain major/minor
-  match.
+  semitones → A major"). Once the chord lane (§3.7) has confident chords,
+  the key reading is based on those rather than raw pitch-content
+  correlation — noticeably more reliable on blues/rock, where a lot of
+  dominant-7 chords can otherwise fool a plain major/minor match. The
+  tonic is whichever root shows up on the most beats overall (in practice
+  usually the actual tonic); major/minor is then judged from the actual
+  minor-3rd vs. major-3rd note content at that root, not from a single
+  chord's own quality label — power chords (just root + 5th, no 3rd at
+  all) can't tell a maj/min template apart on note content alone, so
+  trusting one chord's label there was silently biasing riff-heavy rock
+  and metal songs toward false "major" reads.
 - **Volume** — an overall listening-level slider for the backing track.
 
 And the two toolbar click features:
