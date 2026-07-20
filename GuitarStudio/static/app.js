@@ -3085,6 +3085,19 @@ async function ripFinalizeAndUpload(chunks, mimeType) {
   try {
     const r = await Api.postRaw(`/api/rip/save?filename=${encodeURIComponent(name)}&src_ext=${srcExt}`, blob);
     hintEl.textContent = `Saved as ${r.name}.`;
+    if (r.silent) {
+      // Fails fast, while the routing is still fresh in mind — the
+      // alternative is discovering it minutes later as a cryptic
+      // "Expected a 'vocals' stem... but didn't find one among: []"
+      // separation error, with no clue the real problem was upstream.
+      alert(
+        `This rip looks silent (peak level ${r.peak_db} dB — real audio is always much louder than this).\n\n` +
+        "The Mac's system output isn't reaching BlackHole. Check:\n" +
+        "• System Settings → Sound → Output is set to BlackHole (or a Multi-Output Device containing it)\n" +
+        "• Whatever you were trying to capture was actually playing during the rip\n\n" +
+        `"${r.name}" was still saved, but it's probably empty — delete it and try again after fixing the routing.`
+      );
+    }
     await refreshTrackList();
     await selectTrack(r.name);
   } catch (e) {

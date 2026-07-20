@@ -577,6 +577,32 @@ def svc_import_stem_zip(zip_bytes: bytes, zip_filename: str) -> dict:
 
 RIP_SRC_EXTS = {"webm", "mp4", "m4a", "wav"}
 
+# A dead BlackHole tap (System Settings' output never actually routed to it)
+# still "records" successfully — MediaRecorder happily captures 7 seconds of
+# silence — so the failure doesn't surface until separation, as a cryptic
+# "Expected a 'vocals' stem... but didn't find one among: []" error minutes
+# later, with the routing mistake long forgotten. Real captured audio, even
+# quiet music, peaks well above this; a silent tap sits at the codec noise
+# floor (observed ~-91dB on an actual dead capture) — -60dB is a wide margin
+# between the two, not a tight tripwire.
+RIP_SILENCE_PEAK_DB = -60.0
+
+
+def _ffmpeg_peak_db(ffmpeg: str, path: Path) -> float | None:
+    """Runs ffmpeg's volumedetect filter (analysis only, no output written)
+    over the already-remuxed file and parses the reported max_volume. Same
+    ffmpeg invocation family as the remux itself, just a second pass, so
+    this doesn't add a new dependency or touch the audio. Returns None if
+    the filter's output can't be parsed — a missing-tool/parse issue is
+    exactly the kind of failure a "silent rip" guardrail must never turn
+    into a false alarm for, since the file is real either way."""
+    result = subprocess.run(
+        [ffmpeg, "-i", str(path), "-af", "volumedetect", "-vn", "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    match = re.search(r"max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB", result.stderr)
+    return float(match.group(1)) if match else None
+
 
 def svc_rip_save(filename: str, src_ext: str, data: bytes) -> dict:
     if not data:
@@ -602,7 +628,16 @@ def svc_rip_save(filename: str, src_ext: str, data: bytes) -> dict:
         if result.returncode != 0:
             raise ApiError(400, f"Could not finish the rip: {result.stderr[-500:]}")
 
-    return {"name": dest_path.name, "path": str(dest_path)}
+        peak_db = _ffmpeg_peak_db(ffmpeg, dest_path)
+
+    # Still saved either way — least-destructive default. A false positive
+    # (e.g. a genuinely quiet ambient recording) costs the user one glance
+    # at a warning; discarding a real capture on a guess would be much worse.
+    response = {"name": dest_path.name, "path": str(dest_path)}
+    if peak_db is not None:
+        response["peak_db"] = round(peak_db, 1)
+        response["silent"] = peak_db < RIP_SILENCE_PEAK_DB
+    return response
 
 
 def svc_separate(source_path: str, model: str, force: bool) -> dict:

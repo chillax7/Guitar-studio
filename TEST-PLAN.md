@@ -44,6 +44,7 @@ instead — open it directly in a browser, no server required.
 - [ ] **Start Rip** requests input permission (first time only) and visibly starts (button swaps to Stop, elapsed time counts up).
 - [ ] **Stop Rip** prompts for a name, uploads, and the resulting mp3 appears in the Library, selectable and playable like any normal import.
 - [ ] Audio actually played through BlackHole during the capture window is present and audible in the resulting file.
+- [ ] **Silent rip warning:** ripping with BlackHole not actually routed (or nothing playing) still saves the file, but immediately pops an alert naming the measured peak level and walking through the BlackHole/Multi-Output Device fix — rather than only finding out minutes later as a cryptic "didn't find a 'vocals' stem" separation error. Ripping real, audible audio through a correctly-routed BlackHole does **not** trigger the warning.
 
 ## 3. Library — Playlists & Practice log
 

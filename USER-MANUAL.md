@@ -266,6 +266,19 @@ the elapsed time counts up while it records; click **■ Stop Rip**, give
 the take a name, and it appears in your Library like any other imported
 song.
 
+If the routing isn't actually set up right (BlackHole not selected as
+your Mac's output, or nothing was actually playing), a rip can finish
+"successfully" while capturing total silence — the recording itself
+doesn't fail, it just has nothing in it. Rather than letting that surface
+minutes later as a confusing "no stems found" error the first time you
+try to separate it, saving a rip checks its loudness immediately: if it
+measures suspiciously close to silent, you'll get a warning right away
+naming the measured level and pointing at the BlackHole/Multi-Output
+Device fix (§1.7), while the routing mistake is still fresh in mind. The
+file is saved either way — a genuinely quiet recording isn't discarded on
+a guess — so if you get this warning and you're sure the audio was really
+there, it's still in your Library to check.
+
 ### 3.3 Importing a stem pack (.zip)
 
 Already have a song split into its parts — a purchased "custom backing
