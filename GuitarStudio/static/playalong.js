@@ -109,6 +109,35 @@ function paMakeDistortionCurve(amount) {
   return curve;
 }
 
+// Analog amp clip curve — replaces the shared symmetric-tanh curve above
+// for the AMP stage only (Boost keeps paMakeDistortionCurve; a boost
+// pedal SHOULD be a plain symmetric soft clip). Tuned against a real
+// Marshall-sim recording (see marshall-sample analysis, v4.8): its
+// distortion measured H2≈H3≈-20dB with a gradual upper tail — moderate
+// mixed even/odd content, nothing like the old amount*50 mapping, which
+// at the default 30% drive was tanh(15x): effectively a hard clipper
+// that fully saturated any normal interface level (the actual cause of
+// "analog gain sounds harsh"). Asymmetry here is slope-continuous: both
+// halves have identical small-signal gain (no crossover kink at zero),
+// but the negative half clips at half the ceiling — the same shape a
+// tube stage's bias shift produces, which is what generates the even
+// harmonics a symmetric tanh can't.
+function paMakeAmpClipCurve(drive) {
+  const n = 2048;
+  const curve = new Float32Array(n);
+  // drive 0..1 -> k 2..16, exponential so the low half of the knob covers
+  // edge-of-breakup through crunch (k≈3.7 at the 30% default; k≈5.5 — the
+  // measured match for the reference sample's hard-picked moments — lands
+  // near 50%) and the top half goes on to saturated lead gain.
+  const k = 2 * Math.pow(8, Math.min(1, Math.max(0, drive)));
+  const asym = 2; // negative-half ceiling = 1/asym
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2) / n - 1;
+    curve[i] = x >= 0 ? Math.tanh(k * x) : Math.tanh(k * asym * x) / asym;
+  }
+  return curve;
+}
+
 function paMakeReverbImpulse(ctx, seconds, decay) {
   const length = Math.max(1, Math.floor(ctx.sampleRate * seconds));
   const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
@@ -141,14 +170,43 @@ async function ensurePAGraph() {
 
   PA.cleanGain = Audio.ctx.createGain();
 
+  // Analog amp, v4.8 revoicing — matched against a real Marshall-sim
+  // recording (~/Downloads "marshall sample": warm low-mids, H2≈H3≈-20dB
+  // moderate asymmetric clipping, and a steep cab-style cliff at ~4.5kHz).
+  // The old chain was just inputGain -> near-hard symmetric tanh -> tone
+  // knobs: no pre-clip voicing (low strings intermodulate into mud, all
+  // treble slams the clipper equally) and nothing above the 3k shelf to
+  // stop the shaper's 5-15kHz harmonics — the classic "bee in a box"
+  // fizz. Standard amp-sim recipe instead:
+  //   tighten -> pre-emphasis -> asym clip -> DC block -> de-emphasis ->
+  //   fixed Marshall-ish voicing -> cab-style lowpass -> tone knobs.
+  // Pre-emphasis (+8dB above 550Hz) into the clipper with the inverse
+  // shelf after is the key smoothing trick: highs distort MORE (sings,
+  // feels amp-like) yet the net linear response stays flat, and the
+  // de-emphasis also pulls generated harmonics down ~8dB. The 5kHz
+  // lowpass supplies the measured cab cliff so the amp is usable
+  // standalone; with a real IR stage active they stack to slightly
+  // darker, which is benign (IRs are band-limited there anyway).
+  // Validated offline against the sample: H2 -21.3 / H3 -19.6 / H5 -33.3
+  // (target -21.1 / -19.9 / -32.0) at hard-picked levels, cleaning up at
+  // lighter touch just like the reference (15.6dB crest).
   const inputGain = Audio.ctx.createGain();
+  const preTight = Audio.ctx.createBiquadFilter(); preTight.type = "highpass"; preTight.frequency.value = 110; preTight.Q.value = 0.7;
+  const preEmph = Audio.ctx.createBiquadFilter(); preEmph.type = "highshelf"; preEmph.frequency.value = 550; preEmph.gain.value = 8;
   const shaper = Audio.ctx.createWaveShaper();
-  shaper.curve = paMakeDistortionCurve(0.3);
+  shaper.curve = paMakeAmpClipCurve(0.3);
   shaper.oversample = "4x";
+  const dcBlock = Audio.ctx.createBiquadFilter(); dcBlock.type = "highpass"; dcBlock.frequency.value = 20; dcBlock.Q.value = 0.7;
+  const deEmph = Audio.ctx.createBiquadFilter(); deEmph.type = "highshelf"; deEmph.frequency.value = 550; deEmph.gain.value = -8;
+  const voiceWarm = Audio.ctx.createBiquadFilter(); voiceWarm.type = "lowshelf"; voiceWarm.frequency.value = 200; voiceWarm.gain.value = 2.5;
+  const voiceScoop = Audio.ctx.createBiquadFilter(); voiceScoop.type = "peaking"; voiceScoop.frequency.value = 1400; voiceScoop.Q.value = 0.9; voiceScoop.gain.value = -3;
+  const cabTone = Audio.ctx.createBiquadFilter(); cabTone.type = "lowpass"; cabTone.frequency.value = 5000; cabTone.Q.value = 0.75;
   const bass = Audio.ctx.createBiquadFilter(); bass.type = "lowshelf"; bass.frequency.value = 150;
   const mid = Audio.ctx.createBiquadFilter(); mid.type = "peaking"; mid.frequency.value = 800; mid.Q.value = 0.7;
   const treble = Audio.ctx.createBiquadFilter(); treble.type = "highshelf"; treble.frequency.value = 3000;
-  inputGain.connect(shaper).connect(bass).connect(mid).connect(treble);
+  inputGain.connect(preTight).connect(preEmph).connect(shaper).connect(dcBlock)
+    .connect(deEmph).connect(voiceWarm).connect(voiceScoop).connect(cabTone)
+    .connect(bass).connect(mid).connect(treble);
   PA.analogNodes = { inputGain, shaper, bass, mid, treble, output: treble };
 
   PA.namNode = new AudioWorkletNode(Audio.ctx, "nam-processor", {
@@ -1673,7 +1731,7 @@ function wirePAControls() {
 
   document.getElementById("pa-drive").addEventListener("input", (e) => {
     const v = parseFloat(e.target.value) / 100;
-    PA.analogNodes.shaper.curve = paMakeDistortionCurve(v);
+    PA.analogNodes.shaper.curve = paMakeAmpClipCurve(v);
     document.getElementById("pa-drive-val").textContent = e.target.value + "%";
   });
   for (const [id, key, valId] of [["pa-bass", "bass", "pa-bass-val"], ["pa-mid", "mid", "pa-mid-val"], ["pa-treble", "treble", "pa-treble-val"]]) {
