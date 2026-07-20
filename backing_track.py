@@ -100,8 +100,13 @@ ANALYSIS_FILE = "analysis.json"
 # v1: bpm + pitch_offset_cents; v2: + key (BT-03) and beats (BT-02);
 # v3: + chords (BT-04); v4: key now prefers key_from_chords over
 # detect_key's raw chroma-profile correlation whenever confident chords
-# exist (see key_from_chords' docstring for why).
-ANALYSIS_VERSION = 4
+# exist (see key_from_chords' docstring for why); v5: key_from_chords picks
+# its tonic by total beats-per-root (not per (root, quality) pair) and
+# judges major/minor from direct minor-3rd/major-3rd chroma energy at that
+# root instead of trusting a single chord's maj/min template label — fixes
+# riff/power-chord-heavy rock and metal songs reading as false "major"
+# (real user report on real songs; see key_from_chords' docstring).
+ANALYSIS_VERSION = 5
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -486,14 +491,21 @@ def _find_stems_fuzzy(out_dir: Path, exact_names: tuple, hint_words: tuple,
     return matches
 
 
-def detect_chords(out_dir: Path, beats: list) -> list[dict] | None:
+def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"] | None:
     """One chord guess per beat-grid interval [beats[i], beats[i+1]).
     Chroma source is the sum of every pitched, non-percussive, non-vocal
     stem available (bass/other/guitar/piano) — deliberately excludes vocals
     (a sung melody isn't the harmony backing it) and drums (no pitch
     content, just chroma-bin noise). Returns None if there's no beat grid
     to align to, or no pitched stem to analyze — same "a missing reading is
-    fine" contract as every other field in analyze_track."""
+    fine" contract as every other field in analyze_track.
+
+    Also returns the whole-song mean chroma vector alongside the chords —
+    key_from_chords needs it to judge major/minor directly from note
+    content at the detected tonic, rather than trusting whichever single
+    chord's template happened to win the per-beat match (see that
+    function's docstring for why that's unreliable specifically on
+    power-chord-heavy material)."""
     if not beats or len(beats) < 2:
         return None
 
@@ -519,6 +531,7 @@ def detect_chords(out_dir: Path, beats: list) -> list[dict] | None:
 
     chroma = librosa.feature.chroma_cqt(y=mono, sr=sr)
     frame_times = librosa.frames_to_time(np.arange(chroma.shape[1]), sr=sr)
+    chroma_mean = chroma.mean(axis=1)
 
     chords = []
     for start, end in zip(beats, beats[1:]):
@@ -536,10 +549,10 @@ def detect_chords(out_dir: Path, beats: list) -> list[dict] | None:
             root, quality = CHORD_TEMPLATE_LABELS[best_idx]
         chords.append({"time": round(float(start), 3), "root": root, "quality": quality,
                         "confidence": round(confidence, 3)})
-    return chords
+    return chords, chroma_mean
 
 
-def key_from_chords(chords: list) -> dict | None:
+def key_from_chords(chords: list, chroma_mean: "np.ndarray" = None) -> dict | None:
     """A tonic-frequency key estimate from the chord lane (BT-04) itself,
     used in analyze_track to override detect_key's raw chroma-profile
     correlation when confident chords exist. Caught by a real song where
@@ -548,23 +561,57 @@ def key_from_chords(chords: list) -> dict | None:
     barely a fifth of that) — the classical Krumhansl major/minor profiles
     detect_key correlates against fit blues/rock's dominant-7-heavy
     harmony poorly to begin with, where this song's chords are a much
-    more direct signal. 'Most frequent confident chord is the tonic' is a
-    naive heuristic (a real song can spend more beats on IV or vi than I),
-    but it's the same kind of standard, defensible starting point as every
-    other heuristic here — a 'min' quality reads as a minor key, 'maj'/'7'
-    as major (a '7' chord functioning as I is the ordinary blues/rock
-    reading, not a borrowed dominant)."""
-    counts = {}
+    more direct signal.
+
+    Root is picked by total beats on that root regardless of quality
+    (fixed from an earlier version that counted (root, quality) pairs
+    separately — that split a single ambiguous tonic's beats across two
+    buckets and let a less-common but unambiguous non-tonic chord win by
+    default). 'Most frequent confident root is the tonic' is still a naive
+    heuristic (a real song can spend more beats on IV or bVII than I), but
+    it's the same kind of standard, defensible starting point as every
+    other heuristic here.
+
+    Mode is judged directly from minor-3rd vs major-3rd chroma energy at
+    that root (whole-song mean, same chroma detect_chords already
+    computed) rather than from whichever quality label the single
+    most-frequent chord happened to get. Power chords (root+5th, no 3rd
+    at all) are a genuine tie between the maj (0,4,7) and min (0,3,7)
+    templates in detect_chords — both share 2 of 3 active bins and get
+    zero contribution from the one bin that would tell them apart — and
+    ties resolve to whichever template was built first (maj), plus a
+    distorted guitar's real harmonic series naturally carries energy at
+    the major-3rd overtone regardless of the chord's intended quality.
+    Both effects systematically bias riff/power-chord-heavy rock and metal
+    — a genre this app specifically targets — toward false 'major' reads.
+    Checking the actual note energy at the chosen tonic sidesteps that
+    bias instead of inheriting it. Falls back to the naive quality-label
+    rule if no chroma_mean is available (keeps this function usable
+    without a re-run for any old caller)."""
+    root_counts = {}
     for c in chords:
         if not c.get("root") or c.get("quality") == "N":
             continue
-        label = (c["root"], c["quality"])
-        counts[label] = counts.get(label, 0) + 1
-    if not counts:
+        root_counts[c["root"]] = root_counts.get(c["root"], 0) + 1
+    if not root_counts:
         return None
-    (root, quality), count = max(counts.items(), key=lambda kv: kv[1])
-    mode = "minor" if quality == "min" else "major"
-    return {"key": root, "mode": mode, "confidence": round(count / sum(counts.values()), 3)}
+    root, count = max(root_counts.items(), key=lambda kv: kv[1])
+    confidence = round(count / sum(root_counts.values()), 3)
+
+    if chroma_mean is not None:
+        root_pc = KEY_NOTE_NAMES.index(root)
+        minor3 = float(chroma_mean[(root_pc + 3) % 12])
+        major3 = float(chroma_mean[(root_pc + 4) % 12])
+        mode = "minor" if minor3 >= major3 else "major"
+    else:
+        quality_counts = {}
+        for c in chords:
+            if c.get("root") == root and c.get("quality") != "N":
+                quality_counts[c["quality"]] = quality_counts.get(c["quality"], 0) + 1
+        quality, _ = max(quality_counts.items(), key=lambda kv: kv[1])
+        mode = "minor" if quality == "min" else "major"
+
+    return {"key": root, "mode": mode, "confidence": confidence}
 
 
 def analyze_track(out_dir: Path) -> dict:
@@ -645,10 +692,11 @@ def analyze_track(out_dir: Path) -> dict:
     # chord-detection failure never costs the bpm/beats/key readings that
     # already succeeded.
     try:
-        chords = detect_chords(out_dir, result.get("beats"))
-        if chords:
+        chord_result = detect_chords(out_dir, result.get("beats"))
+        if chord_result:
+            chords, chroma_mean = chord_result
             result["chords"] = chords
-            chord_key = key_from_chords(chords)
+            chord_key = key_from_chords(chords, chroma_mean)
             if chord_key:
                 result["key"] = chord_key  # overrides detect_key's chroma-profile guess — see key_from_chords' docstring
     except Exception:

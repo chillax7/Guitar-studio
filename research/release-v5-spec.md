@@ -142,6 +142,38 @@ that can't go stale, get rate-limited, or start costing money.
 *Gate:* a guitarist can land on any chord in a real song's chord lane and
 get a correct, useful scale suggestion without leaving the screen.
 
+## 2a. Layout note: Per-chord vs. Whole-song view (from mockup review)
+
+Mockup review (three candidate layouts, all built against a real 24-fret
+fretboard renderer and real interval math) surfaced a second, complementary
+view worth building alongside the per-chord one §2 above describes: a
+**Per chord / Whole song** toggle. Per-chord is §2 as scoped. Whole-song
+shows the scales for the song's overall key instead of one chord at a
+time — the more useful default for a lot of soloing, since most of a song
+sits in one key regardless of which chord is currently ringing.
+
+The mockups also tested the case the user specifically flagged: a song
+that doesn't hold one key the whole way through (e.g. "Livin' on a
+Prayer"'s modulation up a whole step into the final chorus). Rather than
+either hiding a real key change or blending two keys into a meaningless
+average, Whole-song mode should split into separate labeled key regions
+when one is detected, each with its own scale set — same honesty idiom as
+everything else in this app (assistive, confirm by ear, say so when it's
+uncertain).
+
+**Backlog, not scoped into V5-F2 itself:** today's `detect_key` in
+`backing_track.py` returns exactly one key for the whole track — there is
+no windowed/segmented key detection to actually notice a mid-song
+modulation. Building that is real, separate work (sliding-window chroma
+key detection, with a real decision rule for when a shift is a genuine key
+change worth splitting on vs. normal harmonic wandering that should stay
+one region) — see §9's backlog list. V5-F2 ships Whole-song mode against
+the single whole-track key `detect_key` already provides; the key-region
+splitting UI shown in mockups is the target once windowed key detection
+exists, not blocked from shipping in the meantime (a song with no detected
+change just renders as one region, which is what most songs will do
+anyway).
+
 ## 3. Lick/Phrasing Assistant — Tier 2, LLM (V5-R1 · M, research-spike-gated)
 
 Send the chord progression + key + tempo (+ optionally a loose genre/style
@@ -251,7 +283,10 @@ everything else in this codebase.
 - **M2 — AI Lab screen shell + Scale/Mode Advisor (§2 / V5-F2).** New
   fourth nav button, screen chrome matching the existing Mixer/Tone
   Lab/Play Along pattern. *Gate:* correct, useful scale suggestions for any
-  chord in a real song's lane, zero network dependency.
+  chord in a real song's lane, zero network dependency. **Shipped** — Per
+  chord and Whole song modes, 24-fret fretboard diagrams, live Tune-slider
+  transposition; gate to be confirmed against 3 real songs per the usual
+  process, see §2a for the Whole-song/windowed-key-detection follow-up.
 - **M3 — LLM plumbing + research spike (§3 / V5-R1).** *Gate:* the honest
   blind-comparison call in §3 — pass or the rest of the LLM-tier work
   (§4, §5) doesn't happen.
@@ -340,6 +375,15 @@ played in the v0.4 picklist.
 - **V5-F4 solo-skeleton generator, V5-F5 basic-pitch transcription** —
   already correctly scoped by §8 as gated/independent; no change, just
   not pulled forward into the committed list above.
+- **Windowed/segmented key detection (new, from §2a's mockup review)** —
+  needed to make AI Lab's Whole-song mode actually split a modulating song
+  (e.g. a "Livin' on a Prayer"-style key change) into separate key regions
+  instead of reporting one key for the whole track. Real, self-contained
+  analysis work (sliding-window chroma key detection over `detect_key`'s
+  existing single-key approach, plus a real decision rule for "genuine key
+  change" vs. normal harmonic wandering) — logged here rather than
+  blocking V5-F2's ship, since Whole-song mode degrades honestly to "one
+  region" without it.
 
 ## 10. Unified v5 milestones (supersedes §8's ordering — §8's content is
 unchanged, this just sequences it against §9)
@@ -349,6 +393,7 @@ unchanged, this just sequences it against §9)
   pass/fail per rate-my-take-spec.md §6.
 - **M1 — AI Lab: Scale/Mode Advisor (§8's M2 / V5-F2).** Chord lane
   prerequisite already shipped; this is the first genuinely new v5 build.
+  **Shipped** — see §8's M2 note.
 - **M2 — Rate My Take R1b/c (V5-B1's build) — only if M0 passed** — run
   in parallel with M3 if effort allows, since neither depends on the
   other.

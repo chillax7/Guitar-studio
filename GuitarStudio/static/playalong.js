@@ -1648,7 +1648,7 @@ async function paEnsureRigSessionReady() {
   await ensureRiffCapture(); // GP-07 — starts rolling as soon as the rig exists; no-op if already running
 }
 
-// Toggles which of the 3 persistent-screen nav buttons reads as "current,"
+// Toggles which of the 4 persistent-screen nav buttons reads as "current,"
 // and keeps the centered title-bar label (#top-banner-screen-label) in
 // sync with it. Help is deliberately excluded from both — it's a
 // transient modal, not a screen.
@@ -1656,6 +1656,7 @@ const PA_SCREEN_LABELS = {
   "mixer-open-btn": "Mixer",
   "tonelab-open-btn": "Tone Lab",
   "playalong-open-btn": "Play Along",
+  "ailab-open-btn": "AI Lab",
 };
 function paSetActiveScreen(id) {
   document.querySelectorAll(".nav-screen-row .nav-screen-btn").forEach((btn) => {
@@ -1668,6 +1669,7 @@ async function openToneLab() {
   await paEnsureRigSessionReady();
   document.getElementById("tonelab-overlay").classList.add("show");
   document.getElementById("playalong-overlay").classList.remove("show");
+  if (typeof closeAiLab === "function") closeAiLab();
   paRefreshDevices();
   paRefreshOutputDevices();
   paRefreshNamModels();
@@ -1684,6 +1686,7 @@ async function openPlayAlong() {
   await paEnsureRigSessionReady();
   document.getElementById("playalong-overlay").classList.add("show");
   document.getElementById("tonelab-overlay").classList.remove("show");
+  if (typeof closeAiLab === "function") closeAiLab();
   paSetActiveScreen("playalong-open-btn");
   // app.js only fetches the log on selectTrack — opening Play Along without
   // just having switched tracks (the common case: pick a song on the Mixer,
@@ -1703,6 +1706,7 @@ function closePlayAlong() {
 function closeAllScreens() {
   closeToneLab();
   closePlayAlong();
+  if (typeof closeAiLab === "function") closeAiLab();
   paSetActiveScreen("mixer-open-btn");
 }
 

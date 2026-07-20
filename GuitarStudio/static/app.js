@@ -2407,6 +2407,7 @@ function wireSpeedTune() {
     updateBpmDisplay();
     updateKeyHint(); // BT-03 — live as Tune moves
     renderChordLane(); // V4-F1 — chord roots transpose live too
+    if (typeof refreshAiLabIfOpen === "function") refreshAiLabIfOpen(); // V5-F2 — same transposition, if AI Lab is open
     setSpeedTune(speed, Math.pow(2, cents / 1200));
   }
   onTransportInput("speed-slider", apply);
@@ -2594,6 +2595,10 @@ function renderInspector() {
     ? "Chord lane (above the ruler): assistive, best on pop/rock — no confident read for palm muted chugs. Confirm by ear."
     : "";
   renderChordLane();
+  // V5-F2: a new track's chord regions make any previously-selected AI Lab
+  // chord index meaningless — re-pick the one under the playhead instead.
+  if (typeof AiLab !== "undefined") AiLab.selectedIndex = null;
+  if (typeof refreshAiLabIfOpen === "function") refreshAiLabIfOpen();
 
   // custom-stems-spec.md §5: only a genuine model-produced "guitar" stem
   // should trigger this panel — a custom/derived stem that happens to be
@@ -3080,6 +3085,19 @@ async function ripFinalizeAndUpload(chunks, mimeType) {
   try {
     const r = await Api.postRaw(`/api/rip/save?filename=${encodeURIComponent(name)}&src_ext=${srcExt}`, blob);
     hintEl.textContent = `Saved as ${r.name}.`;
+    if (r.silent) {
+      // Fails fast, while the routing is still fresh in mind — the
+      // alternative is discovering it minutes later as a cryptic
+      // "Expected a 'vocals' stem... but didn't find one among: []"
+      // separation error, with no clue the real problem was upstream.
+      alert(
+        `This rip looks silent (peak level ${r.peak_db} dB — real audio is always much louder than this).\n\n` +
+        "The Mac's system output isn't reaching BlackHole. Check:\n" +
+        "• System Settings → Sound → Output is set to BlackHole (or a Multi-Output Device containing it)\n" +
+        "• Whatever you were trying to capture was actually playing during the rip\n\n" +
+        `"${r.name}" was still saved, but it's probably empty — delete it and try again after fixing the routing.`
+      );
+    }
     await refreshTrackList();
     await selectTrack(r.name);
   } catch (e) {
