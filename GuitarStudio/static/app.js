@@ -2407,6 +2407,7 @@ function wireSpeedTune() {
     updateBpmDisplay();
     updateKeyHint(); // BT-03 — live as Tune moves
     renderChordLane(); // V4-F1 — chord roots transpose live too
+    if (typeof refreshAiLabIfOpen === "function") refreshAiLabIfOpen(); // V5-F2 — same transposition, if AI Lab is open
     setSpeedTune(speed, Math.pow(2, cents / 1200));
   }
   onTransportInput("speed-slider", apply);
@@ -2594,6 +2595,10 @@ function renderInspector() {
     ? "Chord lane (above the ruler): assistive, best on pop/rock — no confident read for palm muted chugs. Confirm by ear."
     : "";
   renderChordLane();
+  // V5-F2: a new track's chord regions make any previously-selected AI Lab
+  // chord index meaningless — re-pick the one under the playhead instead.
+  if (typeof AiLab !== "undefined") AiLab.selectedIndex = null;
+  if (typeof refreshAiLabIfOpen === "function") refreshAiLabIfOpen();
 
   // custom-stems-spec.md §5: only a genuine model-produced "guitar" stem
   // should trigger this panel — a custom/derived stem that happens to be

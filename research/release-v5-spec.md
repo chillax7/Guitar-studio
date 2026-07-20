@@ -283,7 +283,10 @@ everything else in this codebase.
 - **M2 — AI Lab screen shell + Scale/Mode Advisor (§2 / V5-F2).** New
   fourth nav button, screen chrome matching the existing Mixer/Tone
   Lab/Play Along pattern. *Gate:* correct, useful scale suggestions for any
-  chord in a real song's lane, zero network dependency.
+  chord in a real song's lane, zero network dependency. **Shipped** — Per
+  chord and Whole song modes, 24-fret fretboard diagrams, live Tune-slider
+  transposition; gate to be confirmed against 3 real songs per the usual
+  process, see §2a for the Whole-song/windowed-key-detection follow-up.
 - **M3 — LLM plumbing + research spike (§3 / V5-R1).** *Gate:* the honest
   blind-comparison call in §3 — pass or the rest of the LLM-tier work
   (§4, §5) doesn't happen.
@@ -390,6 +393,7 @@ unchanged, this just sequences it against §9)
   pass/fail per rate-my-take-spec.md §6.
 - **M1 — AI Lab: Scale/Mode Advisor (§8's M2 / V5-F2).** Chord lane
   prerequisite already shipped; this is the first genuinely new v5 build.
+  **Shipped** — see §8's M2 note.
 - **M2 — Rate My Take R1b/c (V5-B1's build) — only if M0 passed** — run
   in parallel with M3 if effort allows, since neither depends on the
   other.

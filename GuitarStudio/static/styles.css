@@ -844,17 +844,22 @@ button:disabled:hover { filter: none; }
 #export-result { margin-top: 8px; font-size: 11px; color: var(--text-dim); }
 #export-result.error { color: var(--danger); }
 
-/* ---------- Screen nav (Mixer / Tone Lab / Play Along / Help) ---------- */
+/* ---------- Screen nav (Mixer / Tone Lab / Play Along / AI Lab / Help) ---------- */
 
 /* Top-left corner of the sidebar: 4 equally-sized buttons for the app's
-   screens. One shared class for all 4 (Help included) so they're
-   identical in size/shape by construction rather than styled separately
-   and hoping they stay in sync. */
+   real screens, plus a second row underneath for Help alone — same
+   .nav-screen-btn class throughout so every button is identical in
+   size/shape by construction rather than styled separately and hoping
+   they stay in sync. */
 .nav-screen-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
-  padding: 10px;
+  padding: 10px 10px 0;
+}
+.nav-screen-row-help {
+  grid-template-columns: 1fr;
+  padding: 6px 10px 10px;
 }
 .nav-screen-btn {
   width: 100%;
@@ -1344,3 +1349,78 @@ button:disabled:hover { filter: none; }
   padding: 1px 6px; font-family: monospace; font-size: 11px;
 }
 #help-panel .primary { margin-top: 8px; }
+
+/* ---------- AI Lab (V5-F2: Scale/Mode Advisor) ---------- */
+
+.ailab-column { display: flex; flex-direction: column; gap: 14px; }
+
+/* Own class rather than reusing the timeline's .chord-chip: that one is
+   absolutely positioned within a percentage-wide, zoom/scroll-driven lane
+   (see #chord-lane-content) — a different layout model than this simple
+   flex row of equal-width chips. Same look (accent-dim fill, accent
+   border) so it still reads as "the same idea," just laid out plainly. */
+.ailab-chord-ribbon { display: flex; height: 26px; gap: 2px; }
+.ailab-chord-chip {
+  flex: 1 1 0; display: flex; align-items: center; justify-content: center;
+  background: var(--accent-dim); border: 1px solid var(--accent); color: var(--text);
+  font-size: 11px; font-weight: 600; border-radius: 3px; cursor: pointer;
+}
+.ailab-chord-chip[data-bars="2"] { flex-grow: 2; }
+.ailab-chord-chip.selected { background: var(--accent); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.5); }
+.ailab-chord-chip:not(.selected):hover { filter: brightness(1.2); }
+.ailab-chord-chip.unknown { opacity: .35; cursor: default; }
+
+.ailab-readout { display: flex; align-items: baseline; gap: 10px; margin-bottom: 2px; }
+.ailab-chord-name { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.ailab-key-name { font-size: 12px; color: var(--text-dim); }
+
+.ailab-mode-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; margin-bottom: 12px; }
+.ailab-mode-toggle button {
+  border: none; background: var(--panel-2); color: var(--text-dim); font-size: 11.5px; font-weight: 600;
+  padding: 7px 14px; cursor: pointer;
+}
+.ailab-mode-toggle button + button { border-left: 1px solid var(--border); }
+.ailab-mode-toggle button.on { background: var(--accent); color: #fff; }
+.ailab-mode-toggle button:not(.on):hover { filter: brightness(1.2); }
+
+.ailab-jumprow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.ailab-scale-chip {
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim);
+  font-size: 11.5px; font-weight: 600; padding: 6px 11px; border-radius: 14px; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+}
+.ailab-scale-chip .ailab-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--scale-dot-bg, #333a52); border: 1.2px solid var(--scale-dot, #5b6a8f); }
+.ailab-scale-chip:hover { filter: brightness(1.2); }
+
+.ailab-legend { display: flex; gap: 16px; margin: 0 0 12px; font-size: 11px; color: var(--text-dim); }
+.ailab-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+#ailab-legend-root { background: var(--accent); }
+#ailab-legend-scale { background: #333a52; border: 1.2px solid #5b6a8f; }
+
+.ailab-scale-stack { display: flex; flex-direction: column; gap: 16px; }
+.ailab-scale-block { scroll-margin-top: 8px; }
+.ailab-scale-block-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.ailab-scale-block-head .name { font-size: 14px; font-weight: 700; }
+.ailab-scale-block-head .why { font-size: 11px; color: var(--text-dim); }
+.ailab-scale-block + .ailab-scale-block { border-top: 1px solid var(--border); padding-top: 16px; }
+
+.ailab-key-region-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 2px; }
+.ailab-key-region-head .label { font-size: 13px; font-weight: 700; }
+.ailab-key-region-head .range { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.ailab-key-region-head .change-tag {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+  color: var(--warn); background: var(--panel-2); border: 1px solid var(--warn); border-radius: 4px; padding: 2px 6px;
+}
+.ailab-key-region-block { margin-bottom: 20px; }
+.ailab-key-region-block + .ailab-key-region-block { border-top: 1px solid var(--border); padding-top: 18px; }
+
+.ailab-fretboard-wrap { overflow-x: auto; }
+svg.ailab-fretboard { display: block; }
+.ailab-fret-line { stroke: #454b5c; stroke-width: 1; }
+.ailab-fret-line.nut { stroke: #7d8393; stroke-width: 3; }
+.ailab-string-line { stroke: #4a5064; stroke-width: 1; }
+.ailab-fret-marker { fill: #31364580; }
+.ailab-fret-num { fill: #565d70; font-size: 9px; }
+.ailab-dot-root { fill: var(--accent); stroke: #c8d6ff; stroke-width: 1.5; }
+.ailab-dot-scale { fill: #333a52; stroke: #5b6a8f; stroke-width: 1.2; }
+.ailab-dot-label { fill: #fff; font-size: 8px; font-weight: 700; text-anchor: middle; pointer-events: none; }

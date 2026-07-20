@@ -308,8 +308,8 @@ const DATA = [
     title: "1. Launch & orientation",
     note: "Before touching any one feature, get your bearings.",
     items: [
-      "The app opens to a Library sidebar (empty, or showing tracks if you've imported before) and a version number reads <strong>v4.6</strong> in the top banner, centered screen name (Mixer/Tone Lab/Play Along) alongside it.",
-      "The <strong>🎚 Mixer</strong>, <strong>🎛 Tone Lab</strong>, <strong>🎸 Play Along</strong>, and <strong>❓ Help</strong> buttons are all visible in the sidebar even with nothing imported yet.",
+      "The app opens to a Library sidebar (empty, or showing tracks if you've imported before) and a version number reads in the top banner, centered screen name (Mixer/Tone Lab/Play Along/AI Lab) alongside it.",
+      "The <strong>🎚 Mixer</strong>, <strong>🎛 Tone Lab</strong>, <strong>🎸 Play Along</strong>, and <strong>🧠 AI Lab</strong> buttons are all visible together in the sidebar even with nothing imported yet, with <strong>❓ Help</strong> on its own row underneath them.",
       "Clicking <strong>❓ Help</strong> opens an overlay explaining the app; on a genuinely first-ever launch, it should already have opened itself once automatically.",
       "Closing Help (<strong>Got it</strong>) and reopening it works, and it does not auto-open again on a page reload.",
       "Pressing <kbd>?</kbd> opens a keyboard-shortcuts legend that matches what actually works elsewhere in the app.",
@@ -400,8 +400,22 @@ const DATA = [
     ]
   },
   {
+    id: "ailab",
+    title: "8. AI Lab — Scale/Mode Advisor",
+    note: "A track with chord analysis needed for the Per chord lens; any analyzed track works for Whole song. Deterministic music theory only — no model call, no network, works offline.",
+    items: [
+      "Opening <strong>🧠 AI Lab</strong> shows a row of chord chips (same chords as the Mixer's chord lane) and, below it, a stacked list of every scale/mode that fits whichever chord chip is selected — each with its own full 24-fret fretboard diagram, not one diagram you have to click through one at a time.",
+      "On first opening AI Lab (or switching tracks while it's open), the chord chip under the current playhead position is selected automatically, not just the first chord in the song.",
+      "Clicking a different chord chip re-picks that chord's scale stack and also seeks the playhead there, the same as clicking a chip in the Mixer's chord lane does.",
+      "The <strong>Per chord / Whole song</strong> toggle switches between scales for the selected chord and scales for the song's overall detected key; Whole song's caption is honest that it's one key for the whole track today, not per-section.",
+      "Moving the <strong>Tune</strong> slider on the Mixer updates AI Lab's chord names, key name, and fretboard root markers live to match, the same as the chord lane and key hint already do.",
+      "The scale-name chips above the stack jump-scroll to that scale's diagram instead of hiding the others — every fitting scale stays visible, just scrolled past.",
+      "Closing AI Lab (or switching to Mixer/Tone Lab/Play Along) returns cleanly with no overlay left showing; reopening it keeps the screen nav row's <strong>AI Lab</strong> button highlighted while it's the active screen.",
+    ]
+  },
+  {
     id: "split",
-    title: "8. Guitar split (experimental)",
+    title: "9. Guitar split (experimental)",
     note: "Only relevant once a track has a combined guitar stem worth splitting into two takes.",
     items: [
       "The split panel appears once a <span class='mono'>guitar</span> stem exists for the selected track.",
@@ -412,7 +426,7 @@ const DATA = [
   },
   {
     id: "playalong-transport",
-    title: "9. Play Along — backing track & tuner",
+    title: "10. Play Along — backing track & tuner",
     note: "Open Play Along and work through the top strip before touching the pedalboard below it.",
     items: [
       "Opening <strong>🎸 Play Along</strong> shows the backing track transport, tuner, input meter, and pedalboard without needing to scroll to find them.",
@@ -423,7 +437,7 @@ const DATA = [
   },
   {
     id: "playalong-input",
-    title: "10. Play Along — input & riff capture",
+    title: "11. Play Along — input & riff capture",
     note: "Needs a real guitar plugged into an interface (or a mic picking up an amp).",
     items: [
       "The device dropdown lists your actual audio interface/input, and <strong>Enable input</strong> makes the meter respond to real playing.",
@@ -437,7 +451,7 @@ const DATA = [
   },
   {
     id: "playalong-rig",
-    title: "11. Play Along — amp & pedalboard",
+    title: "12. Play Along — amp & pedalboard",
     note: "The tone-shaping heart of Play Along — work through it front-to-back.",
     items: [
       "Tone Lab shows one small icon per stage (Gate, Amp, every pedal, Output) in a row, wrapping to a second line if the window's narrow; clicking an icon opens its controls below and only one panel is open at a time.",
@@ -459,7 +473,7 @@ const DATA = [
   },
   {
     id: "presets",
-    title: "12. Rig presets & this song's chain",
+    title: "13. Rig presets & this song's chain",
     note: "Save a tone once, recall it instantly next time — then string a few together per song.",
     items: [
       "<strong>Save current rig as…</strong> captures the full chain: amp mode, loaded capture + tweaker knobs, cab IR, EQ, Compressor, Delay/Reverb, Output level, and pedal order.",
@@ -473,7 +487,7 @@ const DATA = [
   },
   {
     id: "recording",
-    title: "13. Recording a take",
+    title: "14. Recording a take",
     note: "Switch to the Record tab inside Play Along.",
     items: [
       "The Record performance and Takes cards are always visible below the rig, with the camera/quality/sync setup section expanded by default.",
@@ -489,7 +503,7 @@ const DATA = [
   },
   {
     id: "takes",
-    title: "14. Reviewing takes",
+    title: "15. Reviewing takes",
     items: [
       "The Takes list shows every recording you've made, oldest/newest in a sensible order.",
       "Star, rename, reveal-in-folder, and delete each work on a take.",
@@ -502,7 +516,7 @@ const DATA = [
   },
   {
     id: "projects",
-    title: "15. Projects (saving your work)",
+    title: "16. Projects (saving your work)",
     note: "Confirms your mix, loop, markers, and rig choices actually survive.",
     items: [
       "After changing the mix, loop, or markers on a song, waiting a moment and reselecting a different track then coming back restores exactly what you left.",
@@ -512,7 +526,7 @@ const DATA = [
   },
   {
     id: "export",
-    title: "16. Export",
+    title: "17. Export",
     items: [
       "Exporting bounces exactly your mute/gain choices from the mixer — Solo, Pan, and per-stem EQ do <em>not</em> leak into the exported file (they're for monitoring while you play, not for the mix itself).",
       "Both the WAV and MP3 export formats produce a playable file.",
@@ -521,7 +535,7 @@ const DATA = [
   },
   {
     id: "cross-cutting",
-    title: "17. Cross-cutting checks",
+    title: "18. Cross-cutting checks",
     note: "Things that should just quietly work no matter what else you were doing.",
     items: [
       "Leaving the app idle in a background tab for a while and coming back doesn't require a page reload to hear audio again.",

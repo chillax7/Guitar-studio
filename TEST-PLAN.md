@@ -84,14 +84,24 @@ instead — open it directly in a browser, no server required.
 - [ ] The currently-selected method button is visibly highlighted (brighter/ringed, not just the same blue every button already is) — clicking a different method moves the highlight.
 - [ ] Hybrid falls back gracefully (no error) on a track with no beat grid.
 
-## 6. Screen nav (Mixer / Tone Lab / Play Along / Help)
+## 6. Screen nav (Mixer / Tone Lab / Play Along / AI Lab / Help)
 
-- [ ] All 4 sidebar buttons (🎚 Mixer, 🎛 Tone Lab, 🎸 Play Along, ❓ Help) are visually identical in size/shape; the current screen's button (Mixer/Tone Lab/Play Along only — Help never does) shows an active/highlighted state.
-- [ ] The top banner shows the app name/version on the left and the current screen name (Mixer/Tone Lab/Play Along) centered on the full window width, in all three screens — no overlap between the banner and either rig screen's own header.
-- [ ] Opening Tone Lab while Play Along is open closes Play Along, and vice versa — never both visible at once; Mixer closes whichever is open.
-- [ ] Selecting a track in the Library from either Tone Lab or Play Along drops back to the Mixer (both overlays close).
+- [ ] The 4 real-screen sidebar buttons (🎚 Mixer, 🎛 Tone Lab, 🎸 Play Along, 🧠 AI Lab) are visually identical in size/shape and sit together in one 2x2 group; ❓ Help sits on its own row underneath them, same button style, never gets an active/highlighted state.
+- [ ] The current screen's button (Mixer/Tone Lab/Play Along/AI Lab) shows an active/highlighted state that updates as you switch screens.
+- [ ] The top banner shows the app name/version on the left and the current screen name (Mixer/Tone Lab/Play Along/AI Lab) centered on the full window width, in all four screens — no overlap between the banner and any rig screen's own header.
+- [ ] Opening any one of Tone Lab / Play Along / AI Lab closes whichever of the other two was open — never two visible at once; Mixer closes whichever is open.
+- [ ] Selecting a track in the Library from Tone Lab, Play Along, or AI Lab drops back to the Mixer (all overlays close).
 - [ ] Opening either Tone Lab or Play Along for the first time after a track loads builds the rig (Enable Input becomes usable, meters move) without needing to visit the other screen first.
 - [ ] **Sidebar resize:** dragging the seam where the sidebar meets the canvas (cursor turns to ↔) resizes it live; it won't go narrower/wider than the set min/max; double-clicking the seam resets it to the default width; the chosen width survives a page reload; nothing in the sidebar (buttons, track rows, playlist names) overlaps or clips oddly at a much narrower or much wider setting.
+
+## 6a. AI Lab — Scale/Mode Advisor (V5-F2)
+
+- [ ] **Per chord mode:** a chord ribbon (same chords as the Mixer's chord lane) sits above a stacked, scrollable list of every scale/mode that fits the selected chord's root+quality — each with its own labeled 24-fret fretboard diagram (position markers at 3/5/7/9/12/15/17/19/21/24), not one diagram behind a click. On first opening AI Lab, whichever chord region contains the current playhead position is auto-selected, not just chord #1.
+- [ ] Clicking a different chord chip re-picks that chord's scale stack and seeks the playhead there, same as the Mixer's own chord lane; a chord with no confident read shows dimmed/unclickable, with an honest empty-state message instead of a suggestion.
+- [ ] **Whole song mode:** the toggle switches to scales for the song's overall detected key instead of one chord; today this is always exactly one key region (windowed/segmented key-change detection is backlog, not built — release-v5-spec.md §2a/§9), and the screen says so honestly rather than implying it detects modulations it doesn't yet.
+- [ ] Moving the Tune slider live-updates AI Lab's chord names, key name, and which fret is marked as the root — same transposition the chord lane and key hint already apply, checked in both Per chord and Whole song modes.
+- [ ] The scale-name chips above the stack jump-scroll to that scale's diagram rather than hiding the others; a track with no chord analysis yet shows an honest message in Per chord mode instead of an empty blank area.
+- [ ] Switching tracks while AI Lab is open re-renders against the new track's chords/key (and re-picks the chord under the playhead) rather than showing stale data from the previous track.
 
 ## 7. Play Along — top strip
 

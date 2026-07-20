@@ -22,14 +22,19 @@
 
   <div id="sidebar">
     <!-- Screen nav — top-left corner, one shared .nav-screen-btn class so
-         all 4 (Help included) are identical in size/shape. Mixer isn't a
-         real overlay (it's just the base grid below), so its button just
-         closes whatever overlay is open; Help stays a modal, not a
-         persistent "screen," so it never gets .active highlighting. -->
+         all 5 are identical in size/shape. Mixer isn't a real overlay
+         (it's just the base grid below), so its button just closes
+         whatever overlay is open. Help stays a modal, not a persistent
+         "screen," so it never gets .active highlighting — kept on its own
+         row below the four real screens so it doesn't visually compete
+         with them for "which screen am I on" scanning. -->
     <div class="nav-screen-row">
       <button id="mixer-open-btn" class="nav-screen-btn">🎚 Mixer</button>
       <button id="tonelab-open-btn" class="nav-screen-btn">🎛 Tone Lab</button>
       <button id="playalong-open-btn" class="nav-screen-btn">🎸 Play Along</button>
+      <button id="ailab-open-btn" class="nav-screen-btn">🧠 AI Lab</button>
+    </div>
+    <div class="nav-screen-row nav-screen-row-help">
       <button id="help-open-btn" class="nav-screen-btn">❓ Help</button>
     </div>
     <!-- A playlist is just an ordering over a subset of the same Library
@@ -817,6 +822,50 @@
     </div>
   </div>
 
+  <!-- AI Lab (V5-F2): Scale/Mode Advisor — Tier 1, deterministic. Same
+       chord-lane/key data the Mixer already computes (BT-03/BT-04), no
+       model call, no network, no per-use cost. Two lenses on it: Per
+       chord (the region the ribbon selection/playhead is in) and Whole
+       song (the song's overall detected key) — see release-v5-spec.md
+       §2/§2a. More Tier 1/Tier 2 functions land on this same screen as
+       they ship; this is the first. -->
+  <div id="ailab-overlay" class="screen-overlay">
+    <div id="ailab-panel" class="screen-panel">
+      <div id="ailab-header" class="screen-header">
+        <button id="ailab-close-btn">✕ Close</button>
+      </div>
+      <div id="ailab-body" class="screen-body ailab-column">
+
+        <div class="ailab-chord-ribbon" id="ailab-ribbon"></div>
+
+        <section class="pa-card" id="ailab-readout-card">
+          <h3>Now over</h3>
+          <div class="ailab-readout">
+            <span class="ailab-chord-name" id="ailab-chordname"></span>
+            <span class="ailab-key-name" id="ailab-keyname"></span>
+          </div>
+          <p class="hint">Deterministic, not a guess — computed from the detected chord's root + quality against the song's key. Works offline, never changes its mind twice on the same chord.</p>
+        </section>
+
+        <section class="pa-card">
+          <h3 id="ailab-scale-heading">Scales</h3>
+          <div class="ailab-mode-toggle" id="ailab-mode-toggle">
+            <button data-mode="chord" class="on">Per chord</button>
+            <button data-mode="song">Whole song</button>
+          </div>
+          <div class="ailab-jumprow" id="ailab-jumprow"></div>
+          <div class="ailab-legend">
+            <span><span class="ailab-dot" id="ailab-legend-root"></span>Root</span>
+            <span><span class="ailab-dot" id="ailab-legend-scale"></span>Scale tone</span>
+          </div>
+          <div class="ailab-scale-stack" id="ailab-scale-stack"></div>
+          <p class="hint" id="ailab-empty-hint"></p>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
   <div id="shortcuts-overlay">
     <div id="shortcuts-panel">
       <h2>Keyboard shortcuts</h2>
@@ -866,6 +915,7 @@
   </div>
 
 <script src="app.js"></script>
+<script src="ailab.js"></script>
 <script src="playalong.js"></script>
 <script src="recorder.js"></script>
 </body>

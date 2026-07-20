@@ -1073,14 +1073,54 @@ at the time.
 
 ---
 
-## 6. AI Lab (not yet built)
+## 6. AI Lab
 
-Planned for v5 as a fourth screen alongside Mixer / Tone Lab / Play
-Along: a deterministic scale/mode advisor keyed off the chord lane
-(§3.7) with no network dependency, plus an optional, opt-in LLM tier for
-phrasing suggestions and a music-theory Q&A panel. See
-[research/release-v5-spec.md](research/release-v5-spec.md) for the full
-scoping and gates — nothing in this section exists in the app yet.
+A fourth screen alongside Mixer / Tone Lab / Play Along, opened with the
+🧠 **AI Lab** button in the sidebar. The first function it ships with is
+the **Scale/Mode Advisor** (V5-F2): straight interval arithmetic over the
+same chord lane (§3.7) and detected key (BT-03) the Mixer already
+computes — no model call, no network, no per-use cost, and nothing here
+can go stale or get rate-limited. More functions land on this same screen
+over time; see [research/release-v5-spec.md](research/release-v5-spec.md)
+for what else is planned (an opt-in LLM tier for phrasing suggestions and
+a music-theory Q&A panel, gated on its own honesty research spike).
+
+**Per chord vs. Whole song.** A toggle at the top of the Scales card
+switches between two lenses on the same data:
+
+- **Per chord** shows the scales that fit whichever chord region is
+  currently selected in the ribbon above it (the same chords as the
+  Mixer's chord lane). Opening AI Lab — or switching tracks while it's
+  open — auto-selects the chord region under the current playhead, so you
+  don't have to hunt for it. Clicking a different chip re-picks that
+  chord's scales and seeks the playhead there, the same as the Mixer's own
+  chord lane.
+- **Whole song** shows the scales that fit the song's overall detected
+  key instead of one chord at a time — the more useful default for a lot
+  of soloing, since most of a song sits in one key regardless of which
+  chord is currently ringing. Today this always shows exactly one key
+  region: detecting a genuine mid-song key change (a modulation into a
+  final chorus, say) needs windowed/segmented key detection that hasn't
+  been built yet — this is honestly flagged in the screen itself rather
+  than silently pretending every song holds one key throughout.
+
+**The scale stack.** Every scale/mode that fits (major/minor/pentatonic/
+blues, plus modal options like Mixolydian or Dorian where the chord
+quality supports more than one reading) is shown at once, stacked and
+scrollable, each with its own full 24-fret fretboard diagram (position
+markers at the usual 3/5/7/9/12/15/17/19/21/24 frets) and a one-line
+"why this fits" explanation — not one diagram you have to click through
+one at a time. The scale-name chips above the stack just jump-scroll to
+that section.
+
+Everything transposes live with the Mixer's Tune slider, same as the
+chord lane and key hint — nudge Tune and the chord names, key name, and
+which fret is marked as the root all update together.
+
+Same honesty posture as every other heuristic in this app: chord and key
+detection are both assistive, best on pop/rock, and worth confirming by
+ear — a scale suggestion is only as good as the chord/key read it's
+built on.
 
 ---
 
