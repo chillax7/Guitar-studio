@@ -362,3 +362,63 @@ unchanged, this just sequences it against §9)
 
 Each milestone still ends the §8 way: docs updated, honest commit
 messages, push, user run-through before the next one starts.
+
+---
+
+## 11. v4.7-checkpoint revision: market review + latency workstream (2026-07-20)
+
+Two inputs landed after §§9–10 were written: a market functionality
+review ([market-review-2026.md](market-review-2026.md)) and a live-rig
+latency deep-dive done at the same checkpoint. Changes to the plan, in
+the same pick/decline format as §9:
+
+**Already shipped with v4.7 (context, not work):** the latency
+deep-dive's software half is done — `latencyHint: 0` on the shared
+AudioContext (output callback halved: baseLatency 5.3ms→2.7ms, reported
+outputLatency 16ms→8ms on the reference machine), a `latency: {ideal: 0}`
+input constraint, and the Tone Lab estimate reworded to say honestly that
+it measures the output side only and to surface the context sample rate
+(the user-checkable half: set the interface to the context's rate, and
+prefer the interface as BOTH input and output device so neither side
+resamples). What remains is *measurement*, which is the v5 item below.
+
+**V5-B5 = GP-13 · Measured round-trip latency (S, hardware-gated) —
+promoted to committed.** Loopback ping: play a short click out the
+current output, capture it back through the enabled input, cross-
+correlate for the true round-trip number, shown next to (and shaming)
+the browser estimate. Needs the interface physically looped or its
+direct-monitor path — the UI must say so plainly rather than silently
+measuring the acoustic path through the room. Market justification:
+every serious native rival treats measured latency as table stakes;
+honesty justification: it closes the one dishonest-by-omission number
+left in the app. Slot into **M5** (it's small) or earlier if the felt-
+latency complaints continue.
+
+**V5-S1 = LAN-mode spec spike (S — spec only, no build).** The market
+review's top structural finding: mobility is the biggest competitive
+gap (Moises's edge), and LAN mode converts it into a local-first
+differentiator instead of a cloud concession. v5 writes the short spec
+(auth posture on LAN, which screens work at phone size, does live-rig
+audio even make sense remotely or is this mixer/practice-only); v6
+decides whether to build. Keeping it spec-only keeps §9's "platform work
+doesn't quietly become a feature dependency" separation intact.
+
+**V5-S2 = Song-section detection (M) — stretch, behind AI Lab.** Verse/
+chorus segmentation over the existing beat grid + chroma, rendered as a
+loopable sections lane. Same local-heuristic lineage as BT-02/BT-04,
+directly serves the core practice loop ("loop the solo" without hand-set
+markers), and matches a shipped Moises capability. Stretch because the
+committed list is already full; first candidate to pull forward if a
+milestone finishes early.
+
+**TONE3000 unblock-or-drop (task, not milestone):** the community
+library is now 6500+ models with an official player ecosystem — big
+enough that "blocked on API terms" should be resolved by actually
+asking, once, this release. Outcome either converts
+backing-track-tone-match-spec.md Option A into a schedulable item or
+retires it; both beat carrying it as permanent limbo.
+
+**Declined from the market review (recorded so they stay declined):**
+mobile-native apps (LAN mode is the answer; appstore-plan.md owns any
+reversal), lessons/curriculum, cloud sync/collab, licensed tab catalog —
+see market-review-2026.md §3 for the reasoning on each.

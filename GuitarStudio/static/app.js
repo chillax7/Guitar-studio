@@ -278,7 +278,20 @@ const Audio = {
 
 function ensureCtx() {
   if (!Audio.ctx) {
-    Audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // latencyHint 0: ask for the smallest output callback buffer the
+    // hardware allows (Chrome clamps to its minimum — observed 128 frames
+    // = 2.7ms @48k vs 256 = 5.3ms at the default "interactive" hint).
+    // This context carries the LIVE guitar monitoring path (Play Along),
+    // where every buffered millisecond is felt under the fingers; the
+    // trade-off is twice the callback rate for the phase-vocoder stretch
+    // nodes and the NAM worklet, which is fine on Apple Silicon and
+    // guarded by NAM's own live-overrun rollback if it ever isn't.
+    // sampleRate is deliberately NOT forced: the context should follow
+    // the OS output device so the output side never resamples — input-
+    // side rate mismatch is the user-fixable half (set the interface to
+    // the same rate), and the Tone Lab latency hint surfaces the context
+    // rate for exactly that check.
+    Audio.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 0 });
     Audio.master = Audio.ctx.createGain();
     // V3-E2: mute lives on its own node so the tuner's mute and the volume
     // slider's level never fight over the same gain param (the pre-v3 bug:

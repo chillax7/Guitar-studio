@@ -680,7 +680,15 @@ async function paEnableInput() {
   const deviceId = document.getElementById("pa-device-select").value;
   const hintEl = document.getElementById("pa-input-hint");
   try {
-    const audioConstraints = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+    // latency ideal:0 asks the capture stack for its smallest input buffer
+    // — an "ideal" constraint can't fail the getUserMedia call, the
+    // browser just gets as close as it can. The input buffer is the one
+    // piece of the monitoring path no Web Audio API can even measure
+    // (see paShowLatencyEstimate), so asking is all that's available.
+    const audioConstraints = {
+      echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+      latency: { ideal: 0 },
+    };
     if (deviceId) audioConstraints.deviceId = { exact: deviceId };
     const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
 
