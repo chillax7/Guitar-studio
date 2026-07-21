@@ -567,10 +567,17 @@ bracketing-not-exact-fit approach as every calibration pass here) ->
 floor 0.30, ceiling 0.83. Also added `overall_raw` to the AI Lab UI itself
 (next to the Pitch/Timing breakdown) specifically so the next calibration
 pass doesn't need a guessed reproduction or a dev-tools round trip to get
-raw numbers — it's just on screen already. Still outstanding: confirming
-the bad take's new percentage (its exact raw score was never known) lands
-in the intended few-percent range rather than 0% or something too high.
-The go/no-go call itself remains outstanding.
+raw numbers — it's just on screen already.
+
+**Update — M0 gate PASSED.** User's verdict on this calibration pass,
+unprompted: "OK I'm happy with this, it's deffo a go decision for rate my
+take and I think we have a real USP here." V5-B1 is done — see §10's M0
+entry. Left open for whenever real use surfaces it: the bad take's exact
+percentage under this final mapping was never explicitly re-confirmed
+number-by-number (the user's judgment was a holistic "happy with this,"
+not a re-statement of the bad take's new percent) — not blocking, just
+worth keeping in mind if a future take's score looks off, now that
+`overall_raw` is on screen to check against.
 
 **V5-B2 = BT-15/V4-F6 · Artifact cleanup pass — M, timeboxed.**
 Post-separation cleanup on the guitar stem specifically. Picked *because*
@@ -633,9 +640,13 @@ unchanged, this just sequences it against §9)
 
 - **M0 — Rate My Take go/no-go (V5-B1's gate).** Record and judge the
   three takes. *Blocking-but-cheap: do this first.* Gate: honest
-  pass/fail per rate-my-take-spec.md §6. **In progress** — first attempt
-  surfaced the dry-recording gap (V5-B1's "Update" note above), not yet
-  re-run against dry takes.
+  pass/fail per rate-my-take-spec.md §6. **PASSED.** Real dry takes
+  (bad/good/best of the same solo) re-scored post-sharpening-fix and
+  second calibration pass (V5-B1's "Update" notes above) came back
+  0%/16%/85.2%, and the user's own judgment on the result: "deffo a go
+  decision... I think we have a real USP here." Closes the oldest open
+  gate in the project — R1b/c (M2 below) already shipped ahead of this,
+  and this is the honest go/no-go catching up to it.
 - **M1 — AI Lab: Scale/Mode Advisor (§8's M2 / V5-F2).** Chord lane
   prerequisite already shipped; this is the first genuinely new v5 build.
   **Shipped** — see §8's M2 note.
@@ -643,8 +654,9 @@ unchanged, this just sequences it against §9)
   in parallel with M3 if effort allows, since neither depends on the
   other. **Shipped ahead of M0 passing** (see V5-B1's "Update" note) —
   the UI/capture build turned out to be the fix for M0's own blocker, not
-  something worth waiting on a formal gate for; the go/no-go judgment
-  call itself is still outstanding.
+  something worth waiting on a formal gate for. M0 has since passed (see
+  above), so this is no longer ahead of its own gate, just was for a
+  while.
 - **M3 — AI Lab: LLM spike + Explain-this chat (§8's M3/M4).** *Gate:*
   §3's blind-comparison call.
 - **M4 — Hands-free rig: MIDI + multi-preset cycling (V5-B3).**
