@@ -262,6 +262,22 @@ key (a free tier isn't "no key"); `server.py`'s `LICK_PROVIDERS` maps
 each to its own settings field and default model
 (`claude-haiku-4-5-20251001` / `gemini-2.5-flash` /
 `llama-3.3-70b-versatile`) and its own small API-calling function
+
+**Update — Gemini's pinned model got cut off, switched to Google's own
+alias.** Real user report on the first actual try: `gemini-2.5-flash`
+came back 404, "no longer available to new users... update your code to
+use a newer model" — well before its own posted deprecation date, per
+Google's own developer forum reports of the same thing happening to
+other API users. Google's model lineup rotates faster than this spec's
+own update cadence can track by hand (Gemini 3.5 Flash GA'd in May 2026,
+2.0 Flash shut down June 2026, 2.5 Flash cut off for new users earlier
+than announced) — pinning a dated model string here is a recurring
+maintenance trap, not a one-time fix. Switched to `gemini-flash-latest`,
+Google's own maintained alias for whatever their current fast/cheap tier
+is, so this stays working across their rotation without a code change
+each time. Not independently re-verified against a real key from this
+session (the report came from the user's own machine) — worth confirming
+it resolves cleanly next time Lick Ideas is tried with Google selected.
 (`_call_anthropic`/`_call_google`/`_call_groq` — Anthropic's Messages
 API, Google's Generative Language API, Groq's OpenAI-compatible chat
 completions endpoint). The prompt itself is identical regardless of

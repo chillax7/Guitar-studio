@@ -1487,7 +1487,15 @@ SETTINGS_FILE = PROJECTS_DIR / "_settings.json"
 # next to its LICK_PROVIDERS entry below, not scattered through this file.
 LICK_PROVIDERS = {
     "anthropic": {"key_field": "anthropic_api_key", "model": "claude-haiku-4-5-20251001"},
-    "google": {"key_field": "google_api_key", "model": "gemini-2.5-flash"},
+    # "gemini-flash-latest" deliberately, not a dated model string like
+    # "gemini-2.5-flash" — real user report: that pinned version got cut
+    # off for new API users ("no longer available to new users... update
+    # your code to use a newer model") well before its own posted
+    # deprecation date. Google maintains this alias to always point at
+    # their current fast/cheap tier (Gemini 3.5 Flash as of mid-2026), so
+    # it should keep working across their own model rotation instead of
+    # needing a code change every time they retire one.
+    "google": {"key_field": "google_api_key", "model": "gemini-flash-latest"},
     "groq": {"key_field": "groq_api_key", "model": "llama-3.3-70b-versatile"},
 }
 
