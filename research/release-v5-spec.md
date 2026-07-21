@@ -507,6 +507,49 @@ too, which never had one before this. A **Use current position as
 Offset** button turns "scrub to the spot, then read off the seconds and
 type them in" into one click.
 
+**Update, real three-take test surfaced a genuine chroma-fallback bug in
+the pitch score itself:** three real dry takes (same solo, real
+recordings) scored 58.3% / 1.7% / 99.3% overall — the worst take correctly
+landed near zero, but its own displayed Pitch/Timing breakdown (51%/63%)
+still read as far more generous than a listener would call it, and the
+best take's 99.3% overall felt inflated for something judged "good but not
+that good." Root cause, confirmed directly on these three takes' own
+per-beat data: whenever pyin can't get a confident monophonic reading on
+both sides (chords, palm mutes, near-silence — the majority of beats on a
+sloppy take specifically, since sloppy playing is what breaks a clean
+monophonic read), pitch scoring falls back to plain chroma cosine
+similarity, and that fallback turned out to be nearly uninformative — the
+bad take's own fallback-beat scores ran 0.60-0.98 (mean 0.84), barely below
+the good take's 0.72-0.99 (mean 0.95). Raw chroma vectors from real guitar
+audio share enough broadband harmonic energy that cosine similarity
+between almost any two clusters high regardless of whether the notes
+actually match — the same coarseness already known from whole-take chroma
+comparison, resurfacing in this fallback path specifically. Fixed by
+sharpening each (already vibrato-smoothed) chroma vector via
+`RATE_CHROMA_SHARPEN_POWER` (element-wise power before the cosine
+similarity, exponent 4) before comparing — picked by directly measuring
+power 1/2/4/8 against these three takes' actual fallback-beat scores: power
+4 pulled the bad take's fallback mean from 0.84 to 0.33 while the good
+take's stayed clearly separated at 0.77; power 8 over-sharpened and
+started collapsing every take's fallback scores toward zero regardless of
+quality, losing the separation it's meant to create. Re-checked the
+self-vs-5s-offset sanity test from the earlier Update against the guitar
+stem itself: chroma-fallback-only similarity dropped from a mean of 0.67
+(unsharpened) to 0.44 (sharpened) — real improvement, though chroma's
+inherent harmonic-overlap ceiling means it still won't reach the ~0% a
+confident monophonic reading gets on the same test; that residual
+looseness is expected to remain, since the fallback only ever engages for
+non-monophonic content in the first place.
+
+`RATE_CALIBRATION_FLOOR`/`CEILING` were deliberately left untouched by this
+fix — the raw-score distribution for any take leaning on the chroma
+fallback almost certainly shifted, so those two constants likely need
+re-tightening, but not against this session's own re-scoring of the three
+takes (done with a guessed, not the app's actual, offset per take — not
+trustworthy enough to calibrate against). Needs the same three real takes
+re-run through the app itself (correct per-take offset) before floor/
+ceiling get touched again. The go/no-go call itself is still outstanding.
+
 **V5-B2 = BT-15/V4-F6 · Artifact cleanup pass — M, timeboxed.**
 Post-separation cleanup on the guitar stem specifically. Picked *because*
 it's scheduled alongside Rate My Take completion this release — a

@@ -1131,6 +1131,16 @@ RATE_PITCH_CENTS_WINDOW = 100  # cents (~1 semitone); beyond this a note reads a
 # reminder of exactly that.
 RATE_CALIBRATION_FLOOR = 0.55   # raw blended score presumed to map to ~0%
 RATE_CALIBRATION_CEILING = 0.80  # raw blended score presumed to map to ~100%
+# NOT re-fit against RATE_CHROMA_SHARPEN_POWER's fallback-pitch fix above —
+# that fix changes the raw-score distribution for any take whose beats lean
+# on the chroma fallback (bad/rhythm-heavy takes lean on it most, since
+# sloppy playing is exactly what breaks a clean monophonic pyin read), so
+# floor/ceiling almost certainly need to move again. Left as-is rather than
+# re-derived from this session's own re-alignment of the three real takes
+# that motivated the fix (that reproduction used a guessed, not the app's
+# actual, offset per take — not trustworthy enough to calibrate against).
+# Re-run the same real takes through the app itself (correct per-take
+# offset) once this fix is live, then tighten these two numbers from that.
 RATE_OFFSET_SEARCH_MIN_QUALITY = 0.15  # below this, refine_offset's match is noise, not a real alignment
 
 
@@ -1141,6 +1151,39 @@ def _smooth_chroma_for_vibrato(vec: "np.ndarray") -> "np.ndarray":
     'below' bin 0 (C) is bin 11 (B), not nothing."""
     prev_w, self_w, next_w = CHROMA_VIBRATO_SMOOTH_KERNEL
     return self_w * vec + prev_w * np.roll(vec, 1) + next_w * np.roll(vec, -1)
+
+
+# Real-data bug (three real takes of the same solo): whenever pyin can't get
+# a confident monophonic reading on both sides for a beat (chords, palm
+# mutes, pick noise, quiet passages — the majority of beats on a real "bad"
+# take, since sloppy playing is exactly what breaks a clean monophonic pitch
+# read), pitch scoring falls back to plain chroma cosine similarity — and
+# that fallback turned out to be almost uninformative: measured directly on
+# the real takes' own chroma-fallback beats, a plainly *bad* take's fallback
+# scores ran 0.60-0.98 (mean 0.84), while a genuinely good take's ran barely
+# any higher (0.72-0.99, mean 0.95) — nowhere near the ~5%-vs-~80% spread a
+# guitarist hears. Root cause: raw chroma vectors from real guitar audio
+# share so much broadband harmonic energy that cosine similarity between
+# almost any two of them clusters high regardless of whether the actual
+# notes match — the same coarseness already documented in
+# RATE_PITCH_CENTS_WINDOW's docstring for whole-take chroma comparison, just
+# resurfacing here in the fallback path. Raising each (already
+# vibrato-smoothed) chroma vector to a power before the cosine similarity
+# sharpens it — bins near the peak keep dominating, everything else shrinks
+# toward zero — without touching the vibrato-tolerant smoothing above it.
+# Power 4 was picked by directly comparing the fallback-beat score
+# distributions across powers 1/2/4/8 on the three real takes: power 4 pulls
+# the bad take's mean down substantially (0.84 -> 0.33) while the good take
+# stays clearly separated (0.95 -> 0.77); power 8 over-sharpens and starts
+# collapsing every take's fallback scores toward zero, losing the
+# separation it's meant to preserve.
+RATE_CHROMA_SHARPEN_POWER = 4
+
+
+def _sharpen_chroma(vec: "np.ndarray") -> "np.ndarray":
+    sharpened = np.clip(vec, 0.0, None) ** RATE_CHROMA_SHARPEN_POWER
+    norm = np.linalg.norm(sharpened)
+    return sharpened / norm if norm > 0 else sharpened
 
 
 def _extract_confident_f0(y: "np.ndarray", sr: int, time_offset: float) -> tuple:
@@ -1232,8 +1275,10 @@ def score_take(take_path: Path, reference_path: Path, beats: list, offset_sec: f
         else:
             # No confident monophonic reading on one or both sides (a chord,
             # a palm-muted chug, near-silence) — chroma still applies here.
-            take_c = _smooth_chroma_for_vibrato(take_chroma[:, take_mask].mean(axis=1))
-            ref_c = _smooth_chroma_for_vibrato(ref_chroma[:, ref_mask].mean(axis=1))
+            # Sharpened (see RATE_CHROMA_SHARPEN_POWER's docstring) after the
+            # vibrato-tolerant smoothing, not instead of it.
+            take_c = _sharpen_chroma(_smooth_chroma_for_vibrato(take_chroma[:, take_mask].mean(axis=1)))
+            ref_c = _sharpen_chroma(_smooth_chroma_for_vibrato(ref_chroma[:, ref_mask].mean(axis=1)))
             take_norm, ref_norm = np.linalg.norm(take_c), np.linalg.norm(ref_c)
             pitch_score = (float(np.dot(take_c, ref_c)) / (take_norm * ref_norm)) if take_norm > 0 and ref_norm > 0 else 0.0
             pitch_score = max(0.0, min(1.0, pitch_score))
