@@ -1092,6 +1092,10 @@ def svc_recording_save(track: str, ext: str, data: bytes, prefix: str = "take") 
     filename = f"{track_name} - {prefix} {n:02d}.{ext}"
     path = rec_dir / filename
     path.write_bytes(data)
+    if prefix == "dry":
+        dry_takes = _read_dry_takes(rec_dir)
+        dry_takes.add(filename)
+        _write_dry_takes(rec_dir, dry_takes)
     return {"path": str(path), "filename": filename, "take": n}
 
 
@@ -1112,6 +1116,29 @@ def _write_starred(rec_dir: Path, starred: set) -> None:
     (rec_dir / STARRED_FILE).write_text(json.dumps({"starred": sorted(starred)}))
 
 
+# V5-B1: dry-take membership needs to survive a rename (renaming a take is
+# an existing, expected action — Play Along's Takes tab already supports
+# it), but DRY_RE alone only recognizes the auto-generated "<track> - dry
+# NN" filename. Same sidecar-JSON idiom as starred above, so a renamed dry
+# take (e.g. to "Good attempt") doesn't silently vanish from Rate My Take's
+# takes list the moment its filename stops matching the regex.
+DRY_TAKES_FILE = ".dry_takes.json"
+
+
+def _read_dry_takes(rec_dir: Path) -> set:
+    meta = rec_dir / DRY_TAKES_FILE
+    if not meta.exists():
+        return set()
+    try:
+        return set(json.loads(meta.read_text()).get("dry", []))
+    except (json.JSONDecodeError, OSError):
+        return set()
+
+
+def _write_dry_takes(rec_dir: Path, dry_takes: set) -> None:
+    (rec_dir / DRY_TAKES_FILE).write_text(json.dumps({"dry": sorted(dry_takes)}))
+
+
 def svc_recordings_list(track: str) -> dict:
     """VD-02: every take for a track, inline-playable and starrable — ends
     the round-trip to Finder/QuickTime for every review."""
@@ -1119,6 +1146,7 @@ def svc_recordings_list(track: str) -> dict:
     takes = []
     if rec_dir.exists():
         starred = _read_starred(rec_dir)
+        dry_takes = _read_dry_takes(rec_dir)
         for f in sorted(rec_dir.iterdir()):
             if f.is_file() and not f.name.startswith("."):
                 takes.append({
@@ -1128,7 +1156,11 @@ def svc_recordings_list(track: str) -> dict:
                     # backing track baked in) is valid input for Rate My
                     # Take — see DRY_RE's comment for why a regular take
                     # scores meaninglessly high regardless of performance.
-                    "dry": bool(DRY_RE.search(f.stem)),
+                    # The sidecar is the real source of truth (survives a
+                    # rename — see svc_recording_rename); the regex is only
+                    # a fallback for a dry file that predates the sidecar
+                    # or was dropped in by hand.
+                    "dry": f.name in dry_takes or bool(DRY_RE.search(f.stem)),
                 })
     return {"takes": takes}
 
@@ -1236,11 +1268,22 @@ def svc_recording_rename(path: str, new_name: str) -> dict:
     rec_dir = target.parent
     starred = _read_starred(rec_dir)
     was_starred = target.name in starred
+    dry_takes = _read_dry_takes(rec_dir)
+    # OR with DRY_RE here too (not just the sidecar) — a dry take saved
+    # before this sidecar existed, or dropped in by hand, is still "dry" by
+    # its current filename and shouldn't lose that the moment it's renamed
+    # to something the regex no longer matches.
+    was_dry = target.name in dry_takes or bool(DRY_RE.search(target.stem))
+    old_name = target.name
     target.rename(new_path)
     if was_starred:
-        starred.discard(target.name)
+        starred.discard(old_name)
         starred.add(new_path.name)
         _write_starred(rec_dir, starred)
+    if was_dry:
+        dry_takes.discard(old_name)
+        dry_takes.add(new_path.name)
+        _write_dry_takes(rec_dir, dry_takes)
 
     return {"ok": True, "path": str(new_path), "filename": new_path.name}
 

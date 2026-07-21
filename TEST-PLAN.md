@@ -114,6 +114,8 @@ instead — open it directly in a browser, no server required.
 - [ ] **Offset search:** leaving the default (a few seconds) auto-refines a rough offset guess and reports the refined value + a match-quality number in the hint text; setting it to 0 uses the entered offset exactly, unmodified.
 - [ ] **The actual test (rate-my-take-spec.md §6):** record three real takes of a part you know well (tight / sloppy / tasteful variation) as **dry** recordings, score all three, and check they rank tight > variation > sloppy — with a *dry* recording this should now actually discriminate between takes, unlike scoring a regular (backing-track-included) take, which was confirmed to compress all three takes' scores together regardless of how they were actually played.
 - [ ] A song with no separated guitar stem yet shows a clear error when scoring, not a crash; a take with no dry recordings yet shows an honest empty state instead of a blank list.
+- [ ] **Rename a dry take:** the ✎ button next to a take in the list prompts for a new name and renames it in place — it must still show up in this list (and remain scoreable) after renaming, not disappear just because its new name no longer contains "dry NN".
+- [ ] The "Record a dry take" card explains, in its own words, why this is a separate button from Play Along's Record tab (backing track baked in there vs. not here) — not just what it captures.
 
 ## 7. Play Along — top strip
 

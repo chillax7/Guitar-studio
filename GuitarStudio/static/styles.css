@@ -1457,3 +1457,11 @@ svg.ailab-fretboard { display: block; }
 .ailab-rmt-overall.mid { color: var(--warn); }
 .ailab-rmt-overall.low { color: var(--danger); }
 #ailab-rmt-heatmap-img { max-width: 100%; border-radius: 6px; border: 1px solid var(--border); display: block; }
+
+.ailab-rmt-take-row-right { display: flex; align-items: center; gap: 8px; }
+.ailab-rmt-rename-btn {
+  flex: none; width: 18px; height: 18px; padding: 0;
+  border-radius: 3px; font-size: 11px; line-height: 18px;
+  color: var(--text-dim); background: var(--panel-2); border: 1px solid var(--border);
+}
+.ailab-rmt-rename-btn:hover { color: var(--text); background: var(--border); }

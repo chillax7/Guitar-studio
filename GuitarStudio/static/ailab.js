@@ -351,7 +351,14 @@ async function aiLabRmtRefreshTakes() {
   takes.forEach((t) => {
     const row = document.createElement("div");
     row.className = "ailab-rmt-take-row";
-    row.innerHTML = `<span class="name">${t.filename}</span><span class="size">${(t.size / 1024 / 1024).toFixed(1)} MB</span>`;
+    row.innerHTML = `
+      <span class="name">${t.filename}</span>
+      <span class="ailab-rmt-take-row-right">
+        <span class="size">${(t.size / 1024 / 1024).toFixed(1)} MB</span>
+        <button class="ailab-rmt-rename-btn" title="Rename">✎</button>
+      </span>
+    `;
+    row.querySelector(".ailab-rmt-rename-btn").addEventListener("click", () => aiLabRmtRenameTake(t));
     frag.appendChild(row);
   });
   listEl.appendChild(frag);
@@ -366,6 +373,23 @@ async function aiLabRmtRefreshTakes() {
   });
   if (takes.some((t) => t.path === prevValue)) selectEl.value = prevValue;
   else selectEl.selectedIndex = takes.length - 1; // default to the most recent
+}
+
+// Same prompt-based rename idiom as Play Along's Takes tab
+// (recorder.js) — reuses the same /api/recording/rename endpoint; the
+// server carries the "dry" flag over to the new filename (see
+// svc_recording_rename), so a renamed dry take doesn't drop out of this
+// list the moment it stops matching "... - dry NN".
+async function aiLabRmtRenameTake(take) {
+  const base = take.filename.replace(/\.[^.]+$/, "");
+  const newName = prompt("Rename take to:", base);
+  if (!newName || newName === base) return;
+  try {
+    await Api.post("/api/recording/rename", { path: take.path, new_name: newName });
+    await aiLabRmtRefreshTakes();
+  } catch (e) {
+    alert("Rename failed: " + e.message);
+  }
 }
 
 function aiLabDryEnsureBus() {
