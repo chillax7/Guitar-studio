@@ -1499,6 +1499,13 @@ LICK_PROVIDERS = {
     "groq": {"key_field": "groq_api_key", "model": "llama-3.3-70b-versatile"},
 }
 
+# Real user report: Groq's API (fronted by Cloudflare) returned 403 "error
+# code: 1010" — a Cloudflare bot block, not a Groq auth/quota error — for a
+# request carrying Python urllib's default "Python-urllib/3.x" User-Agent.
+# Sent on all three providers' requests (not just Groq's) so none of them
+# risk the same block if a provider's own CDN starts fingerprinting on it.
+_LICK_HTTP_USER_AGENT = "OrpheusGuitarStudio/5.0 (+lick-ideas)"
+
 
 def svc_load_settings() -> dict:
     raw = {}
@@ -1547,7 +1554,10 @@ def _call_anthropic(prompt: str, api_key: str) -> str:
     }).encode("utf-8")
     req = Request(
         "https://api.anthropic.com/v1/messages", data=body, method="POST",
-        headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+        headers={
+            "x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json",
+            "user-agent": _LICK_HTTP_USER_AGENT,
+        },
     )
     try:
         with urlopen(req, timeout=30) as resp:
@@ -1564,7 +1574,8 @@ def _call_google(prompt: str, api_key: str) -> str:
     body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
     req = Request(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
-        data=body, method="POST", headers={"content-type": "application/json"},
+        data=body, method="POST",
+        headers={"content-type": "application/json", "user-agent": _LICK_HTTP_USER_AGENT},
     )
     try:
         with urlopen(req, timeout=30) as resp:
@@ -1589,7 +1600,10 @@ def _call_groq(prompt: str, api_key: str) -> str:
     }).encode("utf-8")
     req = Request(
         "https://api.groq.com/openai/v1/chat/completions", data=body, method="POST",
-        headers={"authorization": f"Bearer {api_key}", "content-type": "application/json"},
+        headers={
+            "authorization": f"Bearer {api_key}", "content-type": "application/json",
+            "user-agent": _LICK_HTTP_USER_AGENT,
+        },
     )
     try:
         with urlopen(req, timeout=30) as resp:

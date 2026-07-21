@@ -278,6 +278,18 @@ is, so this stays working across their rotation without a code change
 each time. Not independently re-verified against a real key from this
 session (the report came from the user's own machine) — worth confirming
 it resolves cleanly next time Lick Ideas is tried with Google selected.
+
+**Update — Groq's Cloudflare front end was blocking the request itself,
+not rejecting the key.** Next real try, this time against Groq: 403
+"error code: 1010". That's a Cloudflare bot-block code, not a Groq auth
+or quota error — Cloudflare was rejecting the request on its default
+Python urllib User-Agent (`Python-urllib/3.x`), before it ever reached
+Groq's own API logic. Added an explicit `user-agent` header
+(`OrpheusGuitarStudio/5.0 (+lick-ideas)`) to all three providers' HTTP
+requests, not just Groq's, since Anthropic's and Google's endpoints could
+plausibly start doing the same fingerprinting later. Same caveat as
+above: not independently re-verified against a real Groq key from this
+session.
 (`_call_anthropic`/`_call_google`/`_call_groq` — Anthropic's Messages
 API, Google's Generative Language API, Groq's OpenAI-compatible chat
 completions endpoint). The prompt itself is identical regardless of
