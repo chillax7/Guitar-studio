@@ -836,6 +836,7 @@
         <div class="ailab-tabs" id="ailab-tabs">
           <button id="ailab-tab-scales" class="ailab-tab-btn on" data-panel="scales">Scales</button>
           <button id="ailab-tab-ratemytake" class="ailab-tab-btn" data-panel="ratemytake">Rate My Take</button>
+          <button id="ailab-tab-lickideas" class="ailab-tab-btn" data-panel="lickideas">Lick Ideas</button>
         </div>
         <button id="ailab-close-btn">✕ Close</button>
       </div>
@@ -948,6 +949,41 @@
             <div class="ailab-rmt-overall" id="ailab-rmt-overall"></div>
             <p class="hint" id="ailab-rmt-breakdown"></p>
             <img id="ailab-rmt-heatmap-img" alt="Rate My Take heatmap">
+          </section>
+
+        </div>
+
+        <!-- V5-R1 (release-v5-spec.md §3): Lick/Phrasing Assistant research
+             spike, delivered as a panel instead of CLI-only so real songs
+             can actually be tried and judged honestly against the §3 gate
+             ("genuinely useful, specific-to-this-song phrasing advice, or
+             generic filler?"). The ONLY external network call in this app —
+             opt-in, sends just key/tempo/chord-progression text, never raw
+             audio (§7). -->
+        <div id="ailab-lickideas-panel" class="ailab-column" style="display:none;">
+
+          <section class="pa-card">
+            <h3>Anthropic API key</h3>
+            <p class="hint">This is a research spike for phrasing suggestions from a text LLM (Claude Haiku) — the one feature in this app that makes a network call. Get a key at <strong>console.anthropic.com</strong> (Settings &rarr; API Keys), add a little billing credit, and paste it below. Stored locally in this app's own project folder, never committed to source control, never sent anywhere except directly to Anthropic's API.</p>
+            <label>API key</label>
+            <input type="password" id="ailab-lick-apikey" placeholder="sk-ant-...">
+            <button id="ailab-lick-savekey-btn">Save key</button>
+            <p class="hint" id="ailab-lick-key-status"></p>
+          </section>
+
+          <section class="pa-card">
+            <h3>Get phrasing ideas</h3>
+            <p class="hint">Sends this song's detected key, tempo, and chord progression (text only) to Claude and asks for concrete lead-guitar phrasing ideas — target notes, call-and-response shapes, a technique to try at a specific moment. Judge it honestly: does it feel specific to this song, or generic scale advice you already knew?</p>
+            <label>Style/genre (optional)</label>
+            <input type="text" id="ailab-lick-genre" placeholder="e.g. blues rock, metal, jazz fusion">
+            <button id="ailab-lick-suggest-btn" class="primary">Get phrasing ideas</button>
+            <p class="hint" id="ailab-lick-hint"></p>
+          </section>
+
+          <section class="pa-card" id="ailab-lick-result-card" style="display:none;">
+            <h3>Suggestions</h3>
+            <p class="hint" id="ailab-lick-context"></p>
+            <div id="ailab-lick-suggestion"></div>
           </section>
 
         </div>

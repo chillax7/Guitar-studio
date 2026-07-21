@@ -35,6 +35,8 @@ import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -1463,6 +1465,150 @@ def svc_save_rig_presets(presets: dict) -> dict:
     return {"ok": True}
 
 
+# V5-R1 (release-v5-spec.md §3/§7): the Lick/Phrasing Assistant's one
+# external network dependency in an otherwise fully local/private app —
+# opt-in by design. The key lives in this file, never in git (PROJECTS_DIR
+# is gitignored — see .gitignore's "per-user saved state" section), and is
+# never echoed back to the client once saved (svc_load_settings reports
+# only whether one is set, not the key itself) — a locally-run app isn't a
+# strong security boundary either way, but there's no reason to make the
+# key visible in a browser dev-tools Network tab response on every page
+# load when a boolean already answers "is this configured."
+SETTINGS_FILE = PROJECTS_DIR / "_settings.json"
+
+
+def svc_load_settings() -> dict:
+    if not SETTINGS_FILE.exists():
+        return {"has_anthropic_key": False}
+    try:
+        raw = json.loads(SETTINGS_FILE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {"has_anthropic_key": False}
+    return {"has_anthropic_key": bool(raw.get("anthropic_api_key"))}
+
+
+def svc_save_anthropic_key(api_key: str) -> dict:
+    api_key = (api_key or "").strip()
+    raw = {}
+    if SETTINGS_FILE.exists():
+        try:
+            raw = json.loads(SETTINGS_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            raw = {}
+    if api_key:
+        raw["anthropic_api_key"] = api_key
+    else:
+        raw.pop("anthropic_api_key", None)  # empty submission clears it, same as any other saved setting
+    SETTINGS_FILE.write_text(json.dumps(raw, indent=2))
+    return {"ok": True, "has_anthropic_key": bool(api_key)}
+
+
+def _load_anthropic_key() -> str:
+    if not SETTINGS_FILE.exists():
+        return ""
+    try:
+        raw = json.loads(SETTINGS_FILE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return ""
+    return (raw.get("anthropic_api_key") or "").strip()
+
+
+ANTHROPIC_LICK_MODEL = "claude-haiku-4-5-20251001"  # cheap-tier per release-v5-spec.md §7's cost estimate
+
+
+def _summarize_chord_progression(chords: list, max_runs: int = 40) -> str:
+    """Collapses consecutive identical (root, quality) beats into runs (same
+    idiom as the chord lane's own rendering) and lists them in order — the
+    LLM gets the song's actual chord changes, not a beat-by-beat wall of
+    duplicates. Capped at max_runs to keep the prompt (and cost) small for a
+    long song with lots of changes; a spike judging usefulness doesn't need
+    the last chorus repeated back to it."""
+    if not chords:
+        return ""
+    runs = []
+    for c in chords:
+        if not c.get("root") or c.get("quality") == "N":
+            continue
+        symbol = c["root"] + ("" if c["quality"] == "maj" else "m" if c["quality"] == "min" else c["quality"])
+        if runs and runs[-1] == symbol:
+            continue
+        runs.append(symbol)
+    if len(runs) > max_runs:
+        runs = runs[:max_runs] + ["..."]
+    return " - ".join(runs)
+
+
+def svc_lick_suggest(source_path: str, model: str, genre: str) -> dict:
+    """V5-R1's research spike (release-v5-spec.md §3), delivered as an AI
+    Lab panel rather than CLI-only — same underlying judgment call either
+    way ("does this read as genuinely useful, specific-to-this-song
+    phrasing advice, or generic filler"), just a faster way for the user to
+    actually run it against real songs and judge honestly. Sends only
+    derived musical data (key/tempo/chord progression + an optional
+    free-text style tag) — never raw audio — per §7's privacy posture."""
+    api_key = _load_anthropic_key()
+    if not api_key:
+        raise ApiError(400, "No Anthropic API key saved yet — add one in AI Lab's Lick Ideas panel first.")
+
+    input_path = resolve_source_path(source_path)
+    out_dir = engine.track_stem_dir(input_path, model)
+    if not engine.has_cached_stems(out_dir):
+        raise ApiError(400, f"No stems found for {input_path.name} with model '{model}'. Separate it first.")
+    analysis = engine.ensure_analysis(out_dir)
+
+    key = analysis.get("key")
+    bpm = analysis.get("bpm")
+    progression = _summarize_chord_progression(analysis.get("chords") or [])
+    if not key or not bpm or not progression:
+        raise ApiError(400, "This song needs a detected key, tempo, and chord progression before asking for "
+                             "phrasing ideas — run analysis (open it in the Mixer) first.")
+
+    genre = (genre or "").strip()
+    genre_line = f"- Style/genre: {genre}\n" if genre else ""
+    prompt = (
+        "You are an experienced guitar teacher giving practical lead-guitar phrasing advice.\n\n"
+        "Song info:\n"
+        f"- Key: {key['key']} {key['mode']}\n"
+        f"- Tempo: {bpm:.0f} BPM\n"
+        f"- Chord progression (in order): {progression}\n"
+        f"{genre_line}\n"
+        "Give 2-4 concrete, specific phrasing ideas for a guitar solo over this progression — target notes to "
+        "land on over specific chords, call-and-response shapes, or a technique to try at a particular point. "
+        "Avoid generic advice (e.g. \"use the pentatonic scale\") unless it's tied to a specific moment in THIS "
+        "progression. Keep it concise — a short list, no more than ~150 words total."
+    )
+
+    body = json.dumps({
+        "model": ANTHROPIC_LICK_MODEL,
+        "max_tokens": 400,
+        "messages": [{"role": "user", "content": prompt}],
+    }).encode("utf-8")
+    req = Request(
+        "https://api.anthropic.com/v1/messages", data=body, method="POST",
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+    )
+    try:
+        with urlopen(req, timeout=30) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise ApiError(exc.code, f"Anthropic API error ({exc.code}): {detail[:300]}")
+    except URLError as exc:
+        raise ApiError(502, f"Couldn't reach the Anthropic API: {exc.reason}")
+
+    text = "".join(block.get("text", "") for block in payload.get("content", []) if block.get("type") == "text")
+    return {
+        "suggestion": text.strip(),
+        "key": f"{key['key']} {key['mode']}",
+        "bpm": round(bpm, 1),
+        "progression": progression,
+    }
+
+
 # V4-F3: playlists/setlists — same shared-blob pattern as rig presets above.
 # A playlist doesn't own the tracks it lists (just their filenames as they
 # appear in input/); per-song state (mix, rig, loop, markers) still lives
@@ -1823,6 +1969,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(200, svc_load_rig_presets())
             if path == "/api/playlists":
                 return self._send_json(200, svc_load_playlists())
+            if path == "/api/settings":
+                return self._send_json(200, svc_load_settings())
             if path.startswith("/api/"):
                 return self._send_json(404, {"error": f"Unknown route: {path}"})
             return self._serve_static(path)
@@ -1966,6 +2114,18 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/playlists":
                 body = self._read_json_body()
                 result = svc_save_playlists(body.get("playlists", {}))
+                return self._send_json(200, result)
+
+            if path == "/api/settings/anthropic_key":
+                body = self._read_json_body()
+                result = svc_save_anthropic_key(body.get("api_key", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/lick/suggest":
+                body = self._read_json_body()
+                result = svc_lick_suggest(
+                    body.get("source_path", ""), body.get("model", engine.DEFAULT_MODEL), body.get("genre", ""),
+                )
                 return self._send_json(200, result)
 
             if path == "/api/practice_log":

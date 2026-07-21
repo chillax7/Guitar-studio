@@ -212,6 +212,28 @@ this gate and §5's stretch goal (solo-skeleton generation) is dead, not
 deferred — if the LLM can't produce useful phrasing *ideas*, it has no
 business attempting a *skeleton*.
 
+**Update — delivered as a panel instead of CLI-only.** Same underlying
+judgment call ("genuinely useful, specific-to-this-song phrasing advice,
+or generic filler") either way; the user asked for a real place to paste
+an API key and try it directly rather than a terminal command, which is a
+faster path to actually running the gate against real songs, not a
+different gate. Shipped as AI Lab's third tab, **Lick Ideas**:
+- An API key field (Anthropic, Claude Haiku — the cheap tier §7 costed
+  out) that saves to `GuitarStudio/projects/_settings.json` (gitignored,
+  never echoed back to the client once saved — `GET /api/settings`
+  reports only whether one exists).
+- A "Get phrasing ideas" button + optional free-text style/genre tag that
+  sends the current song's detected key/tempo/chord-progression (text
+  only, run-length-collapsed the same way the chord lane already
+  displays it — never raw audio, per §7) to `/api/lick/suggest`, which
+  calls the Anthropic Messages API server-side and returns the
+  suggestion text plus the exact key/tempo/progression it was given (so
+  the user judging the output can see precisely what the model saw).
+- This is still the ungated research spike, not a finished feature —
+  the actual gate (blind comparison against the user's own phrasing
+  instincts, across 3 real songs) is a human judgment call the UI can't
+  make for itself, same as Rate My Take's own §6 gate. Outstanding.
+
 ## 4. "Explain this" chat panel (V5-F3 · S/M, ships only if §3's gate passes)
 
 A small conversational panel grounded in the current song's key/chords/

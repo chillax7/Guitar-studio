@@ -1456,10 +1456,11 @@ svg.ailab-fretboard { display: block; }
 
 /* ---------- AI Lab: Rate My Take ---------- */
 
-.pa-card input[type=number], .pa-card input[type=text] {
+.pa-card input[type=number], .pa-card input[type=text], .pa-card input[type=password] {
   width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
   border-radius: 4px; padding: 5px 6px; font-size: 12px;
 }
+#ailab-lick-suggestion { white-space: pre-wrap; font-size: 13px; line-height: 1.5; }
 .ailab-rmt-take-row {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 6px 8px; border-radius: 5px; font-size: 12px; color: var(--text-dim);

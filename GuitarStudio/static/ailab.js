@@ -377,7 +377,8 @@ function openAiLab() {
   AiLab.selectedIndex = null; // re-pick the chord under the playhead on open
   aiLabSetFollow(true); // pinning is per-visit — a fresh open follows the song again
   if (AiLab.panel === "scales") renderAiLab();
-  else aiLabRmtOpen();
+  else if (AiLab.panel === "ratemytake") aiLabRmtOpen();
+  else aiLabLickOpen();
 }
 
 function closeAiLab() {
@@ -388,11 +389,13 @@ function aiLabSwitchPanel(panel) {
   AiLab.panel = panel;
   document.getElementById("ailab-scales-panel").style.display = panel === "scales" ? "" : "none";
   document.getElementById("ailab-ratemytake-panel").style.display = panel === "ratemytake" ? "" : "none";
+  document.getElementById("ailab-lickideas-panel").style.display = panel === "lickideas" ? "" : "none";
   document.querySelectorAll(".ailab-tab-btn").forEach((btn) => {
     btn.classList.toggle("on", btn.dataset.panel === panel);
   });
   if (panel === "scales") renderAiLab();
-  else aiLabRmtOpen();
+  else if (panel === "ratemytake") aiLabRmtOpen();
+  else aiLabLickOpen();
 }
 
 // ---------------------------------------------------------------------------
@@ -614,6 +617,69 @@ async function aiLabScoreTake() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Lick Ideas (V5-R1) — the Lick/Phrasing Assistant research spike, run from
+// AI Lab instead of CLI-only so real songs are actually easy to try. The
+// only feature in this app that makes a network call — opt-in, key-only,
+// text-only (release-v5-spec.md §7).
+// ---------------------------------------------------------------------------
+
+async function aiLabLickOpen() {
+  await aiLabLickRefreshKeyStatus();
+}
+
+async function aiLabLickRefreshKeyStatus() {
+  const statusEl = document.getElementById("ailab-lick-key-status");
+  try {
+    const r = await Api.get("/api/settings");
+    statusEl.textContent = r.has_anthropic_key
+      ? "Key saved."
+      : "No key saved yet — get one at console.anthropic.com and paste it above.";
+  } catch (e) {
+    statusEl.textContent = `Couldn't check key status: ${e.message}`;
+  }
+}
+
+async function aiLabLickSaveKey() {
+  const input = document.getElementById("ailab-lick-apikey");
+  const statusEl = document.getElementById("ailab-lick-key-status");
+  try {
+    const r = await Api.post("/api/settings/anthropic_key", { api_key: input.value });
+    input.value = ""; // never leave a saved secret sitting in a visible (even password-masked) input
+    statusEl.textContent = r.has_anthropic_key ? "Key saved." : "Key cleared.";
+  } catch (e) {
+    statusEl.textContent = `Couldn't save key: ${e.message}`;
+  }
+}
+
+async function aiLabLickSuggest() {
+  const hintEl = document.getElementById("ailab-lick-hint");
+  const resultCard = document.getElementById("ailab-lick-result-card");
+  const btn = document.getElementById("ailab-lick-suggest-btn");
+  if (!State.track) {
+    hintEl.textContent = "No song selected.";
+    return;
+  }
+  const genre = document.getElementById("ailab-lick-genre").value;
+
+  btn.disabled = true;
+  hintEl.textContent = "Asking Claude for phrasing ideas…";
+  resultCard.style.display = "none";
+  try {
+    const r = await Api.post("/api/lick/suggest", {
+      source_path: State.track, model: State.model, genre,
+    });
+    hintEl.textContent = "";
+    document.getElementById("ailab-lick-context").textContent = `${r.key} · ${r.bpm} BPM · ${r.progression}`;
+    document.getElementById("ailab-lick-suggestion").textContent = r.suggestion;
+    resultCard.style.display = "";
+  } catch (e) {
+    hintEl.textContent = `Couldn't get suggestions: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function wireAiLab() {
   document.getElementById("ailab-open-btn").addEventListener("click", openAiLab);
   document.getElementById("ailab-close-btn").addEventListener("click", closeAiLab);
@@ -652,6 +718,9 @@ function wireAiLab() {
   document.getElementById("ailab-rmt-use-position-btn").addEventListener("click", () => {
     document.getElementById("ailab-rmt-offset").value = currentPosition().toFixed(2);
   });
+
+  document.getElementById("ailab-lick-savekey-btn").addEventListener("click", aiLabLickSaveKey);
+  document.getElementById("ailab-lick-suggest-btn").addEventListener("click", aiLabLickSuggest);
 }
 
 wireAiLab();

@@ -1235,6 +1235,35 @@ Same honesty framing as everywhere else: this is a heuristic, not a
 verdict — judge it against what your own ears say happened, especially on
 a first pass with a new song.
 
+### 6.3 Lick Ideas
+
+An experimental research feature, and the **only part of this app that
+makes a network call** — everything else works fully offline. Sends
+Claude (Anthropic) a text description of the current song — detected
+key, tempo, and chord progression, never any audio — and asks for
+concrete lead-guitar phrasing ideas: target notes to land on over
+specific chords, call-and-response shapes, a technique to try at a
+particular moment.
+
+**Setting it up.** Get an API key at **console.anthropic.com** (Settings
+→ API Keys) and add a little billing credit — realistic usage here costs
+fractions of a cent per request. Paste the key into the field at the top
+of AI Lab's Lick Ideas tab and click **Save key**. It's stored locally in
+this app's own project folder, never committed to source control, and
+never sent anywhere except directly to Anthropic's API.
+
+**Using it.** Optionally type a style/genre tag (blues rock, metal, jazz
+fusion — whatever fits), then click **Get phrasing ideas**. The result
+shows exactly what the model was given (key, tempo, chord progression) so
+you can judge the suggestions against real context, not a black box.
+
+**Judge it honestly.** This is explicitly a research spike, not a
+finished feature — the question worth asking every time is whether the
+suggestions feel genuinely specific to *this* song's progression, or
+like generic scale advice ("try the pentatonic scale") that any lookup
+table could have said. If it's not earning its keep, that's a real,
+useful answer, not a failure to report.
+
 ---
 
 ## 7. Keyboard shortcuts

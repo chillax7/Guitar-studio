@@ -135,6 +135,15 @@ instead — open it directly in a browser, no server required.
 - [ ] **Pitch/timing breakdown:** the Result card shows "Pitch agreement: X% · Timing agreement: Y%" under the overall score — a surprising overall number should be explainable by looking at which of the two is dragging it down, rather than being a mystery.
 - [ ] **Discrimination check:** a genuinely bad take (wrong notes and/or erratic timing, not just ordinary human variation) should score clearly low — if a take you know is bad still comes back around 50% or higher, that's the scoring being too lenient again, not a one-off; note which of Pitch/Timing agreement is the inflated one.
 
+## 6c. AI Lab — Lick Ideas (V5-R1 research spike)
+
+- [ ] **API key save/status:** pasting a key and clicking **Save key** clears the input and updates the status line to "Key saved."; reopening AI Lab (or the tab) later still shows "Key saved." (persisted, not just in-memory) without ever re-displaying the actual key value. Saving an empty field clears a previously-saved key ("Key cleared.").
+- [ ] **No key yet:** with no key saved, the status line says so and points at console.anthropic.com; clicking **Get phrasing ideas** should fail with a clear, specific error (not a silent no-op or a raw stack trace).
+- [ ] **Get phrasing ideas (needs a real key):** with a key saved and a song selected that has a detected key/tempo/chord progression, clicking the button shows a loading state, then the suggestion text plus a context line showing exactly what was sent (key, BPM, chord progression) — cross-check that context line against what the Mixer's own chord lane/key hint show for the same song, they should agree.
+- [ ] **The actual gate (release-v5-spec.md §3):** across 3 real songs of different styles, judge honestly — do the suggestions read as genuinely useful, specific-to-this-song phrasing ideas, or generic "try the pentatonic scale" filler? This is a human judgment call, same spirit as Rate My Take's own §6 gate — nothing here can make it for you.
+- [ ] A song with no chord/key/tempo analysis yet shows a clear error ("run analysis first"), not a crash or an empty request to the API.
+- [ ] No other screen or feature makes a network call — this should be the only place a request ever leaves the machine, and only when this button is actually clicked (not proactively, not on AI Lab open).
+
 ## 7. Play Along — top strip
 
 - [ ] Backing Track transport (Play/Stop/Loop/Count-in/BPM/Speed/Tune/Volume) mirrors the mixer's own state in both directions.
