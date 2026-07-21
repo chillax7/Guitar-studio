@@ -26,7 +26,27 @@
 // mastering-grade time-stretch.
 
 const FFT_SIZE = 2048;
-const SYNTHESIS_HOP = 512; // 75% overlap
+// 8x overlap (was 512 = 4x, i.e. 75%). Real-user report: audible crackle on
+// a genuine electric-guitar recording ("Phantom of the Opera") even in
+// isolation (soloed, no other stems, no CPU contention) with only a small
+// +26-cent correction. Measured against a real quality reference (ffmpeg's
+// librubberband, a proper phase-locked pitch-shifter) on that exact
+// recording at that exact correction: this file's reconstruction had
+// noticeably higher high-frequency (6-16kHz) spectral flatness than
+// RubberBand's — i.e. objectively rougher/noisier reconstruction in
+// exactly the band phase-vocoder "phasiness"/graininess artifacts show up
+// in. Halving the hop (finer time resolution per phase-continuity
+// estimate, the standard first lever for this class of artifact) measured
+// closer to RubberBand's flatness (0.0135 vs 0.0154 at the old hop, vs
+// 0.0123 for RubberBand and 0.0165 for the unprocessed original — a real,
+// directional improvement, not a full fix). Cost: roughly doubles average
+// CPU time (twice as many hops/sec) but NOT the worst-case per-hop spike
+// that actually causes audible dropouts (benchmarked before and after on
+// the same real file: worst-case latency and over-budget-callback counts
+// were statistically the same) — the honest trade here is average
+// headroom across many simultaneous stems, not glitch risk from this
+// change specifically.
+const SYNTHESIS_HOP = 256;
 // Samples of output regenerated per synthesis pass. Deliberately equal to
 // SYNTHESIS_HOP (i.e. exactly one phase-vocoder hop per regeneration) —
 // with up to 6 simultaneous stems (htdemucs_6s), each running its own
@@ -136,15 +156,17 @@ function hannWindow(size) {
 // SYNTHESIS_HOP spacing. That's standard analysis+synthesis windowing for a
 // phase vocoder, but it means the reconstructed signal's amplitude is
 // scaled by whatever the WINDOW SQUARED sums to at that hop spacing, not by
-// 1 — and nothing here was ever dividing that back out. For a periodic Hann
-// at 4x overlap (2048/512, this file's numbers) that constant is exactly
-// 1.5: measured directly (a unit-amplitude 440Hz test tone through the real
-// worklet code came back peaking at 1.50, not 1.0) — every processed-mode
-// sample was ~50% too loud, which is more than enough headroom to clip
-// against downstream gain stages once several stems are summed at the
-// mixer, and clipping is exactly what "crackly, unlistenable" sounds like.
-// Computed from the actual window/hop (not hardcoded 1.5) so this stays
-// correct if either ever changes; COLA windows sum to the same constant at
+// 1 — and nothing here was ever dividing that back out. At the original 4x
+// overlap (2048/512) that constant was exactly 1.5: measured directly (a
+// unit-amplitude 440Hz test tone through the real worklet code came back
+// peaking at 1.50, not 1.0) — every processed-mode sample was ~50% too
+// loud, which is more than enough headroom to clip against downstream gain
+// stages once several stems are summed at the mixer, and clipping is
+// exactly what "crackly, unlistenable" sounds like. (At the current 8x
+// overlap, 2048/256, the constant is 3.0 instead — twice as many
+// overlapping copies, same idea.) Computed from the actual window/hop (not
+// hardcoded) so this stays correct if either ever changes; COLA windows
+// sum to the same constant at
 // every sample offset, so any one offset's sum is the answer, but summing
 // every offset and taking the max is a cheap safety margin against a window
 // that doesn't satisfy COLA as exactly as periodic Hann does.
@@ -172,8 +194,8 @@ class PVChannel {
     this.re = new Float32Array(FFT_SIZE);
     this.im = new Float32Array(FFT_SIZE);
     // V3-E5: preallocated once instead of `new Float32Array` on every
-    // synthesize() call (~93.75 hops/sec per channel at 48kHz/512-sample
-    // hops — 2 of these per hop per channel, ~3,400 allocations/sec of GC
+    // synthesize() call (~187.5 hops/sec per channel at 48kHz/256-sample
+    // hops — 2 of these per hop per channel, ~6,800 allocations/sec of GC
     // pressure across 6 simultaneous stems before this).
     this.outRe = new Float32Array(FFT_SIZE);
     this.outIm = new Float32Array(FFT_SIZE);
