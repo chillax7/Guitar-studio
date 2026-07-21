@@ -899,9 +899,12 @@ log, and your exported mixes.
 ### 5.0 Backing Track (top strip)
 
 The full transport from the main mixer — Play/Stop, Loop, Count-in, BPM,
-Speed, Tune, Volume — is mirrored here too, so you never need to leave Play
-Along to control the backing track while you're actually playing. It's the
-exact same state as the main transport; adjusting either one updates both.
+Speed, Tune, Volume, and a scrub timeline — is mirrored here too, so you
+never need to leave Play Along to control the backing track (or find a
+particular spot in the song) while you're actually playing. It's the exact
+same state as the main transport; adjusting either one updates both, and
+the same mirrored timeline shows up on AI Lab's Rate My Take screen (§6.2)
+too.
 
 ### 5.1 Tuner (top strip)
 
@@ -1163,9 +1166,19 @@ your guitar rig's output (post-amp/pedals), never the backing track. Only
 "dry" recordings show up in this screen's takes list; your regular
 performance takes still live in Play Along's own Takes tab, untouched.
 
+**A small Backing Track card** sits above the takes list — the same
+Play/Stop/Loop/Count-in controls as Play Along's own (and kept in sync
+with them and the Mixer, since it's all one shared transport), plus a
+scrub timeline. Play or scrub to the spot the solo actually starts, then
+**↓ Use current position as Offset** drops it straight into the Offset
+field below — no more nudging the Offset number by trial and error, or
+switching back to the Mixer to find the spot first.
+
 **To score a take:**
 1. Record a dry take (or pick one already recorded for this song).
-2. Enter roughly where in the song the take starts, in seconds (**Offset**).
+2. Find where the take starts using the Backing Track card above, then
+   **↓ Use current position as Offset** — or just type the seconds in
+   directly if you already know them.
 3. Leave **Offset search** at its default (a few seconds) so it auto-fine-tunes
    your rough guess to the actual best-aligned start — cross-correlating
    both timing and pitch content, accurate to a few milliseconds in
@@ -1174,6 +1187,17 @@ performance takes still live in Play Along's own Takes tab, untouched.
    beats actually scored, and a heatmap scoped to just the take's own
    span (not the whole song) — green means close agreement, red means
    drift, gray means no confident read for that beat.
+
+**What the score is actually measuring:** a blend of pitch (60%) and
+timing (40%) agreement per beat, averaged across the take. Pitch compares
+the take's and the reference's note content directly, and tolerates
+ordinary vibrato — a slight sweep around the target note costs little,
+since nobody's vibrato is going to match the original recording's
+exactly. Timing compares how closely your note attacks land relative to
+the reference's, within a ±150ms window, with a gentle falloff rather
+than a harsh one — small, normal timing variation stays close to full
+credit; only a genuinely late or early attack drops off sharply near the
+edge of that window.
 
 Same honesty framing as everywhere else: this is a heuristic, not a
 verdict — judge it against what your own ears say happened, especially on

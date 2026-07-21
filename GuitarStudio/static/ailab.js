@@ -546,6 +546,12 @@ function wireAiLab() {
   document.getElementById("ailab-rmt-record-btn").addEventListener("click", aiLabStartDryRecording);
   document.getElementById("ailab-rmt-stop-btn").addEventListener("click", aiLabStopDryRecording);
   document.getElementById("ailab-rmt-score-btn").addEventListener("click", aiLabScoreTake);
+  // The whole point of this screen's Backing Track card: find the actual
+  // spot the take starts (scrub the timeline, or just play up to it) and
+  // drop it straight into Offset, instead of typing seconds by eye/ear.
+  document.getElementById("ailab-rmt-use-position-btn").addEventListener("click", () => {
+    document.getElementById("ailab-rmt-offset").value = currentPosition().toFixed(2);
+  });
 }
 
 wireAiLab();

@@ -293,6 +293,7 @@
               <button id="pa-bt-stop-btn" data-transport="stop-btn">■</button>
               <span id="pa-bt-time-display" data-transport="time-display">0:00 / 0:00</span>
             </div>
+            <input type="range" id="pa-bt-timeline" data-transport="timeline" class="transport-timeline" min="0" max="0" step="0.01" value="0">
             <div class="row">
               <button id="pa-bt-loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
               <button id="pa-bt-count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
@@ -882,6 +883,30 @@
              no backing track) — hence its own dedicated record button
              rather than reusing the Play Along Takes list. -->
         <div id="ailab-ratemytake-panel" class="ailab-column" style="display:none;">
+
+          <!-- Same mirrored-transport idiom as Play Along's own Backing
+               Track card (app.js's transportEls/onTransportInput) — every
+               data-transport="..." element anywhere in the DOM stays in
+               sync automatically, so this is a real 4th copy of the same
+               controls (Mixer, Play Along, and now here), not a separate
+               mini-player with its own state to keep in sync by hand. Kept
+               small on purpose: just enough to find and confirm the right
+               spot without a trip back to the Mixer, not the full Speed/
+               Tune/Volume rig Play Along's copy also has. -->
+          <section class="pa-card pa-top-card" style="max-width:300px;">
+            <h3>Backing Track</h3>
+            <div class="row">
+              <button data-transport="play-btn" class="primary">▶</button>
+              <button data-transport="stop-btn">■</button>
+              <span data-transport="time-display">0:00 / 0:00</span>
+            </div>
+            <input type="range" data-transport="timeline" class="transport-timeline" min="0" max="0" step="0.01" value="0">
+            <div class="row">
+              <button data-transport="loop-toggle-btn">Loop</button>
+              <button data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
+            </div>
+            <button id="ailab-rmt-use-position-btn" style="margin-top:8px; width:100%;">↓ Use current position as Offset</button>
+          </section>
 
           <section class="pa-card">
             <h3>Dry takes for this song</h3>

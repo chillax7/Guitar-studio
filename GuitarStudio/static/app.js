@@ -1530,6 +1530,7 @@ function updateStaleBanner() {
 // ---------------------------------------------------------------------------
 
 function renderLanes() {
+  updateTimelineSliderRange(); // Audio.duration is settled by the time renderLanes() runs
   const container = document.getElementById("lanes");
   container.innerHTML = "";
   const playheads = [];
@@ -2085,6 +2086,25 @@ function renderTimeDisplay(pos) {
   setTransportText("time-display", text);
 }
 
+// A "timeline" transport control (Mixer's Backing Track card, Play Along's
+// mirrored copy, and AI Lab's Rate My Take card) — a plain scrub slider,
+// not the full waveform/lane ruler, so a solo/section can be found and
+// seeked to without leaving whichever screen you're on. Skipped for any
+// copy currently mid-drag (timelineDragEls) so the playback-driven update
+// here doesn't fight the user's own in-progress scrub.
+const timelineDragEls = new Set();
+function renderTimelineSlider(pos) {
+  for (const el of transportEls("timeline")) {
+    if (timelineDragEls.has(el)) continue;
+    el.value = pos;
+  }
+}
+// Called whenever Audio.duration changes (a track loads, stems finish
+// loading) — the slider's own max has to track it, not just its value.
+function updateTimelineSliderRange() {
+  for (const el of transportEls("timeline")) el.max = Audio.duration || 0;
+}
+
 function tick() {
   if (Audio.ctx) {
     // V3-E5: was called 4x/frame (once here, once more inside each of the
@@ -2104,6 +2124,7 @@ function tick() {
     applyLiveMuteRanges(pos);
     renderPlayhead(pos);
     renderTimeDisplay(pos);
+    renderTimelineSlider(pos);
     updateClickStem(pos); // BT-02
     if (Audio.playing) autoScrollToPlayhead(pos);
   }
@@ -2243,6 +2264,21 @@ function wireTransport() {
     stopPlayback(); // resets the play-btn icon itself
     renderPlayhead(0);
     renderTimeDisplay(0);
+  });
+  // timelineDragEls: renderTimelineSlider() (the tick() loop) skips any
+  // element in this set, so scrubbing doesn't fight the playback-driven
+  // value update every frame. mouseup/touchend are on the window, not the
+  // slider itself — a drag that ends outside the element (a fast flick
+  // past its edges) would otherwise never clear the flag.
+  for (const el of transportEls("timeline")) {
+    el.addEventListener("mousedown", () => timelineDragEls.add(el));
+    el.addEventListener("touchstart", () => timelineDragEls.add(el));
+  }
+  window.addEventListener("mouseup", () => timelineDragEls.clear());
+  window.addEventListener("touchend", () => timelineDragEls.clear());
+  onTransportInput("timeline", (value) => {
+    if (!Audio.ctx) return;
+    seekTo(parseFloat(value));
   });
   onTransportClick("loop-toggle-btn", () => {
     State.ui.loopEnabled = !State.ui.loopEnabled;

@@ -1465,3 +1465,9 @@ svg.ailab-fretboard { display: block; }
   color: var(--text-dim); background: var(--panel-2); border: 1px solid var(--border);
 }
 .ailab-rmt-rename-btn:hover { color: var(--text); background: var(--border); }
+
+/* Mirrored "timeline" transport control (Mixer's Backing Track card, Play
+   Along's copy, and AI Lab's Rate My Take card) — a plain scrub slider,
+   not the full waveform/lane ruler. .pa-card input[type=range] already
+   covers width:100%; this just adds a little breathing room around it. */
+.transport-timeline { margin: 6px 0; }

@@ -356,6 +356,35 @@ Close aligned right) rather than a fifth nav button — same screen, same
 "same mental context" reasoning §0 gives for AI Lab existing as one
 screen at all.
 
+**Update, scoring felt too harsh once dry recordings made it possible to
+actually tell takes apart:** with contamination fixed, real dry takes
+finally discriminated — but the score itself still felt punishing on
+ordinary, non-sloppy playing. Two causes, both in `score_take`'s per-beat
+math rather than the calibration constants: the ±80ms timing window fell
+off linearly (a lag at half the window already cost half the score —
+punishing normal human timing feel, not just genuine sloppiness), and
+pitch agreement was computed from raw chroma with no tolerance for
+vibrato (two independent vibrato sweeps on the intended note don't line
+up bin-for-bin, reading as a wrong note even when a listener hears the
+same one — nobody's vibrato is going to match the reference recording's
+exactly). Fixed: widened the window to 150ms with a squared (not linear)
+falloff — a 40ms lag went from costing half the score to costing under
+10%; and a small circular smoothing kernel blurs each chroma bin into its
+semitone neighbors before comparing pitch. The 60/40 pitch/timing
+weighting itself was deliberately left unchanged — both were reported as
+about right, it was the underlying leniency of each that needed adjusting.
+The RMT go/no-go call is still outstanding, now with a scoring pass more
+likely to match real playing.
+
+Also added, once it became clear finding "where the solo starts" without
+leaving the screen mattered in practice: a small Backing Track card on
+Rate My Take (Play/Stop/Loop/Count-in + a new scrub timeline), the same
+mirrored-transport idiom the Mixer/Play Along already share — and the
+same timeline slider was added to Play Along's own Backing Track card
+too, which never had one before this. A **Use current position as
+Offset** button turns "scrub to the spot, then read off the seconds and
+type them in" into one click.
+
 **V5-B2 = BT-15/V4-F6 · Artifact cleanup pass — M, timeboxed.**
 Post-separation cleanup on the guitar stem specifically. Picked *because*
 it's scheduled alongside Rate My Take completion this release — a

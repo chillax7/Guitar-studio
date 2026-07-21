@@ -116,10 +116,14 @@ instead — open it directly in a browser, no server required.
 - [ ] A song with no separated guitar stem yet shows a clear error when scoring, not a crash; a take with no dry recordings yet shows an honest empty state instead of a blank list.
 - [ ] **Rename a dry take:** the ✎ button next to a take in the list prompts for a new name and renames it in place — it must still show up in this list (and remain scoreable) after renaming, not disappear just because its new name no longer contains "dry NN".
 - [ ] The "Record a dry take" card explains, in its own words, why this is a separate button from Play Along's Record tab (backing track baked in there vs. not here) — not just what it captures.
+- [ ] **Backing Track card:** a small Play/Stop/timeline/Loop/Count-in card sits above the takes list, mirroring the Mixer and Play Along's own transport (same shared state, all three update together). **↓ Use current position as Offset** copies the current playhead position into the Offset field below — scrub or play to the solo's start, click it, and the Offset field updates without typing anything.
+- [ ] **Timing leniency:** small, ordinary timing variation (not sloppy playing, just normal human feel) should no longer tank the score the way it did before — a take that's consistently a few tens of milliseconds ahead/behind the reference should still score close to full timing credit, not get cut in half.
+- [ ] **Vibrato tolerance:** a note played with your own natural vibrato (not necessarily matching the reference recording's vibrato width/rate) should still score well on pitch — vibrato itself should not read as "wrong note."
 
 ## 7. Play Along — top strip
 
 - [ ] Backing Track transport (Play/Stop/Loop/Count-in/BPM/Speed/Tune/Volume) mirrors the mixer's own state in both directions.
+- [ ] **Timeline scrub bar:** dragging it seeks the song and stays in sync with playback (fills in as the song plays); its range (max) correctly reflects the loaded song's real duration, not a stale value from whatever was loaded previously; dragging it doesn't fight or stutter against the position updates that happen every frame during playback.
 - [ ] Tuner: toggling on mutes both the backing track and your live guitar tone (both restore to their actual prior levels, not just unity, on toggling off); note/cents/needle read correctly against a tuned reference.
 - [ ] Double-clicking the Speed/Tune value readout (mixer and Play Along) resets that slider to 1.00×/0¢; double-clicking a stem's volume percentage in the mixer resets it to 100%.
 - [ ] **Rig Preset quick-picker:** shows the same list and current selection as Tone Lab's Rig Presets dropdown at all times; picking a name here applies it immediately (no separate Load click) and updates Tone Lab's dropdown to match.

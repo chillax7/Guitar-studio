@@ -748,10 +748,20 @@ def ensure_analysis(out_dir: Path) -> dict:
 # compares fairly), timing via onset-envelope cross-correlation in a small
 # window, confidence via reference-stem RMS (a beat where the reference
 # guitar is nearly silent shouldn't be scored as if it were authoritative).
-RATE_ONSET_LAG_WINDOW_MS = 80  # per spec §3's "±80 ms" cross-correlation window
+RATE_ONSET_LAG_WINDOW_MS = 150  # widened from spec §3's original 80ms — see timing_score's comment below
 RATE_PITCH_WEIGHT = 0.6
 RATE_TIMING_WEIGHT = 0.4
 RATE_CONFIDENCE_FLOOR = 0.02  # reference RMS below this = no real signal to score against, excluded from the aggregate
+# Vibrato spreads a note's pitch content across its own neighboring semitone
+# bins in the chroma vector — two independent vibrato sweeps on "the same"
+# note (a real player's phrasing is never identical to the reference
+# recording's, even playing it well) don't line up bin-for-bin, which read
+# as pitch disagreement even though a listener would hear the same note.
+# A small circular smoothing kernel blurs each chroma bin's energy slightly
+# into its immediate neighbors before comparing, so being a bit sharp/flat
+# around a target note (any vibrato, not just matching Gary Moore's own
+# exact width/rate) costs less than getting the wrong note outright.
+CHROMA_VIBRATO_SMOOTH_KERNEL = (0.15, 0.70, 0.15)  # (prev semitone, self, next semitone)
 
 # UNCALIBRATED. rate-my-take-spec.md §3 is explicit that finding a mapping
 # where "~60% reads rough and ~90% reads tight" is the spike's own job,
@@ -763,6 +773,15 @@ RATE_CONFIDENCE_FLOOR = 0.02  # reference RMS below this = no real signal to sco
 RATE_CALIBRATION_FLOOR = 0.3   # raw blended score presumed to map to ~0%
 RATE_CALIBRATION_CEILING = 0.9  # raw blended score presumed to map to ~100%
 RATE_OFFSET_SEARCH_MIN_QUALITY = 0.15  # below this, refine_offset's match is noise, not a real alignment
+
+
+def _smooth_chroma_for_vibrato(vec: "np.ndarray") -> "np.ndarray":
+    """Circularly blurs a 12-bin chroma vector across its own semitone
+    neighbors — see CHROMA_VIBRATO_SMOOTH_KERNEL's comment for why. Circular
+    (np.roll, not a plain shift) because chroma bins wrap: the semitone
+    'below' bin 0 (C) is bin 11 (B), not nothing."""
+    prev_w, self_w, next_w = CHROMA_VIBRATO_SMOOTH_KERNEL
+    return self_w * vec + prev_w * np.roll(vec, 1) + next_w * np.roll(vec, -1)
 
 
 def score_take(take_path: Path, reference_path: Path, beats: list, offset_sec: float = 0.0) -> dict:
@@ -804,8 +823,8 @@ def score_take(take_path: Path, reference_path: Path, beats: list, offset_sec: f
             beat_scores.append({"time": round(float(start), 3), "score": None, "confidence": 0.0})
             continue
 
-        take_c = take_chroma[:, take_mask].mean(axis=1)
-        ref_c = ref_chroma[:, ref_mask].mean(axis=1)
+        take_c = _smooth_chroma_for_vibrato(take_chroma[:, take_mask].mean(axis=1))
+        ref_c = _smooth_chroma_for_vibrato(ref_chroma[:, ref_mask].mean(axis=1))
         take_norm, ref_norm = np.linalg.norm(take_c), np.linalg.norm(ref_c)
         pitch_score = (float(np.dot(take_c, ref_c)) / (take_norm * ref_norm)) if take_norm > 0 and ref_norm > 0 else 0.0
         pitch_score = max(0.0, min(1.0, pitch_score))
@@ -832,7 +851,17 @@ def score_take(take_path: Path, reference_path: Path, beats: list, offset_sec: f
                 corr = np.correlate(take_seg - take_seg.mean(), ref_seg - ref_seg.mean(), mode="full")
                 best_lag_idx = int(np.argmax(corr)) - (len(ref_seg) - 1)
                 best_lag_ms = abs(best_lag_idx * common_hop_sec * 1000)
-                timing_score = max(0.0, 1.0 - best_lag_ms / RATE_ONSET_LAG_WINDOW_MS)
+                # Squared falloff, not linear: felt too harsh in practice —
+                # a linear penalty means a lag at, say, half the window
+                # already costs half the score, which punishes ordinary
+                # human timing variation (not just genuine sloppiness) more
+                # than it should. Squaring keeps small, real-world lags
+                # (a few tens of ms either side of the reference) close to
+                # full credit while still reaching 0 at the same window
+                # edge as before — the window widened too (150ms, was
+                # 80ms), but the curve shape is most of what "harsh" was.
+                lag_fraction = min(1.0, best_lag_ms / RATE_ONSET_LAG_WINDOW_MS)
+                timing_score = max(0.0, 1.0 - lag_fraction ** 2)
 
         ref_start_sample, ref_end_sample = int(start * sr), min(int(end * sr), len(ref_y))
         ref_segment = ref_y[ref_start_sample:ref_end_sample]
