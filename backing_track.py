@@ -1129,18 +1129,26 @@ RATE_PITCH_CENTS_WINDOW = 100  # cents (~1 semitone); beyond this a note reads a
 # than every reasonably-good take maxing out at 100%). Needs more real
 # Good/Bad/Variation triples to tighten further — see cmd_rate's printed
 # reminder of exactly that.
-RATE_CALIBRATION_FLOOR = 0.55   # raw blended score presumed to map to ~0%
-RATE_CALIBRATION_CEILING = 0.80  # raw blended score presumed to map to ~100%
-# NOT re-fit against RATE_CHROMA_SHARPEN_POWER's fallback-pitch fix above —
-# that fix changes the raw-score distribution for any take whose beats lean
-# on the chroma fallback (bad/rhythm-heavy takes lean on it most, since
-# sloppy playing is exactly what breaks a clean monophonic pyin read), so
-# floor/ceiling almost certainly need to move again. Left as-is rather than
-# re-derived from this session's own re-alignment of the three real takes
-# that motivated the fix (that reproduction used a guessed, not the app's
-# actual, offset per take — not trustworthy enough to calibrate against).
-# Re-run the same real takes through the app itself (correct per-take
-# offset) once this fix is live, then tighten these two numbers from that.
+# Second real-data calibration pass, after RATE_CHROMA_SHARPEN_POWER's
+# fallback-pitch fix above changed the raw-score distribution (as expected —
+# see that fix's comment). Same three real dry takes, this time scored by
+# the app itself (correct per-take offset, unlike this session's own earlier
+# guessed-offset reproduction): good take raw 0.59 (16% under the old 0.55/
+# 0.80 mapping), best take raw 0.763 (85.2%), bad take unknown exact raw
+# (clamped to 0% — was at or below the old 0.55 floor). User's own ears:
+# bad "could score a few percent higher" (not literal 0%), good "should be
+# over 50% at least", best "OK, could be up to 90%". Floor/ceiling solved
+# from the two known-exact raw values against those two targets (good ->
+# ~55%, best -> ~88%, leaving headroom on both sides rather than snapping
+# exactly to 50/90): span = (0.763-0.59)/(0.88-0.55) = 0.524, floor =
+# 0.59-0.55*0.524 = 0.302. Rounded to 0.30/0.83. Bad take's exact raw score
+# still isn't known (only bounded above by the *old* floor, which no longer
+# applies post-sharpening) — `overall_raw` is now also shown in the AI Lab
+# UI (see ailab.js) specifically so this doesn't require guessing next
+# time; still needs one more real check that the bad take's new pct lands
+# in the few-percent range its raw score is expected to produce.
+RATE_CALIBRATION_FLOOR = 0.30   # raw blended score presumed to map to ~0%
+RATE_CALIBRATION_CEILING = 0.83  # raw blended score presumed to map to ~100%
 RATE_OFFSET_SEARCH_MIN_QUALITY = 0.15  # below this, refine_offset's match is noise, not a real alignment
 
 

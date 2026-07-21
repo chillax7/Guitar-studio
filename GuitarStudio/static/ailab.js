@@ -607,7 +607,8 @@ async function aiLabScoreTake() {
     // blend specifically, instead of guessing.
     const breakdownEl = document.getElementById("ailab-rmt-breakdown");
     breakdownEl.textContent = (r.overall_pitch !== null && r.overall_timing !== null)
-      ? `Pitch agreement: ${(r.overall_pitch * 100).toFixed(0)}%  ·  Timing agreement: ${(r.overall_timing * 100).toFixed(0)}%`
+      ? `Pitch agreement: ${(r.overall_pitch * 100).toFixed(0)}%  ·  Timing agreement: ${(r.overall_timing * 100).toFixed(0)}%` +
+        (r.overall_raw !== null ? `  ·  raw (uncalibrated): ${r.overall_raw}` : "")
       : "";
     document.getElementById("ailab-rmt-heatmap-img").src =
       `/api/output?path=${encodeURIComponent(r.heatmap_path)}&t=${Date.now()}`;

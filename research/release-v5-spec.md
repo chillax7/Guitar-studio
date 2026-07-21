@@ -548,7 +548,29 @@ re-tightening, but not against this session's own re-scoring of the three
 takes (done with a guessed, not the app's actual, offset per take — not
 trustworthy enough to calibrate against). Needs the same three real takes
 re-run through the app itself (correct per-take offset) before floor/
-ceiling get touched again. The go/no-go call itself is still outstanding.
+ceiling get touched again.
+
+**Update, second real calibration pass, this time from the app itself:**
+the same three takes, re-run post-sharpening-fix with the app's own correct
+offset, came back bad 0% / good 16% / best 85.2%. User's own ears: bad
+"could score a few percent higher" (not literal 0%), good "should be over
+50% at least", best "OK, could be up to 90%" — the mapping was still off,
+just in a different direction than before (previously too generous,
+sharpening pushed it slightly too harsh on the low-mid end). The good and
+best takes' raw scores are recoverable exactly from their non-clamped
+percentages against the old 0.55/0.80 mapping (0.59 and 0.763); the bad
+take's isn't (it was clamped at 0%, only bounded above by the *old* floor,
+which no longer means anything post-sharpening). Floor/ceiling re-solved
+from the two known-exact raw values against targets of ~55%/~88% (deliberate
+headroom past the user's literal "over 50%"/"up to 90%" phrasing, same
+bracketing-not-exact-fit approach as every calibration pass here) ->
+floor 0.30, ceiling 0.83. Also added `overall_raw` to the AI Lab UI itself
+(next to the Pitch/Timing breakdown) specifically so the next calibration
+pass doesn't need a guessed reproduction or a dev-tools round trip to get
+raw numbers — it's just on screen already. Still outstanding: confirming
+the bad take's new percentage (its exact raw score was never known) lands
+in the intended few-percent range rather than 0% or something too high.
+The go/no-go call itself remains outstanding.
 
 **V5-B2 = BT-15/V4-F6 · Artifact cleanup pass — M, timeboxed.**
 Post-separation cleanup on the guitar stem specifically. Picked *because*
