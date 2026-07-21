@@ -234,6 +234,25 @@ different gate. Shipped as AI Lab's third tab, **Lick Ideas**:
   instincts, across 3 real songs) is a human judgment call the UI can't
   make for itself, same as Rate My Take's own §6 gate. Outstanding.
 
+**Update — first real API call, one real bug found and fixed.** Ran it
+against a real song (guitar+bass stems + real chord detection from this
+same session's chord-detection-v2 work, "Too Much, Too Young, Too Fast" —
+A major, 115 BPM, A7-B7-A5-E7-A5-G5-...). Content was genuinely
+progression-specific, not generic filler (a half-step-bend idea on the
+A7→B7 change, a call-and-response shape over the A5/G5 repetition, a
+minor-pentatonic pivot at the F#m) — encouraging for the gate. But it
+confidently cited specific bar/measure numbers ("bar 7", "bars 9-14")
+that were **fabricated** — the prompt only ever sent a flat chord
+sequence with no bar/timing information at all, and the model silently
+assumed one chord entry = one bar (not necessarily true) and stated that
+guess as fact. Fixed by explicitly telling the prompt there's no
+bar/measure data and to reference moments by chord name/context instead
+("over the A7 to B7 change") — re-verified against the same song/prompt:
+suggestions stayed specific and useful, no more invented bar numbers.
+Still only one real song tested this way (via direct API calls to sanity
+-check the plumbing, not through the actual UI) — the real 3-song gate
+still needs the user trying it in AI Lab against songs they know well.
+
 ## 4. "Explain this" chat panel (V5-F3 · S/M, ships only if §3's gate passes)
 
 A small conversational panel grounded in the current song's key/chords/

@@ -1575,7 +1575,12 @@ def svc_lick_suggest(source_path: str, model: str, genre: str) -> dict:
         "Give 2-4 concrete, specific phrasing ideas for a guitar solo over this progression — target notes to "
         "land on over specific chords, call-and-response shapes, or a technique to try at a particular point. "
         "Avoid generic advice (e.g. \"use the pentatonic scale\") unless it's tied to a specific moment in THIS "
-        "progression. Keep it concise — a short list, no more than ~150 words total."
+        "progression. Keep it concise — a short list, no more than ~150 words total.\n\n"
+        "Important: the chord list above is a plain sequence with NO bar/measure numbers or timing information — "
+        "each entry is just the next chord change, not necessarily one bar. Do NOT invent specific bar or measure "
+        "numbers (e.g. \"bar 7\", \"bars 9-14\") — you have no real information about where those fall. Instead, "
+        "refer to moments by chord name and context (e.g. \"over the A7 to B7 change\", \"each time E5 comes back "
+        "around\", \"when it shifts to F#m\")."
     )
 
     body = json.dumps({
