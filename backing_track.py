@@ -1533,8 +1533,13 @@ def cmd_rate(args: argparse.Namespace) -> None:
         # take's start (so the first window still starts in the right
         # place) through the first beat at-or-after its end (so the last
         # window has a real closing edge, not a hard cut mid-window).
-        take_info = sf.info(str(take_path))
-        take_duration = take_info.frames / take_info.samplerate
+        # librosa.get_duration(path=...), not raw soundfile — a take can be
+        # a video file (the Play Along video-take feature saves .mp4), which
+        # libsndfile can't open at all; get_duration falls back to audioread
+        # the same way librosa.load already does elsewhere in this command,
+        # instead of crashing on a format soundfile alone can't read.
+        import librosa
+        take_duration = librosa.get_duration(path=str(take_path))
         end_time = offset + take_duration
         idx_start = 0
         for i, b in enumerate(beats):
