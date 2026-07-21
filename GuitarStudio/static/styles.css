@@ -456,10 +456,12 @@ button:disabled:hover { filter: none; }
 #transport.show { display: flex; }
 #time-display { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--text-dim); min-width: 90px; }
 #transport input[type=range] { width: 90px; }
-#loop-toggle-btn.active,
-#pa-bt-loop-toggle-btn.active,
-#count-in-toggle.active,
-#pa-bt-count-in-toggle.active,
+/* Keyed off the shared data-transport attribute, not per-copy IDs — every
+   mirrored copy (Mixer, Play Along, AI Lab's Rate My Take, and any future
+   one) gets the green-when-active look automatically, without needing its
+   own entry added here by hand. */
+[data-transport="loop-toggle-btn"].active,
+[data-transport="count-in-toggle"].active,
 #click-toggle.active { background: var(--success); border-color: var(--success); color: #fff; }
 #pa-tuner-toggle.active { background: var(--success); border-color: var(--success); color: #fff; }
 /* "Zoom out" only ever shows in place of "Zoom to loop" while a zoomed-to-
