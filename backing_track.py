@@ -762,6 +762,7 @@ RATE_CONFIDENCE_FLOOR = 0.02  # reference RMS below this = no real signal to sco
 # reminder of exactly that).
 RATE_CALIBRATION_FLOOR = 0.3   # raw blended score presumed to map to ~0%
 RATE_CALIBRATION_CEILING = 0.9  # raw blended score presumed to map to ~100%
+RATE_OFFSET_SEARCH_MIN_QUALITY = 0.15  # below this, refine_offset's match is noise, not a real alignment
 
 
 def score_take(take_path: Path, reference_path: Path, beats: list, offset_sec: float = 0.0) -> dict:
@@ -1344,6 +1345,131 @@ def _render_rate_heatmap(beat_scores: list, out_path: Path, take_name: str, song
     plt.close(fig)
 
 
+RATE_OFFSET_SEARCH_CANDIDATES = 5  # top onset-correlation peaks to disambiguate with chroma
+RATE_OFFSET_SEARCH_MIN_PEAK_GAP_SEC = 0.35  # candidate peaks closer than this are treated as one
+
+
+def refine_offset(take_path: Path, reference_path: Path, rough_offset: float,
+                   search_radius: float = 3.0) -> dict:
+    """Cross-correlates onset-strength envelopes to snap a rough, by-ear
+    --offset guess (scrubbing a transport, or trial-and-error re-running
+    'rate' at a few candidate values and eyeballing the heatmap — exactly
+    the manual process this replaces) to the actual best-aligned value,
+    within +/-search_radius seconds of the guess. Same idea as score_take's
+    per-beat onset-envelope cross-correlation (used there for the timing
+    sub-score), just over a much wider window: that one asks 'how tight is
+    this one beat,' this one asks 'where does the take actually start.'
+
+    Onset timing alone is genuinely ambiguous on rhythmically repetitive
+    material — a steady rock rhythm or a riff that repeats every bar can
+    correlate just as strongly a full cycle early/late as at the true
+    offset, since the onset envelope alone can't tell two similarly-timed
+    bars apart. Caught by a synthetic test with a semi-regular ~0.6s pulse
+    train: onset-only correlation locked onto a peak 7 cycles (~4.3s) off,
+    with a deceptively high correlation score. Fixed by taking the top
+    RATE_OFFSET_SEARCH_CANDIDATES onset-correlation peaks and re-ranking
+    them by chroma similarity (actual pitch content, which two different
+    bars of a riff usually don't share identically even when their rhythm
+    does) — the same pitch-vs-timing blend score_take itself uses per
+    beat, just applied once here to pick the right global alignment first.
+
+    Returns the refined offset plus a normalized quality score (0-1,
+    blending onset-correlation and chroma-similarity) so a bad rough guess
+    or unrelated audio reads as low-confidence instead of a silently wrong
+    answer — cmd_rate uses this to warn rather than trust a poor match."""
+    import librosa
+
+    take_y, sr = librosa.load(str(take_path), sr=None, mono=True)
+    take_duration = len(take_y) / sr
+
+    window_start = max(0.0, rough_offset - search_radius)
+    window_duration = take_duration + 2 * search_radius
+    ref_y, _ = librosa.load(str(reference_path), sr=sr, mono=True,
+                             offset=window_start, duration=window_duration)
+
+    take_onset = librosa.onset.onset_strength(y=take_y, sr=sr)
+    ref_onset = librosa.onset.onset_strength(y=ref_y, sr=sr)
+    hop_sec = librosa.frames_to_time(1, sr=sr)
+
+    # Both onto one fine shared time grid — same reasoning as score_take's
+    # per-beat lag search: two independent librosa.load calls' frame grids
+    # don't line up sample-for-sample, which cross-correlating them
+    # directly would misread as a spurious lag.
+    fine_hop = hop_sec / 2
+    take_t = librosa.frames_to_time(np.arange(len(take_onset)), sr=sr)
+    ref_t = librosa.frames_to_time(np.arange(len(ref_onset)), sr=sr)
+    fine_take_t = np.arange(0, take_duration, fine_hop)
+    fine_ref_t = np.arange(0, window_duration, fine_hop)
+    take_fine = np.interp(fine_take_t, take_t, take_onset, left=0.0, right=0.0)
+    ref_fine = np.interp(fine_ref_t, ref_t, ref_onset, left=0.0, right=0.0)
+
+    clipped = len(ref_fine) < len(take_fine)  # reference window ran off the start/end of the song
+    if clipped or not np.any(take_fine) or not np.any(ref_fine):
+        return {"offset": rough_offset, "quality": 0.0, "clipped": clipped}
+
+    take_centered = take_fine - take_fine.mean()
+    ref_centered = ref_fine - ref_fine.mean()
+    corr = np.correlate(ref_centered, take_centered, mode="valid")
+    denom = np.linalg.norm(ref_centered) * np.linalg.norm(take_centered)
+    corr_norm = corr / denom if denom > 0 else np.zeros_like(corr)
+
+    # Top candidate peaks, at least RATE_OFFSET_SEARCH_MIN_PEAK_GAP_SEC
+    # apart (greedy: take the best remaining peak, zero out its neighbors,
+    # repeat) — a periodic signal's true peaks all show up within one or
+    # two correlation-array samples of each other otherwise, which would
+    # just re-pick the same cycle RATE_OFFSET_SEARCH_CANDIDATES times.
+    gap_samples = max(1, int(RATE_OFFSET_SEARCH_MIN_PEAK_GAP_SEC / fine_hop))
+    work = corr_norm.copy()
+    candidates = []
+    for _ in range(RATE_OFFSET_SEARCH_CANDIDATES):
+        idx = int(np.argmax(work))
+        if not np.isfinite(work[idx]) or work[idx] <= -np.inf:
+            break
+        candidates.append(idx)
+        lo, hi = max(0, idx - gap_samples), min(len(work), idx + gap_samples + 1)
+        work[lo:hi] = -np.inf
+
+    # Frame-by-frame chroma similarity, not a single averaged vector over
+    # the whole take: averaging first throws away note ORDER, which is
+    # exactly what's needed to tell "this riff, this way round" apart from
+    # a shifted/rotated repeat of the same pitch classes — caught by a
+    # synthetic test where a cyclic melody's mean chroma vector looked
+    # almost identical a few note-periods off, even though the actual note
+    # sequence at that offset was wrong.
+    take_chroma = librosa.feature.chroma_cqt(y=take_y, sr=sr)
+    take_chroma_norms = np.linalg.norm(take_chroma, axis=0)
+
+    best_idx, best_combined, best_onset, best_chroma_sim = candidates[0], -1.0, 0.0, 0.0
+    for idx in candidates:
+        candidate_offset = window_start + idx * fine_hop
+        start_sample = int(round((candidate_offset - window_start) * sr))
+        ref_slice = ref_y[start_sample:start_sample + len(take_y)]
+        if len(ref_slice) < len(take_y):
+            continue
+        ref_chroma = librosa.feature.chroma_cqt(y=ref_slice, sr=sr)
+        n_frames = min(take_chroma.shape[1], ref_chroma.shape[1])
+        ref_chroma_norms = np.linalg.norm(ref_chroma[:, :n_frames], axis=0)
+        dots = np.sum(take_chroma[:, :n_frames] * ref_chroma[:, :n_frames], axis=0)
+        denom_frames = take_chroma_norms[:n_frames] * ref_chroma_norms
+        frame_sims = np.divide(dots, denom_frames, out=np.zeros(n_frames), where=denom_frames > 0)
+        chroma_sim = max(0.0, min(1.0, float(np.mean(frame_sims)))) if n_frames else 0.0
+        onset_score = max(0.0, min(1.0, float(corr_norm[idx])))
+        # Chroma weighted higher — it's what actually disambiguates two
+        # similarly-timed repeats of a riff; onset correlation alone can't.
+        combined = 0.35 * onset_score + 0.65 * chroma_sim
+        if combined > best_combined:
+            best_idx, best_combined, best_onset, best_chroma_sim = idx, combined, onset_score, chroma_sim
+
+    refined_offset = window_start + best_idx * fine_hop
+    return {
+        "offset": round(refined_offset, 3),
+        "quality": round(max(0.0, min(1.0, best_combined)), 3),
+        "onset_quality": round(best_onset, 3),
+        "chroma_quality": round(best_chroma_sim, 3),
+        "clipped": False,
+    }
+
+
 def cmd_rate(args: argparse.Namespace) -> None:
     """Phase R1a (rate-my-take-spec.md §6): the go/no-go research spike.
     No UI — prints per-beat scores and renders a heatmap PNG. The only
@@ -1373,12 +1499,26 @@ def cmd_rate(args: argparse.Namespace) -> None:
     else:
         print("No beat grid available — falling back to fixed 0.5s scoring windows (rate-my-take-spec.md §3).")
 
-    result = score_take(take_path, reference_path, beats, offset_sec=args.offset)
+    offset = args.offset
+    if args.offset_search > 0:
+        refined = refine_offset(take_path, reference_path, args.offset, search_radius=args.offset_search)
+        if refined["clipped"]:
+            print(f"\n--offset-search {args.offset_search}s around {args.offset}s ran off the start/end of "
+                  f"{song_path.name} — using your --offset as given.")
+        elif refined["quality"] < RATE_OFFSET_SEARCH_MIN_QUALITY:
+            print(f"\n--offset-search found its best alignment at {refined['offset']}s, but the match quality "
+                  f"({refined['quality']}) is too low to trust — using your --offset as given. Try a wider "
+                  f"--offset-search, or your rough --offset guess may be further off than the search radius.")
+        else:
+            print(f"\n--offset-search refined {args.offset}s -> {refined['offset']}s (match quality {refined['quality']}).")
+            offset = refined["offset"]
+
+    result = score_take(take_path, reference_path, beats, offset_sec=offset)
     beat_scores = result["beats"]
     scored = [b for b in beat_scores if b["score"] is not None]
     if not scored:
         sys.exit(f"No beats could be scored — check --offset (does take.wav's start really line up "
-                  f"with song time {args.offset}s?) and that both files have real audio in them.")
+                  f"with song time {offset}s?) and that both files have real audio in them.")
 
     print(f"\nScored {len(scored)}/{len(beat_scores)} beats.")
     if result["overall_pct"] is not None:
@@ -1566,12 +1706,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_rate = sub.add_parser("rate", help="V4-R1a research spike: score a dry take against the song's guitar stem")
     p_rate.add_argument("take", help="Path to the dry take WAV to score")
     p_rate.add_argument("song", help="Path to the original song file (used to locate its guitar stem)")
-    p_rate.add_argument("--model", default="htdemucs_6s", help=model_help("htdemucs_6s"))
+    p_rate.add_argument("--model", default=DEFAULT_MODEL, help=model_help(DEFAULT_MODEL))
     p_rate.add_argument("--stem", default="guitar", help="Reference stem to score against (default: guitar)")
     p_rate.add_argument("--offset", type=float, default=0.0,
                          help="Song-time (seconds) that take.wav's sample 0 corresponds to — "
                               "get this wrong and every score is meaningless (default: 0.0, "
-                              "i.e. the take starts at the top of the song)")
+                              "i.e. the take starts at the top of the song). With --offset-search, "
+                              "this only needs to be a rough, by-ear guess.")
+    p_rate.add_argument("--offset-search", type=float, default=0.0,
+                         help="Seconds to search around --offset for the actual best-aligned start "
+                              "(onset-envelope cross-correlation), instead of trusting --offset exactly. "
+                              "0 (default) disables this and uses --offset as given; try 2-3 if your "
+                              "--offset is a rough guess (e.g. eyeballed from a transport or scrubbing "
+                              "video) rather than a known-exact value.")
     p_rate.add_argument("--out", default=None,
                          help="Heatmap PNG output path (default: <take>_rate_heatmap.png next to the take)")
     p_rate.set_defaults(func=cmd_rate)
