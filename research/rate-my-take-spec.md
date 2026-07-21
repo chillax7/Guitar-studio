@@ -29,6 +29,45 @@ scored and judged by ear against the heatmap. That's a human judgment
 call this document's own §6 assigns to the user, not something to
 simulate with synthetic audio.
 
+**Update — first real-audio §6 attempt, real bug found and fixed.** A
+real dry "Good" and "Bad" take of the Gary Moore "Empty Rooms" solo (plus
+the real reference guitar stem and the full song) came back scoring
+51.2% and 48.7% — statistically indistinguishable, when the user's own
+ear called it more like 80% vs. 5%. Root cause, found by instrumenting
+`score_take()` directly against the real files rather than guessing:
+`np.correlate(..., mode="full")` correlates over the WHOLE padded grid
+(beat interval + margin), giving a lag search range far wider than the
+intended `±RATE_ONSET_LAG_WINDOW_MS` — confirmed directly, raw signed
+lags on real beats ranged -843ms to +789ms despite a demonstrably correct
+offset. Sustained/legato lead playing (vibrato ripples, slides, bend
+pick-noise) gave the correlation plenty of closely-spaced micro-transients
+to lock onto a large, spurious lag instead of the true near-zero one, and
+the score formula only clamped the RESULT (any lag past 150ms scores 0)
+rather than constraining the SEARCH — so the "best" lag picked was
+frequently not the best lag *within the window the score claims to
+represent*. Fixed by restricting the correlation argmax to the intended
+±window before picking a winner, not after. Result on the same real
+files: 80.7% (Good) vs. 74.9% (Bad) — a real, verified gap where there
+was none before, and a self-take-vs-itself sanity check still returns a
+clean 100%/1.0/1.0 (no regression).
+
+Investigated the remaining gap (81 vs 75, not yet ~80 vs ~5) before
+declaring done: removing the vibrato-smoothing kernel entirely changed
+almost nothing (mean pitch 0.837→0.819 Good, 0.805→0.780 Bad) — ruled
+out as the cause. What both takes share instead: chroma-based pitch
+comparison is inherently coarse for a **monophonic solo** specifically —
+octave-blind, and averaged across a whole beat window, so one wrong note
+in a lead phrase moves a 12-bin chroma vector much less than a wrong
+*chord* would (chroma was designed with rhythm/chordal comparison in
+mind — see `score_take`'s docstring elsewhere referencing "typically
+strummed/chordal rhythm playing" for the timing side of this same
+tension). A real architectural fix here would mean monophonic
+pitch-tracking (e.g. `librosa.pyin` for an F0 contour, compared
+note-by-note) instead of chroma-cosine similarity for lead lines — a
+genuinely bigger redesign of the pitch metric, not a tuning knob, and not
+attempted yet pending a decision on scope (same kind of call as the
+phase-vocoder rewrite-vs-tune decision elsewhere this session).
+
 **One-line pitch:** play a solo or rhythm part along to a song, hit stop,
 and get an honest "how close was that to the record?" readout — an
 overall percentage, per-section scores, and a timeline heatmap showing

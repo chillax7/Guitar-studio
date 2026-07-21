@@ -1165,7 +1165,31 @@ def score_take(take_path: Path, reference_path: Path, beats: list, offset_sec: f
             ref_seg = np.interp(grid, ref_onset_t, ref_onset, left=0.0, right=0.0)
             if np.any(take_seg) and np.any(ref_seg):
                 corr = np.correlate(take_seg - take_seg.mean(), ref_seg - ref_seg.mean(), mode="full")
-                best_lag_idx = int(np.argmax(corr)) - (len(ref_seg) - 1)
+                # BUG (found on a real Gary Moore solo test): mode="full"
+                # correlates over the ENTIRE grid, so its lag range is as
+                # wide as the whole beat interval plus margin (often
+                # several hundred ms for a slow song), not the intended
+                # ±RATE_ONSET_LAG_WINDOW_MS. Sustained/legato lead playing
+                # has closely-spaced micro-transients (vibrato ripples,
+                # slides, pick noise on a bend) that can correlate more
+                # strongly at a large, spurious lag than the true
+                # near-zero one — confirmed on real takes: raw signed
+                # lags ranged -843ms to +789ms despite a correct offset,
+                # essentially uncorrelated with actual timing quality, so
+                # good and bad takes came back statistically
+                # indistinguishable (~51% vs ~49%) instead of the ~80%
+                # vs ~5% a guitarist would call it. Restricting the
+                # argmax search to the intended window BEFORE picking a
+                # winner (not just clamping the score after the fact)
+                # means "best lag" is actually the best lag within the
+                # window the score is supposed to represent, not whatever
+                # happened to win a much wider, unintended search.
+                center = len(ref_seg) - 1
+                lag_limit_samples = max(1, int(round(lag_window_sec / common_hop_sec)))
+                lo = max(0, center - lag_limit_samples)
+                hi = min(len(corr), center + lag_limit_samples + 1)
+                windowed_corr = corr[lo:hi]
+                best_lag_idx = int(np.argmax(windowed_corr)) + lo - center
                 best_lag_ms = abs(best_lag_idx * common_hop_sec * 1000)
                 # Squared falloff, not linear: felt too harsh in practice —
                 # a linear penalty means a lag at, say, half the window
