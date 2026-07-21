@@ -243,8 +243,8 @@ position at open) and never moves. Spec:
 | CD-0 | AI Lab live-follow (§6) — **shipped** | S | nothing — ship immediately |
 | CD-1 | Viterbi decode + min-duration merge (§5.4, §5.5) — **shipped** | M | nothing |
 | CD-2 | Power-chord template + third-absence gate (§5.1) — **shipped** | S | CD-1 (tune together) |
-| CD-3 | Chroma front end: HPSS, tuning, log compression (§5.2) | S | CD-1 |
-| CD-4 | Bass-anchored root bonus (§5.3) | S | CD-1 |
+| CD-3 | Chroma front end: HPSS, tuning, log compression (§5.2) — **shipped** | S | CD-1 |
+| CD-4 | Bass-anchored root bonus (§5.3) — **shipped** | S | CD-1 |
 | CD-5 | **Acceptance test on "Too Much, Too Young, Too Fast"** + 1–2 easier pop/rock tracks; tune `SELF_TRANSITION_P`, third-absence gate, bass bonus against what the lane shows vs a published chord chart | S | CD-1..4 |
 | CD-6 | Backlog: downbeat detection → snap chord changes to bar lines; madmom A/B behind a flag; mid-song key changes (already in release-v5-spec §9) | — | — |
 
@@ -285,6 +285,33 @@ because it's a broader match; and the same A5→D5→E5 progression from
 CD-1's test now decodes as three correctly-rooted `5` chips instead of
 `min`/`maj`/`maj`. Real-song tuning of the 0.2 threshold against actual
 guitar tone is still CD-5's job.
+
+**CD-3 and CD-4 shipped together** (both are chroma-quality changes
+upstream of CD-1/CD-2's decode, easiest to land and re-test as one
+pass). `_compute_chord_chroma` now runs `librosa.effects.harmonic`
+(margin 4) before `chroma_cqt`, passes an explicit
+`librosa.estimate_tuning` result into it, and log-compresses the result
+(`np.log1p(10 * chroma)`) — the standard NNLS-era preprocessing §5.2
+called for, shared by both the main mix and (CD-4) a separately-loaded
+bass stem via a new `_beat_windowed_chroma` helper so the two don't
+drift apart. `_apply_bass_root_bonus` nudges every chord template whose
+root matches the bass stem's dominant pitch class that beat
+(`CHORD_BASS_ROOT_BONUS` = 0.12) before the power-chord gate and Viterbi
+decode see the score matrix; missing or edge-case bass extraction (a
+near-silent stem, an imported pack without one) just skips the bonus
+rather than erroring, same contract as every other optional reading in
+`analyze_track`.
+
+Verified two ways: a unit test confirmed the bonus lands only on
+templates sharing the bass's dominant pitch class and is a genuine no-op
+on a silent bass window; an end-to-end test synthesized real audio (not
+just template-score vectors) — an A5→D5 power-chord riff with pick-attack
+transient noise at each beat plus a separate two-octaves-down bass
+sine — run through the full CD-1→CD-4 pipeline (`_compute_chord_chroma`,
+windowing, gating, bass bonus, Viterbi decode, run-merge) and got exactly
+two stable, correctly-rooted `5` chips out. `ANALYSIS_VERSION` bumped
+7→8. Real-song validation (does this actually get more roots right on a
+track a guitarist can check by ear) is still CD-5's job.
 
 Test protocol for CD-5 (goes into TEST-PLAN.md when CD-1 lands):
 1. Re-run analysis on the test song (version bump forces it).

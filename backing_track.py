@@ -112,8 +112,11 @@ ANALYSIS_FILE = "analysis.json"
 # v7: detect_chords adds a "5" (power chord) template, gated to only win
 # where a beat's third is genuinely absent — a bare root+fifth no longer
 # gets force-labeled maj or min by whichever way overtone noise leans that
-# beat (chord-detection-v2-spec.md CD-2).
-ANALYSIS_VERSION = 7
+# beat (chord-detection-v2-spec.md CD-2); v8: detect_chords' chroma now
+# gets harmonic/percussive separation, tuning estimation, and log
+# compression before template matching (CD-3), and gets a small bonus
+# toward whatever root the isolated bass stem agrees with each beat (CD-4).
+ANALYSIS_VERSION = 8
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -482,6 +485,27 @@ CHORD_SELF_TRANSITION_P = 0.88  # probability mass kept on staying put per beat;
 CHORD_EMISSION_TEMPERATURE = 12.0  # softmax sharpness turning raw cosine scores into a per-beat state distribution; higher trusts the raw scores more
 CHORD_MIN_RUN_BEATS = 2  # a decoded run shorter than this still reaches the UI as a 1-beat island unless merged into a neighbor (see _merge_short_chord_runs)
 
+# CD-3 (chord-detection-v2-spec.md §5.2): standard chroma preprocessing that
+# every published pipeline since NNLS Chroma (2010) uses and we didn't —
+# harmonic/percussive separation strips transient smear (a pick attack or
+# palm-muted chug has broadband noise energy that pollutes every chroma bin
+# for an instant, right when a chord read matters most), tuning estimation
+# stops a band that's slightly off A440 from smearing energy across two
+# adjacent bins instead of landing cleanly in one, and log compression stops
+# a single loud frame inside a beat window from dominating that beat's
+# averaged chroma reading.
+CHORD_HPSS_MARGIN = 4.0  # librosa.effects.harmonic's margin — higher rejects more of the percussive residual
+CHORD_CHROMA_LOG_COMPRESSION_K = 10.0  # np.log1p(k * chroma) — higher compresses harder
+
+# CD-4 (chord-detection-v2-spec.md §5.3): the bass player states a chord's
+# root more reliably than any full-mix feature does, and — unlike every
+# generic chord-recognition app — we already have the bass isolated as its
+# own stem. A small bonus nudges the decode toward whichever root the bass
+# stem's dominant pitch class agrees with each beat, without ever forcing
+# it (still just one more term in the same per-template score every other
+# heuristic here already competes on).
+CHORD_BASS_ROOT_BONUS = 0.12
+
 
 def _build_chord_templates() -> tuple[list[tuple[str, str]], "np.ndarray"]:
     labels = []
@@ -502,6 +526,20 @@ CHORD_TEMPLATE_INDEX = {label: i for i, label in enumerate(CHORD_TEMPLATE_LABELS
 CHORD_POWER_TEMPLATE_INDEX = {
     root_pc: CHORD_TEMPLATE_INDEX[(KEY_NOTE_NAMES[root_pc], "5")] for root_pc in range(12)
 }
+CHORD_TEMPLATE_ROOT_PC = np.array([KEY_NOTE_NAMES.index(root) for root, _ in CHORD_TEMPLATE_LABELS])
+
+
+def _apply_bass_root_bonus(scores: "np.ndarray", bass_window_chroma: "np.ndarray") -> None:
+    """CD-4: nudges every template whose root matches the bass stem's
+    dominant pitch class this beat, in place. A no-op (not an error) when
+    the bass window has no energy (e.g. a bass rest, or beats past the end
+    of a shorter bass stem) — same "a missing reading just skips" contract
+    as everywhere else; the caller already only invokes this when a bass
+    stem was found at all."""
+    if not np.any(bass_window_chroma > 0):
+        return
+    bass_root_pc = int(np.argmax(bass_window_chroma))
+    scores[CHORD_TEMPLATE_ROOT_PC == bass_root_pc] += CHORD_BASS_ROOT_BONUS
 
 
 def _gate_power_chord_scores(scores: "np.ndarray", window_chroma: "np.ndarray") -> None:
@@ -646,6 +684,38 @@ def _find_stems_fuzzy(out_dir: Path, exact_names: tuple, hint_words: tuple,
     return matches
 
 
+def _compute_chord_chroma(y: "np.ndarray", sr: int) -> tuple:
+    """CD-3 (chord-detection-v2-spec.md §5.2): the standard chroma
+    preprocessing every published chord-recognition pipeline since NNLS
+    Chroma (2010) uses. Harmonic/percussive separation strips transient
+    smear (a pick attack or palm-muted chug is broadband noise for an
+    instant, landing in every chroma bin right when a chord read matters
+    most); explicit tuning estimation keeps a band that's slightly off
+    A440 from smearing energy across two adjacent semitone bins instead of
+    one; log compression stops a single loud frame from dominating its
+    beat window's averaged reading. Returns (chroma, frame_times)."""
+    import librosa
+
+    harmonic = librosa.effects.harmonic(y, margin=CHORD_HPSS_MARGIN)
+    tuning = librosa.estimate_tuning(y=harmonic, sr=sr)
+    chroma = librosa.feature.chroma_cqt(y=harmonic, sr=sr, tuning=tuning)
+    chroma = np.log1p(CHORD_CHROMA_LOG_COMPRESSION_K * chroma)
+    frame_times = librosa.frames_to_time(np.arange(chroma.shape[1]), sr=sr)
+    return chroma, frame_times
+
+
+def _beat_windowed_chroma(chroma: "np.ndarray", frame_times: "np.ndarray", beats: list) -> list:
+    """Averages a chroma matrix's frames into one vector per beat-grid
+    interval [beats[i], beats[i+1]) — the same windowing detect_chords'
+    main chroma and CD-4's bass-only chroma both need, factored out so
+    they can't drift apart."""
+    windows = []
+    for start, end in zip(beats, beats[1:]):
+        mask = (frame_times >= start) & (frame_times < end)
+        windows.append(chroma[:, mask].mean(axis=1) if np.any(mask) else np.zeros(chroma.shape[0]))
+    return windows
+
+
 def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"] | None:
     """One chord guess per beat-grid interval [beats[i], beats[i+1]).
     Chroma source is the sum of every pitched, non-percussive, non-vocal
@@ -684,18 +754,35 @@ def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"]
     for y in sources:
         mono[:len(y)] += y
 
-    chroma = librosa.feature.chroma_cqt(y=mono, sr=sr)
-    frame_times = librosa.frames_to_time(np.arange(chroma.shape[1]), sr=sr)
+    chroma, frame_times = _compute_chord_chroma(mono, sr)
     chroma_mean = chroma.mean(axis=1)
+    main_windows = _beat_windowed_chroma(chroma, frame_times, beats)
+
+    # CD-4: the bass stem states a chord's root more reliably than the full
+    # mix — a small per-beat bonus toward whatever root the bass agrees
+    # with, skipped silently (not an error) when there's no bass stem, or
+    # its feature extraction hits an edge case (e.g. a near-silent bass
+    # part on a mostly-acoustic passage).
+    bass_windows = None
+    bass_paths = _find_stems_fuzzy(
+        out_dir, exact_names=("bass",), hint_words=("bass",),
+        exclude_words=("vocal", "vox", "voice", "drum", "kit", "perc"))
+    if bass_paths:
+        try:
+            bass_y, bass_sr = librosa.load(str(bass_paths[0]), sr=None, mono=True)
+            bass_chroma, bass_frame_times = _compute_chord_chroma(bass_y, bass_sr)
+            bass_windows = _beat_windowed_chroma(bass_chroma, bass_frame_times, beats)
+        except Exception:
+            bass_windows = None
 
     raw_scores = np.zeros((len(beats) - 1, len(CHORD_TEMPLATE_LABELS)))
-    for i, (start, end) in enumerate(zip(beats, beats[1:])):
-        mask = (frame_times >= start) & (frame_times < end)
-        window_chroma = chroma[:, mask].mean(axis=1) if np.any(mask) else np.zeros(12)
+    for i, window_chroma in enumerate(main_windows):
         norm = np.linalg.norm(window_chroma)
         normed_chroma = window_chroma / norm if norm > 0 else window_chroma
         scores = CHORD_TEMPLATE_MATRIX @ normed_chroma
         _gate_power_chord_scores(scores, window_chroma)  # CD-2 — only let "5" compete where no third is actually present
+        if bass_windows is not None:
+            _apply_bass_root_bonus(scores, bass_windows[i])  # CD-4
         raw_scores[i] = scores
 
     # CD-1: decode the whole beat sequence at once (Viterbi, not per-beat
