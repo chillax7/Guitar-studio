@@ -98,6 +98,25 @@ class FFT {
   }
 }
 
+// Safety net, not a root-cause fix: real guitar/drum transients have a much
+// sharper attack and higher crest factor than anything practical to
+// synthesize for testing, and this is a non-phase-locked phase vocoder (see
+// the file header) — occasional small overshoot right at a transient is
+// plausible even with the COLA gain now correct (colaNormalization fixed a
+// measured, constant ~50% overshoot; this guards against whatever's left).
+// Transparent below the threshold (branch skips the tanh entirely for the
+// overwhelming majority of samples — cheap), a smooth asymptotic soft-knee
+// above it so any remaining overshoot compresses gently toward the rail
+// instead of hard-clipping into audible crackle.
+const SOFT_LIMIT_THRESHOLD = 0.95;
+function softLimit(v) {
+  const sign = v < 0 ? -1 : 1;
+  const a = Math.abs(v);
+  if (a <= SOFT_LIMIT_THRESHOLD) return v;
+  const span = 1 - SOFT_LIMIT_THRESHOLD;
+  return sign * (SOFT_LIMIT_THRESHOLD + span * Math.tanh((a - SOFT_LIMIT_THRESHOLD) / span));
+}
+
 // Periodic (DFT-even) Hann, denominator `size` — NOT the "symmetric"
 // textbook Hann (denominator `size - 1`, what you'd want for windowing a
 // standalone signal for spectral analysis). STFT overlap-add needs the
@@ -361,7 +380,7 @@ class StretchProcessor extends AudioWorkletProcessor {
       // See colaNormalization above — without this, every processed-mode
       // sample comes out ~1.5x too loud (double-windowed overlap-add,
       // never scaled back down).
-      for (let i = 0; i < BLOCK_SIZE; i++) dst[i] = ext[i] / this.olaGain;
+      for (let i = 0; i < BLOCK_SIZE; i++) dst[i] = softLimit(ext[i] / this.olaGain);
       ext.copyWithin(0, BLOCK_SIZE, BLOCK_SIZE + FFT_SIZE);
     }
     this.blockPos = 0;
