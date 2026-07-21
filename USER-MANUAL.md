@@ -1235,18 +1235,17 @@ Same honesty framing as everywhere else: this is a heuristic, not a
 verdict — judge it against what your own ears say happened, especially on
 a first pass with a new song.
 
-### 6.3 Lick Ideas
+### 6.3 AI Assistant
 
 An experimental research feature, and the **only part of this app that
-makes a network call** — everything else works fully offline. Sends a
-text description of the current song — detected key, tempo, and chord
-progression, never any audio — to a text LLM and asks for concrete
-lead-guitar phrasing ideas: target notes to land on over specific
-chords, call-and-response shapes, a technique to try at a particular
-moment.
+makes a network call** — everything else works fully offline. Three
+modes share one tab and one saved API key, since they're all the same
+underlying idea (send a text description of what's actually going on in
+the song — never any audio — to a text LLM and ask something useful
+about it). A mode-toggle row at the top of the tab switches between them.
 
-**Choosing a provider.** A dropdown at the top of the Lick Ideas tab
-picks which LLM answers:
+**Choosing a provider.** A dropdown at the top of the tab picks which LLM
+answers, shared across all three modes below:
 
 - **Claude (Anthropic)** — get a key at **console.anthropic.com**
   (Settings → API Keys) and add a little billing credit; realistic
@@ -1265,17 +1264,37 @@ key**. Every key is stored locally in this app's own project folder,
 never committed to source control, and never sent anywhere except
 directly to that provider's own API.
 
-**Using it.** Optionally type a style/genre tag (blues rock, metal, jazz
-fusion — whatever fits), then click **Get phrasing ideas**. The result
-shows exactly what the model was given (key, tempo, chord progression) so
-you can judge the suggestions against real context, not a black box.
+**Mode: Lick Ideas.** Sends the current song's detected key, tempo, and
+chord progression and asks for concrete lead-guitar phrasing ideas:
+target notes to land on over specific chords, call-and-response shapes,
+a technique to try at a particular moment. Optionally type a style/genre
+tag (blues rock, metal, jazz fusion — whatever fits), then click **Get
+phrasing ideas**.
+
+**Mode: Explain This.** A free-text question box grounded in the same
+song data — ask about this song's theory ("why does this scale work
+here," "what's a ii–V–I") or something more general. A row of example
+prompts prefills the question box to get started; click one, edit it or
+not, then **Ask**. This is a single question-and-answer, not a running
+conversation — each ask is independent, with no memory of a previous one.
+
+**Mode: Practice Tips.** The one mode grounded in *your own playing*, not
+just the song: pick one of your scored dry takes (recorded in the Rate
+My Take tab), optionally adjust the offset/offset-search the same way you
+would there, and click **Get practice tips**. It re-scores that take
+against the reference guitar stem, finds its actual weakest moments (the
+same information the heatmap already shows you, as a beat-by-beat
+pitch/timing breakdown), and asks for practice exercises tied to those
+specific spots — not generic "practice more" filler. Needs at least one
+dry take recorded for the current song; the button stays disabled with an
+explanation until one exists.
 
 **Judge it honestly.** This is explicitly a research spike, not a
-finished feature — the question worth asking every time is whether the
-suggestions feel genuinely specific to *this* song's progression, or
-like generic scale advice ("try the pentatonic scale") that any lookup
-table could have said. If it's not earning its keep, that's a real,
-useful answer, not a failure to report.
+finished feature, for all three modes — the question worth asking every
+time is whether the output feels genuinely specific (to this song's
+progression, to this actual question, to this take's actual weak beats),
+or like generic advice any lookup table could have said. If it's not
+earning its keep, that's a real, useful answer, not a failure to report.
 
 ---
 

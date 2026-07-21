@@ -836,7 +836,7 @@
         <div class="ailab-tabs" id="ailab-tabs">
           <button id="ailab-tab-scales" class="ailab-tab-btn on" data-panel="scales">Scales</button>
           <button id="ailab-tab-ratemytake" class="ailab-tab-btn" data-panel="ratemytake">Rate My Take</button>
-          <button id="ailab-tab-lickideas" class="ailab-tab-btn" data-panel="lickideas">Lick Ideas</button>
+          <button id="ailab-tab-lickideas" class="ailab-tab-btn" data-panel="lickideas">AI Assistant</button>
         </div>
         <button id="ailab-close-btn">✕ Close</button>
       </div>
@@ -953,18 +953,18 @@
 
         </div>
 
-        <!-- V5-R1 (release-v5-spec.md §3): Lick/Phrasing Assistant research
-             spike, delivered as a panel instead of CLI-only so real songs
-             can actually be tried and judged honestly against the §3 gate
-             ("genuinely useful, specific-to-this-song phrasing advice, or
-             generic filler?"). The ONLY external network call in this app —
-             opt-in, sends just key/tempo/chord-progression text, never raw
-             audio (§7). -->
+        <!-- V5-R1 (release-v5-spec.md §3/§4): the AI Assistant panel — three
+             LLM-backed modes (Lick Ideas / Explain This / Practice Tips)
+             sharing one provider/API-key card, rather than three more tabs
+             (see §4's "one panel, not two more tabs" Update). The ONLY
+             external network calls in this app — opt-in, sends just derived
+             song data (key/tempo/chord progression, weak-beat summaries),
+             never raw audio (§7). -->
         <div id="ailab-lickideas-panel" class="ailab-column" style="display:none;">
 
           <section class="pa-card">
             <h3>LLM provider &amp; API key</h3>
-            <p class="hint">This is a research spike for phrasing suggestions from a text LLM — the one feature in this app that makes a network call. Pick a provider, get a free/cheap API key from its own console, and paste it below. Each provider's key is stored separately (locally, in this app's own project folder — never committed to source control, never sent anywhere except directly to that provider's own API).</p>
+            <p class="hint">This is a research spike — the only feature in this app that makes a network call. Pick a provider, get a free/cheap API key from its own console, and paste it below. Each provider's key is stored separately (locally, in this app's own project folder — never committed to source control, never sent anywhere except directly to that provider's own API).</p>
             <label>Provider</label>
             <select id="ailab-lick-provider">
               <option value="anthropic">Claude (Anthropic) — needs billing credit</option>
@@ -978,7 +978,15 @@
             <p class="hint" id="ailab-lick-key-status"></p>
           </section>
 
-          <section class="pa-card">
+          <div class="ailab-mode-row">
+            <div class="ailab-mode-toggle" id="ailab-assistant-mode-toggle">
+              <button data-amode="lickideas" class="on">Lick Ideas</button>
+              <button data-amode="explain">Explain This</button>
+              <button data-amode="practicetips">Practice Tips</button>
+            </div>
+          </div>
+
+          <section class="pa-card" id="ailab-lick-mode-card">
             <h3>Get phrasing ideas</h3>
             <p class="hint">Sends this song's detected key, tempo, and chord progression (text only) to the selected provider and asks for concrete lead-guitar phrasing ideas — target notes, call-and-response shapes, a technique to try at a specific moment. Judge it honestly: does it feel specific to this song, or generic scale advice you already knew?</p>
             <label>Style/genre (optional)</label>
@@ -991,6 +999,48 @@
             <h3>Suggestions</h3>
             <p class="hint" id="ailab-lick-context"></p>
             <div id="ailab-lick-suggestion"></div>
+          </section>
+
+          <section class="pa-card" id="ailab-explain-mode-card" style="display:none;">
+            <h3>Explain This</h3>
+            <p class="hint">Ask anything about this song's theory — grounded in its detected key, tempo, and chord progression where relevant. Single question in, single answer back (not a running conversation).</p>
+            <div class="ailab-explain-examples" id="ailab-explain-examples">
+              <button class="ailab-explain-example-btn" data-q="Why does this scale work over this progression?">Why does this scale work here?</button>
+              <button class="ailab-explain-example-btn" data-q="What's a ii-V-I and does this song have one?">What's a ii-V-I?</button>
+              <button class="ailab-explain-example-btn" data-q="What's the difference between this key's major and minor pentatonic?">Major vs. minor pentatonic here?</button>
+            </div>
+            <label>Your question</label>
+            <input type="text" id="ailab-explain-question" placeholder="Ask about this song's key, chords, or theory in general">
+            <button id="ailab-explain-ask-btn" class="primary">Ask</button>
+            <p class="hint" id="ailab-explain-hint"></p>
+          </section>
+
+          <section class="pa-card" id="ailab-explain-result-card" style="display:none;">
+            <h3>Answer</h3>
+            <p class="hint" id="ailab-explain-context"></p>
+            <div id="ailab-explain-answer"></div>
+          </section>
+
+          <section class="pa-card" id="ailab-tips-mode-card" style="display:none;">
+            <h3>Practice Tips</h3>
+            <p class="hint">Grounded in one of your own scored dry takes (Rate My Take tab) — re-scores the take against the reference guitar stem and asks for practice exercises tied to that take's actual weakest moments, not generic advice. Needs at least one dry take recorded and scoreable for this song.</p>
+            <div class="row">
+              <label style="flex:none; width:140px;">Take</label>
+              <select id="ailab-tips-take-select" style="flex:1;"></select>
+            </div>
+            <label>Offset (seconds into the song this take starts)</label>
+            <input type="number" id="ailab-tips-offset" step="0.1" value="0">
+            <label>Offset search (auto-fine-tune within +/- this many seconds; 0 = off)</label>
+            <input type="number" id="ailab-tips-offset-search" step="0.5" value="3">
+            <button id="ailab-tips-suggest-btn" class="primary" style="margin-top:10px;">Get practice tips</button>
+            <p class="hint" id="ailab-tips-hint"></p>
+          </section>
+
+          <section class="pa-card" id="ailab-tips-result-card" style="display:none;">
+            <h3>Practice Tips</h3>
+            <p class="hint" id="ailab-tips-context"></p>
+            <p class="hint" id="ailab-tips-weak-regions" style="white-space:pre-line;"></p>
+            <div id="ailab-tips-suggestion"></div>
           </section>
 
         </div>

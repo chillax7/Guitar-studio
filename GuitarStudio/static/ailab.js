@@ -47,7 +47,7 @@ const AILAB_SCALES_BY_KEY_MODE = {
 // leads with minor pentatonic over a bare power chord).
 const AILAB_SAFE_SCALE_BY_KEY_MODE = { major: "majpent", minor: "minpent" };
 
-const AiLab = { mode: "chord", selectedIndex: null, panel: "scales", follow: true };
+const AiLab = { mode: "chord", selectedIndex: null, panel: "scales", follow: true, amode: "lickideas" };
 
 // V5-B1: Rate My Take — dry-recording state, isolated from Recorder
 // (recorder.js)'s regular take pipeline on purpose. A regular take mixes
@@ -644,6 +644,25 @@ function aiLabLickCurrentProvider() {
 async function aiLabLickOpen() {
   aiLabLickUpdateProviderHint();
   await aiLabLickRefreshKeyStatus();
+  if (AiLab.amode === "practicetips") await aiLabTipsRefreshTakes();
+}
+
+// Mode selector for the AI Assistant panel (release-v5-spec.md §4's "one
+// panel, not two more tabs" — Lick Ideas / Explain This / Practice Tips
+// share the provider/API-key card above, only the mode-specific card and
+// its own result card toggle visibility).
+function aiLabAssistantSetMode(mode) {
+  AiLab.amode = mode;
+  document.getElementById("ailab-assistant-mode-toggle").querySelectorAll("button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.amode === mode);
+  });
+  document.getElementById("ailab-lick-mode-card").style.display = mode === "lickideas" ? "" : "none";
+  document.getElementById("ailab-lick-result-card").style.display = "none";
+  document.getElementById("ailab-explain-mode-card").style.display = mode === "explain" ? "" : "none";
+  document.getElementById("ailab-explain-result-card").style.display = "none";
+  document.getElementById("ailab-tips-mode-card").style.display = mode === "practicetips" ? "" : "none";
+  document.getElementById("ailab-tips-result-card").style.display = "none";
+  if (mode === "practicetips") aiLabTipsRefreshTakes();
 }
 
 function aiLabLickUpdateProviderHint() {
@@ -706,6 +725,131 @@ async function aiLabLickSuggest() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Explain This (release-v5-spec.md §4) — single-shot Q&A, not a retained-
+// history chat (deliberate scope cut, see §4's Update). Shares the same
+// provider/key card and prompt-plumbing as Lick Ideas.
+// ---------------------------------------------------------------------------
+
+async function aiLabExplainAsk() {
+  const hintEl = document.getElementById("ailab-explain-hint");
+  const resultCard = document.getElementById("ailab-explain-result-card");
+  const btn = document.getElementById("ailab-explain-ask-btn");
+  const questionEl = document.getElementById("ailab-explain-question");
+  if (!State.track) {
+    hintEl.textContent = "No song selected.";
+    return;
+  }
+  const question = questionEl.value;
+  if (!question.trim()) {
+    hintEl.textContent = "Ask a question first.";
+    return;
+  }
+  const provider = aiLabLickCurrentProvider();
+
+  btn.disabled = true;
+  hintEl.textContent = "Thinking…";
+  resultCard.style.display = "none";
+  try {
+    const r = await Api.post("/api/explain/ask", {
+      source_path: State.track, model: State.model, question, provider,
+    });
+    hintEl.textContent = "";
+    document.getElementById("ailab-explain-context").textContent = `${r.key} · ${r.bpm} BPM · ${r.progression}`;
+    document.getElementById("ailab-explain-answer").textContent = r.answer;
+    resultCard.style.display = "";
+  } catch (e) {
+    hintEl.textContent = `Couldn't get an answer: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Practice Tips (release-v5-spec.md §4) — grounds its prompt in this take's
+// own Rate My Take weak-beat breakdown, not just static song data. Shares
+// the take list and offset/offset-search idiom from the Rate My Take tab,
+// re-scoring the selected take server-side rather than trusting any
+// previously-displayed result.
+// ---------------------------------------------------------------------------
+
+async function aiLabTipsRefreshTakes() {
+  const selectEl = document.getElementById("ailab-tips-take-select");
+  const btn = document.getElementById("ailab-tips-suggest-btn");
+  const hintEl = document.getElementById("ailab-tips-hint");
+  if (!State.track) {
+    selectEl.innerHTML = "";
+    btn.disabled = true;
+    hintEl.textContent = "No song selected.";
+    return;
+  }
+  let takes = [];
+  try {
+    const r = await Api.get(`/api/recordings?track=${encodeURIComponent(State.track)}`);
+    takes = (r.takes || []).filter((t) => t.dry);
+  } catch (e) {
+    selectEl.innerHTML = "";
+    btn.disabled = true;
+    hintEl.textContent = `Couldn't load takes: ${e.message}`;
+    return;
+  }
+
+  if (!takes.length) {
+    selectEl.innerHTML = "";
+    btn.disabled = true;
+    hintEl.textContent = "No dry takes yet for this song — record one in the Rate My Take tab first.";
+    return;
+  }
+
+  const prevValue = selectEl.value;
+  selectEl.innerHTML = "";
+  takes.forEach((t) => {
+    const opt = document.createElement("option");
+    opt.value = t.path;
+    opt.textContent = t.filename;
+    selectEl.appendChild(opt);
+  });
+  if (takes.some((t) => t.path === prevValue)) selectEl.value = prevValue;
+  else selectEl.selectedIndex = takes.length - 1;
+  btn.disabled = false;
+  hintEl.textContent = "";
+}
+
+async function aiLabTipsSuggest() {
+  const hintEl = document.getElementById("ailab-tips-hint");
+  const resultCard = document.getElementById("ailab-tips-result-card");
+  const btn = document.getElementById("ailab-tips-suggest-btn");
+  const takePath = document.getElementById("ailab-tips-take-select").value;
+  if (!State.track || !takePath) {
+    hintEl.textContent = "No take selected.";
+    return;
+  }
+  const offset = parseFloat(document.getElementById("ailab-tips-offset").value) || 0;
+  const offsetSearch = parseFloat(document.getElementById("ailab-tips-offset-search").value) || 0;
+  const provider = aiLabLickCurrentProvider();
+
+  btn.disabled = true;
+  hintEl.textContent = "Scoring the take and asking for practice tips…";
+  resultCard.style.display = "none";
+  try {
+    const r = await Api.post("/api/practicetips/suggest", {
+      source_path: State.track, take_path: takePath, model: State.model, stem: "guitar",
+      offset, offset_search: offsetSearch, provider,
+    });
+    hintEl.textContent = "";
+    const overallLine = r.overall_pct !== null ? ` · Overall: ${r.overall_pct}%` : "";
+    document.getElementById("ailab-tips-context").textContent = `${r.key} · ${r.bpm} BPM · ${r.progression}${overallLine}`;
+    document.getElementById("ailab-tips-weak-regions").textContent =
+      r.weak_regions ? `Weakest moments:\n${r.weak_regions}` : "No standout weak moments — this take scored fairly evenly.";
+    document.getElementById("ailab-tips-suggestion").textContent = r.suggestion;
+    resultCard.style.display = "";
+  } catch (e) {
+    hintEl.textContent = `Couldn't get practice tips: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function wireAiLab() {
   document.getElementById("ailab-open-btn").addEventListener("click", openAiLab);
   document.getElementById("ailab-close-btn").addEventListener("click", closeAiLab);
@@ -751,6 +895,17 @@ function wireAiLab() {
     aiLabLickUpdateProviderHint();
     await aiLabLickRefreshKeyStatus();
   });
+
+  document.getElementById("ailab-assistant-mode-toggle").querySelectorAll("button").forEach((btn) => {
+    btn.addEventListener("click", () => aiLabAssistantSetMode(btn.dataset.amode));
+  });
+  document.querySelectorAll(".ailab-explain-example-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.getElementById("ailab-explain-question").value = btn.dataset.q;
+    });
+  });
+  document.getElementById("ailab-explain-ask-btn").addEventListener("click", aiLabExplainAsk);
+  document.getElementById("ailab-tips-suggest-btn").addEventListener("click", aiLabTipsSuggest);
 }
 
 wireAiLab();

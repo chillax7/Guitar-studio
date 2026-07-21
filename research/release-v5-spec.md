@@ -363,6 +363,38 @@ should be able to look at the heatmap and the tip and see the connection),
 not just be generic technique advice that happens to be true of most
 solos.
 
+**Update — both modes built.** User's call: build it now rather than wait
+for §3's gate to formally close first — same "M2 shipped ahead of M0"
+precedent this release already set for Rate My Take, not a new departure.
+Delivered exactly as scoped above: the Lick Ideas tab (renamed **AI
+Assistant**) grew a mode-toggle row (Lick Ideas / Explain This / Practice
+Tips) rather than two more tabs, sharing the provider/API-key card;
+`server.py` grew `svc_explain_ask` and `svc_practice_tips` alongside the
+existing `svc_lick_suggest`, all three calling the same
+`_call_anthropic`/`_call_google`/`_call_groq` functions and sharing one
+extracted `_NO_BAR_NUMBER_INSTRUCTION` (the fabricated-bar-number fix
+originally found for Lick Ideas — worth re-checking on the other two
+modes' first real answers, since a free-text question or a weak-beat
+timestamp summary is just as capable of inviting a confidently wrong "bar
+12" as a chord progression was). Practice Tips re-scores the selected take
+server-side on each request (`score_take`/`refine_offset`, the same path
+`/api/rate/score` uses) rather than trusting any client-cached result, and
+turns the per-beat breakdown into a short weak-region summary
+(`_summarize_weak_beats`: contiguous low-scoring beats merged into
+regions, only the take's own worst third kept, each tagged with whichever
+side — pitch or timing — actually drove the low score) — the same read a
+guitarist already gets off the heatmap, handed to the LLM as text instead
+of a color. Verified with a headless browser pass: mode-toggle switching
+shows/hides the right cards with no console errors, example-prompt pills
+correctly prefill the question box, and both new endpoints
+(`/api/explain/ask`, `/api/practicetips/suggest`) return clean 400 errors
+(not stack traces) for a missing song/take. **Not yet verified:** an
+actual real-key, real-song run of either mode (this sandbox has no
+separated song or dry take to test against) — and §3's own blind-
+comparison gate still hasn't been run for Lick Ideas itself, so neither
+new mode has cleared it either. That real-use judgment call is still the
+next real gate, same as it's been since Lick Ideas first shipped.
+
 ## 5. Stretch, hard-gated: solo-skeleton generator (V5-F4 · XL, punt by default)
 
 The "build a full solo" ambition from the original conversation, scoped
@@ -711,10 +743,13 @@ unchanged, this just sequences it against §9)
   while.
 - **M3 — AI Lab: LLM spike (Lick Ideas) + AI Assistant panel's two new
   modes, Explain This and Practice Tips (§8's M3/M4, scoped as one
-  consolidated panel in §4's Update).** *Gate:* §3's blind-comparison call
-  — still outstanding for Lick Ideas itself (one real song tested via
-  direct API calls, not yet the real 3-song judged gate in the UI); Explain
-  This and Practice Tips don't get built until that gate passes.
+  consolidated panel in §4's Update).** *Gate:* §3's blind-comparison call.
+  **Shipped ahead of the gate** (see §4's "both modes built" Update) — same
+  precedent as M2/M0 earlier in this release. The gate itself is still
+  outstanding for all three modes (one real song tested via direct API
+  calls for Lick Ideas, not yet the real 3-song judged gate in the UI for
+  any of them) — that real-use judgment call is the next thing blocking
+  this milestone from being truly closed out, not the build.
 - **M4 — Hands-free rig: MIDI + multi-preset cycling (V5-B3).**
 - **M5 — Polish: Social export presets (V5-B4) + Artifact cleanup pass
   (V5-B2, timeboxed).**

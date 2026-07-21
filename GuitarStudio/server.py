@@ -1650,24 +1650,12 @@ def svc_lick_suggest(source_path: str, model: str, genre: str, provider: str) ->
     `provider` picks which of LICK_PROVIDERS actually gets called — same
     prompt either way, since the gate question ("is this genuinely useful
     phrasing advice") doesn't change with which model answers it."""
-    if provider not in LICK_PROVIDERS:
-        raise ApiError(400, f"Unknown provider '{provider}'. Expected one of: {', '.join(LICK_PROVIDERS)}")
-    api_key = _load_provider_key(provider)
-    if not api_key:
-        raise ApiError(400, f"No {provider} API key saved yet — add one in AI Lab's Lick Ideas panel first.")
-
+    api_key = _load_provider_key_or_raise(provider)
     input_path = resolve_source_path(source_path)
     out_dir = engine.track_stem_dir(input_path, model)
     if not engine.has_cached_stems(out_dir):
         raise ApiError(400, f"No stems found for {input_path.name} with model '{model}'. Separate it first.")
-    analysis = engine.ensure_analysis(out_dir)
-
-    key = analysis.get("key")
-    bpm = analysis.get("bpm")
-    progression = _summarize_chord_progression(analysis.get("chords") or [])
-    if not key or not bpm or not progression:
-        raise ApiError(400, "This song needs a detected key, tempo, and chord progression before asking for "
-                             "phrasing ideas — run analysis (open it in the Mixer) first.")
+    key, bpm, progression = _song_theory_or_raise(out_dir)
 
     genre = (genre or "").strip()
     genre_line = f"- Style/genre: {genre}\n" if genre else ""
@@ -1682,17 +1670,204 @@ def svc_lick_suggest(source_path: str, model: str, genre: str, provider: str) ->
         "land on over specific chords, call-and-response shapes, or a technique to try at a particular point. "
         "Avoid generic advice (e.g. \"use the pentatonic scale\") unless it's tied to a specific moment in THIS "
         "progression. Keep it concise — a short list, no more than ~150 words total.\n\n"
-        "Important: the chord list above is a plain sequence with NO bar/measure numbers or timing information — "
-        "each entry is just the next chord change, not necessarily one bar. Do NOT invent specific bar or measure "
-        "numbers (e.g. \"bar 7\", \"bars 9-14\") — you have no real information about where those fall. Instead, "
-        "refer to moments by chord name and context (e.g. \"over the A7 to B7 change\", \"each time E5 comes back "
-        "around\", \"when it shifts to F#m\")."
+        f"{_NO_BAR_NUMBER_INSTRUCTION}"
     )
 
     caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
     text = caller(prompt, api_key)
     return {
         "suggestion": text.strip(),
+        "key": f"{key['key']} {key['mode']}",
+        "bpm": round(bpm, 1),
+        "progression": progression,
+        "provider": provider,
+    }
+
+
+def _load_provider_key_or_raise(provider: str) -> str:
+    if provider not in LICK_PROVIDERS:
+        raise ApiError(400, f"Unknown provider '{provider}'. Expected one of: {', '.join(LICK_PROVIDERS)}")
+    api_key = _load_provider_key(provider)
+    if not api_key:
+        raise ApiError(400, f"No {provider} API key saved yet — add one in AI Lab's AI Assistant panel first.")
+    return api_key
+
+
+def _song_theory_or_raise(out_dir: Path) -> tuple:
+    analysis = engine.ensure_analysis(out_dir)
+    key = analysis.get("key")
+    bpm = analysis.get("bpm")
+    progression = _summarize_chord_progression(analysis.get("chords") or [])
+    if not key or not bpm or not progression:
+        raise ApiError(400, "This song needs a detected key, tempo, and chord progression first — run analysis "
+                             "(open it in the Mixer) first.")
+    return key, bpm, progression
+
+
+_NO_BAR_NUMBER_INSTRUCTION = (
+    "Important: you have no bar/measure or timing information beyond whatever timestamps are explicitly given "
+    "above. Do NOT invent specific bar or measure numbers (e.g. \"bar 7\", \"bars 9-14\") — you have no real "
+    "information about where those fall. Refer to moments by chord name/context or the given timestamps instead "
+    "(e.g. \"over the A7 to B7 change\", \"around 0:45\")."
+)
+
+
+def _format_mmss(seconds: float) -> str:
+    seconds = max(0, int(round(seconds)))
+    return f"{seconds // 60}:{seconds % 60:02d}"
+
+
+def _summarize_weak_beats(beats: list, max_regions: int = 3) -> str:
+    """Turns score_take's per-beat breakdown into a short text summary of
+    a take's weakest moments — the same read a guitarist already gets off
+    the Rate My Take heatmap, handed to an LLM as text instead of a color,
+    so Practice Tips can ground its suggestions in this take's actual weak
+    spots rather than generic technique advice. Contiguous low-scoring
+    beats (within 3s of each other) are merged into one region rather than
+    listed beat-by-beat, and only the lowest-scoring regions are kept —
+    every reasonably-good take still has *some* weakest beats, but the
+    point is calling out what's actually worth practicing, not everything
+    that scored under some fixed number."""
+    scored = [b for b in beats if b["score"] is not None]
+    if len(scored) < 3:
+        return ""
+    sorted_scores = sorted(b["score"] for b in scored)
+    threshold = sorted_scores[len(sorted_scores) // 3]  # bottom third of this take's own beats
+    weak = sorted([b for b in scored if b["score"] <= threshold], key=lambda b: b["time"])
+    if not weak:
+        return ""
+
+    regions = []
+    current = [weak[0]]
+    for b in weak[1:]:
+        if b["time"] - current[-1]["time"] <= 3.0:
+            current.append(b)
+        else:
+            regions.append(current)
+            current = [b]
+    regions.append(current)
+
+    regions.sort(key=lambda r: sum(b["score"] for b in r) / len(r))
+    regions = regions[:max_regions]
+    regions.sort(key=lambda r: r[0]["time"])
+
+    lines = []
+    for r in regions:
+        pitch = sum(b["pitch"] for b in r) / len(r)
+        timing = sum(b["timing"] for b in r) / len(r)
+        weak_side = "timing" if timing < pitch else "pitch" if pitch < timing else "pitch and timing"
+        lines.append(f"- {_format_mmss(r[0]['time'])}-{_format_mmss(r[-1]['time'])}: weaker {weak_side} "
+                     f"(pitch {pitch * 100:.0f}%, timing {timing * 100:.0f}%)")
+    return "\n".join(lines)
+
+
+def svc_practice_tips(source_path: str, take_path: str, model: str, stem: str,
+                       offset: float, offset_search: float, provider: str) -> dict:
+    """AI Assistant's Practice Tips mode (release-v5-spec.md §4) — the one
+    mode that's more than Lick Ideas with a different prompt: grounds its
+    prompt in *this take's own* Rate My Take result (score_take's per-beat
+    breakdown), not just the song's static key/chords/tempo, so the
+    suggestions are supposed to trace back to this take's actual weak
+    spots. Re-scores the take itself (same score_take/refine_offset path
+    as /api/rate/score) rather than trusting a client-cached result — no
+    server-side state to go stale, and the offset/offset-search UI is
+    already familiar from the Rate My Take tab."""
+    api_key = _load_provider_key_or_raise(provider)
+    input_path = resolve_source_path(source_path)
+    out_dir = engine.track_stem_dir(input_path, model)
+    if not engine.has_cached_stems(out_dir):
+        raise ApiError(400, f"No stems found for {input_path.name} with model '{model}'. Separate it first.")
+    reference_path = out_dir / f"{stem}.wav"
+    if not reference_path.exists():
+        raise ApiError(400, f"No '{stem}' stem found for this track/model — this needs a guitar stem.")
+    key, bpm, progression = _song_theory_or_raise(out_dir)
+
+    target = Path(take_path).resolve()
+    try:
+        target.relative_to(engine.OUTPUT_DIR.resolve())
+    except ValueError:
+        raise ApiError(400, "take_path must be inside output/")
+    if not target.exists():
+        raise ApiError(404, "Take file not found")
+
+    analysis = engine.ensure_analysis(out_dir)
+    beats = analysis.get("beats")
+    if offset_search and offset_search > 0:
+        refined = engine.refine_offset(target, reference_path, offset, search_radius=offset_search)
+        if not refined["clipped"] and refined["quality"] >= engine.RATE_OFFSET_SEARCH_MIN_QUALITY:
+            offset = refined["offset"]
+
+    beats = engine.trim_beats_to_take_span(beats, offset, target)
+    result = engine.score_take(target, reference_path, beats, offset_sec=offset)
+    scored = [b for b in result["beats"] if b["score"] is not None]
+    if not scored:
+        raise ApiError(400, f"No beats could be scored at offset {offset}s — check the offset and that "
+                             f"both files have real audio in them.")
+
+    weak_regions = _summarize_weak_beats(result["beats"])
+    weak_line = (f"Weakest moments in this take (lower pitch/timing agreement vs. the reference):\n{weak_regions}\n\n"
+                 if weak_regions else "")
+    prompt = (
+        "You are an experienced guitar teacher giving practical practice advice on a specific recorded take.\n\n"
+        "Song info:\n"
+        f"- Key: {key['key']} {key['mode']}\n"
+        f"- Tempo: {bpm:.0f} BPM\n"
+        f"- Chord progression (in order): {progression}\n\n"
+        f"{weak_line}"
+        "Give 2-3 concrete practice exercises tied to this take's actual weak moments above (if any are listed) — "
+        "e.g. slowing down a specific passage with a metronome, isolating a technique at a specific timestamp, "
+        "a targeted repetition drill. If no weak moments are listed, say the take was solid throughout rather than "
+        "inventing a problem. Avoid generic advice (e.g. \"practice more\") that isn't tied to a specific moment "
+        "above. Keep it concise — no more than ~150 words total.\n\n"
+        f"{_NO_BAR_NUMBER_INSTRUCTION}"
+    )
+
+    caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
+    text = caller(prompt, api_key)
+    return {
+        "suggestion": text.strip(),
+        "key": f"{key['key']} {key['mode']}",
+        "bpm": round(bpm, 1),
+        "progression": progression,
+        "weak_regions": weak_regions,
+        "overall_pct": result["overall_pct"],
+        "provider": provider,
+    }
+
+
+def svc_explain_ask(source_path: str, model: str, question: str, provider: str) -> dict:
+    """AI Assistant's Explain This mode (release-v5-spec.md §4) — a
+    single-shot Q&A grounded in the current song's key/chords/tempo, not a
+    multi-turn chat with retained history (that's a deliberate scope cut —
+    see §4's Update — not an oversight)."""
+    question = (question or "").strip()
+    if not question:
+        raise ApiError(400, "Ask a question first.")
+
+    api_key = _load_provider_key_or_raise(provider)
+    input_path = resolve_source_path(source_path)
+    out_dir = engine.track_stem_dir(input_path, model)
+    if not engine.has_cached_stems(out_dir):
+        raise ApiError(400, f"No stems found for {input_path.name} with model '{model}'. Separate it first.")
+    key, bpm, progression = _song_theory_or_raise(out_dir)
+
+    prompt = (
+        "You are an experienced, friendly guitar teacher. Answer the student's question below, using the song "
+        "info as grounding context where it's actually relevant to the question — don't force a connection to "
+        "this specific song if the question is more general music theory.\n\n"
+        "Song info:\n"
+        f"- Key: {key['key']} {key['mode']}\n"
+        f"- Tempo: {bpm:.0f} BPM\n"
+        f"- Chord progression (in order): {progression}\n\n"
+        f"Student's question: {question}\n\n"
+        "Keep the answer clear and concise — a short paragraph or a few bullet points, no more than ~150 words.\n\n"
+        f"{_NO_BAR_NUMBER_INSTRUCTION}"
+    )
+
+    caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
+    text = caller(prompt, api_key)
+    return {
+        "answer": text.strip(),
         "key": f"{key['key']} {key['mode']}",
         "bpm": round(bpm, 1),
         "progression": progression,
@@ -2217,6 +2392,24 @@ class Handler(BaseHTTPRequestHandler):
                 result = svc_lick_suggest(
                     body.get("source_path", ""), body.get("model", engine.DEFAULT_MODEL), body.get("genre", ""),
                     body.get("provider", "anthropic"),
+                )
+                return self._send_json(200, result)
+
+            if path == "/api/practicetips/suggest":
+                body = self._read_json_body()
+                result = svc_practice_tips(
+                    body.get("source_path", ""), body.get("take_path", ""),
+                    body.get("model", engine.DEFAULT_MODEL), body.get("stem", "guitar"),
+                    float(body.get("offset", 0) or 0), float(body.get("offset_search", 0) or 0),
+                    body.get("provider", "anthropic"),
+                )
+                return self._send_json(200, result)
+
+            if path == "/api/explain/ask":
+                body = self._read_json_body()
+                result = svc_explain_ask(
+                    body.get("source_path", ""), body.get("model", engine.DEFAULT_MODEL),
+                    body.get("question", ""), body.get("provider", "anthropic"),
                 )
                 return self._send_json(200, result)
 

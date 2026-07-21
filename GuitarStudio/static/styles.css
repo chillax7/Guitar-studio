@@ -1394,6 +1394,13 @@ button:disabled:hover { filter: none; }
 .ailab-mode-toggle button.on { background: var(--accent); color: #fff; }
 .ailab-mode-toggle button:not(.on):hover { filter: brightness(1.2); }
 
+.ailab-explain-examples { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.ailab-explain-example-btn {
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim);
+  font-size: 11px; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+}
+.ailab-explain-example-btn:hover { filter: brightness(1.2); }
+
 .ailab-jumprow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .ailab-scale-chip {
   border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim);
