@@ -240,13 +240,26 @@ position at open) and never moves. Spec:
 
 | # | Milestone | Size | Depends on |
 |---|-----------|------|------------|
-| CD-0 | AI Lab live-follow (§6) | S | nothing — ship immediately |
-| CD-1 | Viterbi decode + min-duration merge (§5.4, §5.5) | M | nothing |
+| CD-0 | AI Lab live-follow (§6) — **shipped** | S | nothing — ship immediately |
+| CD-1 | Viterbi decode + min-duration merge (§5.4, §5.5) — **shipped** | M | nothing |
 | CD-2 | Power-chord template + third-absence gate (§5.1) | S | CD-1 (tune together) |
 | CD-3 | Chroma front end: HPSS, tuning, log compression (§5.2) | S | CD-1 |
 | CD-4 | Bass-anchored root bonus (§5.3) | S | CD-1 |
 | CD-5 | **Acceptance test on "Too Much, Too Young, Too Fast"** + 1–2 easier pop/rock tracks; tune `SELF_TRANSITION_P`, third-absence gate, bass bonus against what the lane shows vs a published chord chart | S | CD-1..4 |
 | CD-6 | Backlog: downbeat detection → snap chord changes to bar lines; madmom A/B behind a flag; mid-song key changes (already in release-v5-spec §9) | — | — |
+
+**CD-1 shipped:** `_decode_chord_sequence` (Viterbi over an augmented
+score matrix with an explicit N state) + `_merge_short_chord_runs`
+(belt-and-braces for any 1-beat island that still survives) in
+`detect_chords`, backing_track.py. `ANALYSIS_VERSION` bumped 5→6 so
+existing cached analyses recompute. Verified with synthetic tests (not
+yet a real song — that's CD-5): 12 identical, heavily-noised A5
+power-chord beats went from 10 flickering chips under the old per-beat
+argmax down to 1 stable chip; a genuine 3-chord progression (A5→D5→E5,
+same noise level) still decoded as exactly 3 chips with the correct
+roots, confirming the smoothing doesn't just freeze on the first guess.
+`CHORD_TEMPLATE_MATRIX`/labels, `key_from_chords`, the JSON shape, and
+the UI are all untouched, per §5.6.
 
 Test protocol for CD-5 (goes into TEST-PLAN.md when CD-1 lands):
 1. Re-run analysis on the test song (version bump forces it).

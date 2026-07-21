@@ -105,8 +105,11 @@ ANALYSIS_FILE = "analysis.json"
 # judges major/minor from direct minor-3rd/major-3rd chroma energy at that
 # root instead of trusting a single chord's maj/min template label — fixes
 # riff/power-chord-heavy rock and metal songs reading as false "major"
-# (real user report on real songs; see key_from_chords' docstring).
-ANALYSIS_VERSION = 5
+# (real user report on real songs; see key_from_chords' docstring); v6:
+# detect_chords now Viterbi-decodes the whole beat sequence instead of an
+# independent per-beat argmax, fixing chord-lane flicker on ordinary chroma
+# noise (chord-detection-v2-spec.md CD-1; real user report: "way too busy").
+ANALYSIS_VERSION = 6
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -446,6 +449,19 @@ CHORD_QUALITY_INTERVALS = {
 }
 CHORD_CONFIDENCE_FLOOR = 0.5  # below this, report "no chord" rather than a guess that's probably noise
 
+# chord-detection-v2-spec.md CD-1: per-beat argmax had no memory of the
+# previous beat, so ordinary chroma noise (a passing note, a bend, a fill)
+# flips single beats to a different template and every flip breaks a run
+# into extra chips — the root cause of "the chord lane is way too busy"
+# (real user report; also release-v5-spec.md's "Phantom of the Opera"
+# finding). Fixed the way the whole chord-recognition literature does it
+# since Sheh & Ellis 2003: decode the *sequence* with Viterbi instead of
+# picking each frame independently, using a transition matrix that's cheap
+# to stay on the current chord and costly to leave it.
+CHORD_SELF_TRANSITION_P = 0.88  # probability mass kept on staying put per beat; rest spreads uniformly over every other state
+CHORD_EMISSION_TEMPERATURE = 12.0  # softmax sharpness turning raw cosine scores into a per-beat state distribution; higher trusts the raw scores more
+CHORD_MIN_RUN_BEATS = 2  # a decoded run shorter than this still reaches the UI as a 1-beat island unless merged into a neighbor (see _merge_short_chord_runs)
+
 
 def _build_chord_templates() -> tuple[list[tuple[str, str]], "np.ndarray"]:
     labels = []
@@ -462,6 +478,100 @@ def _build_chord_templates() -> tuple[list[tuple[str, str]], "np.ndarray"]:
 
 
 CHORD_TEMPLATE_LABELS, CHORD_TEMPLATE_MATRIX = _build_chord_templates()
+CHORD_TEMPLATE_INDEX = {label: i for i, label in enumerate(CHORD_TEMPLATE_LABELS)}
+
+
+def _decode_chord_sequence(raw_scores: "np.ndarray") -> list[tuple]:
+    """CD-1 (chord-detection-v2-spec.md §5.4): Viterbi-decode a whole song's
+    per-beat template scores at once, instead of picking each beat's argmax
+    independently. An explicit N (no confident chord) state is threaded in
+    at a fixed emission level (CHORD_CONFIDENCE_FLOOR) so a beat only reads
+    as N when every real template scores worse than that baseline — same
+    reasoning the old per-beat floor check used, just decided alongside
+    every chord state instead of as a special case in front of them.
+
+    The transition matrix is what actually fixes the flicker: staying on
+    the previous beat's state is cheap (CHORD_SELF_TRANSITION_P), switching
+    to anything else is expensive. A moving riff or palm-muted chug that
+    nudges the chroma around beat-to-beat no longer flips the winning
+    template unless the underlying harmony has genuinely moved on long
+    enough to outweigh that cost.
+
+    Returns one (root, quality) per beat — same shape/order as raw_scores'
+    rows — for the caller to zip back up with beat times and per-beat
+    confidence."""
+    import librosa
+
+    n_beats, n_templates = raw_scores.shape
+    n_idx = n_templates  # the N state's column/row index, appended after every chord template
+
+    aug = np.concatenate([raw_scores, np.full((n_beats, 1), CHORD_CONFIDENCE_FLOOR)], axis=1)
+    n_states = n_templates + 1
+
+    # Turn raw cosine scores into a per-beat probability distribution over
+    # states. Temperature controls how sharply the decode trusts a single
+    # beat's raw evidence vs. leaning on the transition prior instead.
+    scaled = aug * CHORD_EMISSION_TEMPERATURE
+    scaled -= scaled.max(axis=1, keepdims=True)  # numerically stable softmax
+    probs = np.exp(scaled)
+    probs /= probs.sum(axis=1, keepdims=True)
+    prob_matrix = probs.T  # librosa.sequence.viterbi wants (n_states, n_steps)
+
+    off_diag = (1.0 - CHORD_SELF_TRANSITION_P) / (n_states - 1)
+    transition = np.full((n_states, n_states), off_diag)
+    np.fill_diagonal(transition, CHORD_SELF_TRANSITION_P)
+    p_init = np.full(n_states, 1.0 / n_states)
+
+    states = librosa.sequence.viterbi(prob_matrix, transition, p_init=p_init)
+
+    labels = []
+    for s in states:
+        if int(s) == n_idx:
+            labels.append((None, "N"))
+        else:
+            labels.append(CHORD_TEMPLATE_LABELS[int(s)])
+    return labels
+
+
+def _merge_short_chord_runs(labels: list, raw_scores: "np.ndarray") -> list:
+    """CD-1 (chord-detection-v2-spec.md §5.5): belt-and-braces beneath
+    Viterbi. The transition cost makes 1-beat islands unlikely, not
+    impossible — a genuinely anomalous beat (or one right at a real chord
+    boundary) can still decode as its own run. Any run shorter than
+    CHORD_MIN_RUN_BEATS is reassigned to whichever neighbor's raw template
+    score fits that run's own chroma better, rather than surviving to the
+    UI as an extra chip. Only touches the labels list — the caller's
+    per-beat dict list still gets one entry per beat, so this relies on the
+    UI's existing run-collapsing (renderChordLane/aiLabChordRuns) to fold
+    a corrected run into its neighbor's chip."""
+    runs = []  # [start, end, label] with end exclusive
+    for i, label in enumerate(labels):
+        if runs and runs[-1][2] == label:
+            runs[-1][1] = i + 1
+        else:
+            runs.append([i, i + 1, label])
+
+    def score_for(start, end, label):
+        if label[1] == "N":
+            return CHORD_CONFIDENCE_FLOOR
+        idx = CHORD_TEMPLATE_INDEX[label]
+        return float(raw_scores[start:end, idx].mean())
+
+    for ri, (start, end, label) in enumerate(runs):
+        if end - start >= CHORD_MIN_RUN_BEATS:
+            continue
+        candidates = [runs[ri - 1][2]] if ri > 0 else []
+        if ri + 1 < len(runs):
+            candidates.append(runs[ri + 1][2])
+        if not candidates:
+            continue
+        runs[ri][2] = max(candidates, key=lambda l: score_for(start, end, l))
+
+    out = list(labels)
+    for start, end, label in runs:
+        for i in range(start, end):
+            out[i] = label
+    return out
 
 
 def _find_stems_fuzzy(out_dir: Path, exact_names: tuple, hint_words: tuple,
@@ -533,20 +643,25 @@ def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"]
     frame_times = librosa.frames_to_time(np.arange(chroma.shape[1]), sr=sr)
     chroma_mean = chroma.mean(axis=1)
 
-    chords = []
-    for start, end in zip(beats, beats[1:]):
+    raw_scores = np.zeros((len(beats) - 1, len(CHORD_TEMPLATE_LABELS)))
+    for i, (start, end) in enumerate(zip(beats, beats[1:])):
         mask = (frame_times >= start) & (frame_times < end)
         window_chroma = chroma[:, mask].mean(axis=1) if np.any(mask) else np.zeros(12)
         norm = np.linalg.norm(window_chroma)
         if norm > 0:
             window_chroma = window_chroma / norm
-        scores = CHORD_TEMPLATE_MATRIX @ window_chroma
-        best_idx = int(np.argmax(scores))
-        confidence = float(scores[best_idx])
-        if confidence < CHORD_CONFIDENCE_FLOOR:
-            root, quality = None, "N"
-        else:
-            root, quality = CHORD_TEMPLATE_LABELS[best_idx]
+        raw_scores[i] = CHORD_TEMPLATE_MATRIX @ window_chroma
+
+    # CD-1: decode the whole beat sequence at once (Viterbi, not per-beat
+    # argmax) so ordinary chroma noise no longer flips single beats to a
+    # different chord — see _decode_chord_sequence's docstring.
+    labels = _decode_chord_sequence(raw_scores)
+    labels = _merge_short_chord_runs(labels, raw_scores)
+
+    chords = []
+    for i, start in enumerate(beats[:-1]):
+        root, quality = labels[i]
+        confidence = float(raw_scores[i].max())
         chords.append({"time": round(float(start), 3), "root": root, "quality": quality,
                         "confidence": round(confidence, 3)})
     return chords, chroma_mean
