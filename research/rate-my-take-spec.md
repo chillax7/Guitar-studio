@@ -113,6 +113,24 @@ overfit-to-one-example guessing this session has avoided everywhere
 else); a real calibration pass needs more than one real Good/Bad pair to
 judge against.
 
+**Update — first real-data calibration pass.** Same reasoning applied to
+`RATE_CALIBRATION_FLOOR`/`CEILING` themselves: with exactly one real
+Good/Bad pair (raw 0.688/0.572), a straight line can always be solved to
+hit two arbitrary target percentages exactly — that "fits" the data but
+proves nothing about a third take, and risks a mapping so narrow it
+swings wildly on the next real example. Chose brackets instead of an
+exact fit: floor (0.55) sits just below Bad's raw score, ceiling (0.80)
+sits comfortably above Good's — Bad reads low without being slammed to a
+literal 0% (room for something genuinely worse), Good reads
+above-average without maxing the scale (room for something genuinely
+better). Result: **55.3% (Good) vs. 8.8% (Bad)** — not the user's exact
+~80%/~5% ear-judgment, deliberately, but a real, non-overfit gap in the
+right direction, verified against the actual `score_take` pipeline (not
+just arithmetic on the raw numbers). Needs more real Good/Bad/Variation
+triples — ideally from more than one song — before tightening further;
+each new data point should make the floor/ceiling choice more
+constrained, not just more comfortable with the two we already have.
+
 **One-line pitch:** play a solo or rhythm part along to a song, hit stop,
 and get an honest "how close was that to the record?" readout — an
 overall percentage, per-section scores, and a timeline heatmap showing

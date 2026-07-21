@@ -1110,15 +1110,27 @@ RATE_PITCH_FMAX_HZ = 1318.5  # E6, generous headroom for high frets/bends
 RATE_PITCH_VOICED_PROB_FLOOR = 0.5  # pyin frames below this confidence are excluded, not just low-weighted
 RATE_PITCH_CENTS_WINDOW = 100  # cents (~1 semitone); beyond this a note reads as genuinely different, not intonation/vibrato
 
-# UNCALIBRATED. rate-my-take-spec.md §3 is explicit that finding a mapping
-# where "~60% reads rough and ~90% reads tight" is the spike's own job,
-# not something to guess at up front — this linear remap of the raw
-# pitch/timing blend onto [0, 100] is a starting point to test against
-# real takes, not a finished answer. Expect to replace these two numbers
-# once real recordings exist to judge against (see cmd_rate's printed
-# reminder of exactly that).
-RATE_CALIBRATION_FLOOR = 0.3   # raw blended score presumed to map to ~0%
-RATE_CALIBRATION_CEILING = 0.9  # raw blended score presumed to map to ~100%
+# First real-data calibration pass (rate-my-take-spec.md's third Update).
+# Still not "done" — one real Good/Bad pair is enough to move off the
+# original arbitrary 0.3/0.9 (which was never checked against anything
+# real), not enough to fit precisely. A real Good/Bad pair with monophonic
+# pitch-tracking (see RATE_PITCH_CENTS_WINDOW above) scored raw 0.688
+# (Good) and 0.572 (Bad) — a genuine but narrow gap. Deliberately NOT
+# fit exactly to those two numbers (e.g. floor/ceiling chosen so Good
+# lands on some target percentage and Bad on another): with only two data
+# points, any straight line can be solved to hit two arbitrary targets
+# exactly, which would prove nothing about whether the mapping
+# generalizes to a third take — that's overfitting, not calibration.
+# Instead these bracket the observed raw range with margin on both sides:
+# floor sits just below Bad's raw score (so Bad reads low but doesn't get
+# slammed to a literal 0%, leaving room below for a genuinely worse take
+# to still read lower), ceiling sits comfortably above Good's raw score
+# (so a better take than this "Good" one still has room to climb, rather
+# than every reasonably-good take maxing out at 100%). Needs more real
+# Good/Bad/Variation triples to tighten further — see cmd_rate's printed
+# reminder of exactly that.
+RATE_CALIBRATION_FLOOR = 0.55   # raw blended score presumed to map to ~0%
+RATE_CALIBRATION_CEILING = 0.80  # raw blended score presumed to map to ~100%
 RATE_OFFSET_SEARCH_MIN_QUALITY = 0.15  # below this, refine_offset's match is noise, not a real alignment
 
 
