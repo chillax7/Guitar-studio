@@ -2399,6 +2399,7 @@ function wireVolumeSlider() {
     // Audio.master.gain outright — no need to check tuner state here.
     if (Audio.master) Audio.master.gain.value = pct / 100;
   });
+  wireDoubleClickReset("volume-display", "volume-slider", 100);
 }
 
 // ---------------------------------------------------------------------------

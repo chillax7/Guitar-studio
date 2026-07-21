@@ -98,10 +98,46 @@ class FFT {
   }
 }
 
+// Periodic (DFT-even) Hann, denominator `size` — NOT the "symmetric"
+// textbook Hann (denominator `size - 1`, what you'd want for windowing a
+// standalone signal for spectral analysis). STFT overlap-add needs the
+// periodic form specifically; the symmetric form doesn't tile edge-to-edge
+// the same way and its constant-overlap-add sum has a small but real ripple
+// (measured: ~4e-5 relative, i.e. wrong but not the source of the audible
+// crackle below — see colaNormalization for that).
 function hannWindow(size) {
   const w = new Float32Array(size);
-  for (let i = 0; i < size; i++) w[i] = 0.5 - 0.5 * Math.cos((TWO_PI * i) / (size - 1));
+  for (let i = 0; i < size; i++) w[i] = 0.5 - 0.5 * Math.cos((TWO_PI * i) / size);
   return w;
+}
+
+// The real crackle/clipping bug: every sample gets windowed TWICE — once on
+// the way in (_regenerateBlock's analysis window) and once on the way out
+// (PVChannel.synthesize's synthesis window) — and overlap-added at
+// SYNTHESIS_HOP spacing. That's standard analysis+synthesis windowing for a
+// phase vocoder, but it means the reconstructed signal's amplitude is
+// scaled by whatever the WINDOW SQUARED sums to at that hop spacing, not by
+// 1 — and nothing here was ever dividing that back out. For a periodic Hann
+// at 4x overlap (2048/512, this file's numbers) that constant is exactly
+// 1.5: measured directly (a unit-amplitude 440Hz test tone through the real
+// worklet code came back peaking at 1.50, not 1.0) — every processed-mode
+// sample was ~50% too loud, which is more than enough headroom to clip
+// against downstream gain stages once several stems are summed at the
+// mixer, and clipping is exactly what "crackly, unlistenable" sounds like.
+// Computed from the actual window/hop (not hardcoded 1.5) so this stays
+// correct if either ever changes; COLA windows sum to the same constant at
+// every sample offset, so any one offset's sum is the answer, but summing
+// every offset and taking the max is a cheap safety margin against a window
+// that doesn't satisfy COLA as exactly as periodic Hann does.
+function colaNormalization(window, hop) {
+  const n = window.length;
+  let maxSum = 0;
+  for (let offset = 0; offset < hop; offset++) {
+    let sum = 0;
+    for (let i = offset; i < n; i += hop) sum += window[i] * window[i];
+    maxSum = Math.max(maxSum, sum);
+  }
+  return maxSum;
 }
 
 // One phase-vocoder channel: owns its own phase-continuity state (lastPhase/
@@ -192,6 +228,7 @@ class StretchProcessor extends AudioWorkletProcessor {
     super();
     this.fft = new FFT(FFT_SIZE);
     this.window = hannWindow(FFT_SIZE);
+    this.olaGain = colaNormalization(this.window, SYNTHESIS_HOP);
     this.channels = [new PVChannel(this.fft, this.window), new PVChannel(this.fft, this.window)];
 
     this.sourceChannels = null; // [Float32Array, Float32Array]
@@ -320,7 +357,11 @@ class StretchProcessor extends AudioWorkletProcessor {
 
     for (let ch = 0; ch < 2; ch++) {
       const ext = this.extended[ch];
-      this.outBlocks[ch].set(ext.subarray(0, BLOCK_SIZE));
+      const dst = this.outBlocks[ch];
+      // See colaNormalization above — without this, every processed-mode
+      // sample comes out ~1.5x too loud (double-windowed overlap-add,
+      // never scaled back down).
+      for (let i = 0; i < BLOCK_SIZE; i++) dst[i] = ext[i] / this.olaGain;
       ext.copyWithin(0, BLOCK_SIZE, BLOCK_SIZE + FFT_SIZE);
     }
     this.blockPos = 0;
