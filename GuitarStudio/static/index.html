@@ -856,9 +856,12 @@
 
           <section class="pa-card">
             <h3 id="ailab-scale-heading">Scales</h3>
-            <div class="ailab-mode-toggle" id="ailab-mode-toggle">
-              <button data-mode="chord" class="on">Per chord</button>
-              <button data-mode="song">Whole song</button>
+            <div class="ailab-mode-row">
+              <div class="ailab-mode-toggle" id="ailab-mode-toggle">
+                <button data-mode="chord" class="on">Per chord</button>
+                <button data-mode="song">Whole song</button>
+              </div>
+              <button id="ailab-follow-btn" class="ailab-follow-btn active" title="Track the playhead: the chord and scales below change as the song plays. Clicking a chord chip pins it and turns this off.">Follow song</button>
             </div>
             <div class="ailab-jumprow" id="ailab-jumprow"></div>
             <div class="ailab-legend">

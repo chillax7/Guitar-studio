@@ -1115,11 +1115,15 @@ switches between two lenses on the same data:
 
 - **Per chord** shows the scales that fit whichever chord region is
   currently selected in the ribbon above it (the same chords as the
-  Mixer's chord lane). Opening AI Lab — or switching tracks while it's
-  open — auto-selects the chord region under the current playhead, so you
-  don't have to hunt for it. Clicking a different chip re-picks that
-  chord's scales and seeks the playhead there, the same as the Mixer's own
-  chord lane.
+  Mixer's chord lane). By default it **follows the song**: as playback
+  moves from one chord region into the next, the selected chip and the
+  whole scale stack change with it — press play and watch which scales
+  fit *right now*. Clicking a chip **pins** that chord (following turns
+  off, and the click seeks the playhead there) so you can study one
+  chord while the song keeps moving; the **Follow song** button (green
+  when active, next to the Per chord/Whole song toggle) turns following
+  back on and snaps to whatever's under the playhead. Reopening AI Lab
+  always starts in follow mode.
 - **Whole song** shows the scales that fit the song's overall detected
   key instead of one chord at a time — the more useful default for a lot
   of soloing, since most of a song sits in one key regardless of which

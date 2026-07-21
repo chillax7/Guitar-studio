@@ -117,6 +117,19 @@ over real chord changes along with the noise. Worth a scoped look before
 or alongside §2 (Scale/Mode Advisor), which depends on chord-lane regions
 being clean enough to anchor a scale suggestion to.
 
+**Update: promoted to its own spec.** A second real user report ("way
+too busy and doesn't reflect the chords being played") plus a genre
+diagnosis (power-chord rock has no template to land on, so labels
+flicker between false maj/min) turned this from a scoped look into a
+proper rebuild — see **research/chord-detection-v2-spec.md** for the
+field research (Chordify/Chord ai/Moises, Chordino/NNLS, madmom,
+MIREX), the diagnosis, and the plan: Viterbi temporal smoothing (the
+(a) fix above, done the way the whole literature does it rather than
+majority vote), a power-chord "5" template, bass-stem-anchored roots,
+and cleaner chroma. Agreed acceptance song: "Too Much, Too Young, Too
+Fast" (Airbourne). The spec's CD-0 (AI Lab scales follow playback) has
+already shipped.
+
 ## 2. Scale/Mode Advisor — Tier 1, deterministic (V5-F2 · M)
 
 The AI Lab screen's actual MVP, and the reason chord detection had to come

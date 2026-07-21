@@ -35,7 +35,7 @@ const AILAB_SCALES_BY_KEY_MODE = {
   minor: ["minor", "minpent", "dorian", "blues"],
 };
 
-const AiLab = { mode: "chord", selectedIndex: null, panel: "scales" };
+const AiLab = { mode: "chord", selectedIndex: null, panel: "scales", follow: true };
 
 // V5-B1: Rate My Take — dry-recording state, isolated from Recorder
 // (recorder.js)'s regular take pipeline on purpose. A regular take mixes
@@ -204,6 +204,10 @@ function aiLabRenderRibbon() {
     if (symbol) {
       chip.addEventListener("click", () => {
         AiLab.selectedIndex = i;
+        // A click means "I want to study THIS chord" — pin it. Follow (the
+        // default) is for watching the stack change as the song plays;
+        // the Follow song button turns it back on.
+        aiLabSetFollow(false);
         seekTo(run.time);
         renderAiLab();
       });
@@ -215,6 +219,7 @@ function aiLabRenderRibbon() {
 }
 
 function aiLabRenderChordMode() {
+  document.getElementById("ailab-follow-btn").style.display = "";
   const runs = aiLabRenderRibbon();
   const readoutCard = document.getElementById("ailab-readout-card");
   const emptyHint = document.getElementById("ailab-empty-hint");
@@ -254,6 +259,8 @@ function aiLabRenderChordMode() {
 }
 
 function aiLabRenderSongMode() {
+  // One key for the whole song — nothing position-dependent to follow.
+  document.getElementById("ailab-follow-btn").style.display = "none";
   aiLabRenderRibbon(); // ribbon still shown/seekable, just not driving the stack
   document.getElementById("ailab-readout-card").style.display = "none";
   document.getElementById("ailab-scale-heading").textContent = "Scales for the whole song";
@@ -289,12 +296,44 @@ function refreshAiLabIfOpen() {
   renderAiLab();
 }
 
+// --- Follow mode: the scale stack tracks the playhead (chord-detection-v2
+// spec §6). Position-based, not playing-based, so scrubbing the timeline
+// while paused follows too. Throttled well below tick()'s frame rate
+// because a re-render rebuilds the ribbon + stack innerHTML — chord runs
+// change every few seconds, so 4 Hz is already generous.
+let aiLabFollowLastCheck = 0;
+
+function aiLabSetFollow(on) {
+  AiLab.follow = on;
+  const btn = document.getElementById("ailab-follow-btn");
+  if (btn) btn.classList.toggle("active", on);
+}
+
+function aiLabFollowTick(pos) {
+  if (!AiLab.follow || AiLab.panel !== "scales" || AiLab.mode !== "chord") return;
+  if (!document.getElementById("ailab-overlay").classList.contains("show")) return;
+  const now = performance.now();
+  if (now - aiLabFollowLastCheck < 250) return;
+  aiLabFollowLastCheck = now;
+  const runs = aiLabChordRuns();
+  if (!runs.length) return;
+  let idx = -1;
+  for (let i = 0; i < runs.length; i++) {
+    if (pos >= runs[i].time && pos < runs[i].end) { idx = i; break; }
+  }
+  if (idx >= 0 && idx !== AiLab.selectedIndex) {
+    AiLab.selectedIndex = idx;
+    renderAiLab();
+  }
+}
+
 function openAiLab() {
   document.getElementById("ailab-overlay").classList.add("show");
   document.getElementById("tonelab-overlay").classList.remove("show");
   document.getElementById("playalong-overlay").classList.remove("show");
   paSetActiveScreen("ailab-open-btn");
   AiLab.selectedIndex = null; // re-pick the chord under the playhead on open
+  aiLabSetFollow(true); // pinning is per-visit — a fresh open follows the song again
   if (AiLab.panel === "scales") renderAiLab();
   else aiLabRmtOpen();
 }
@@ -549,6 +588,17 @@ function wireAiLab() {
       AiLab.mode = btn.dataset.mode;
       renderAiLab();
     });
+  });
+
+  document.getElementById("ailab-follow-btn").addEventListener("click", () => {
+    const on = !AiLab.follow;
+    aiLabSetFollow(on);
+    if (on) {
+      // Snap straight to the chord under the playhead rather than waiting
+      // for the next run boundary to drift past.
+      AiLab.selectedIndex = null;
+      renderAiLab();
+    }
   });
 
   document.getElementById("ailab-rmt-record-btn").addEventListener("click", aiLabStartDryRecording);

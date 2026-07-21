@@ -2126,6 +2126,9 @@ function tick() {
     renderTimeDisplay(pos);
     renderTimelineSlider(pos);
     updateClickStem(pos); // BT-02
+    // ailab.js (loads after this file) — self-throttled, no-ops unless AI
+    // Lab is open in follow mode.
+    if (typeof aiLabFollowTick === "function") aiLabFollowTick(pos);
     if (Audio.playing) autoScrollToPlayhead(pos);
   }
   requestAnimationFrame(tick);

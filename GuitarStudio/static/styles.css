@@ -1376,6 +1376,15 @@ button:disabled:hover { filter: none; }
 .ailab-chord-name { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
 .ailab-key-name { font-size: 12px; color: var(--text-dim); }
 
+.ailab-mode-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.ailab-mode-row .ailab-mode-toggle { margin-bottom: 0; }
+.ailab-follow-btn {
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim);
+  font-size: 11.5px; font-weight: 600; padding: 7px 14px; border-radius: 7px; cursor: pointer;
+}
+.ailab-follow-btn:hover { filter: brightness(1.2); }
+.ailab-follow-btn.active { background: var(--success); border-color: var(--success); color: #fff; }
+
 .ailab-mode-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; margin-bottom: 12px; }
 .ailab-mode-toggle button {
   border: none; background: var(--panel-2); color: var(--text-dim); font-size: 11.5px; font-weight: 600;
