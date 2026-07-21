@@ -119,6 +119,8 @@ instead — open it directly in a browser, no server required.
 - [ ] **Backing Track card:** a small Play/Stop/timeline/Loop/Count-in card sits above the takes list, mirroring the Mixer and Play Along's own transport (same shared state, all three update together). **↓ Use current position as Offset** copies the current playhead position into the Offset field below — scrub or play to the solo's start, click it, and the Offset field updates without typing anything.
 - [ ] **Timing leniency:** small, ordinary timing variation (not sloppy playing, just normal human feel) should no longer tank the score the way it did before — a take that's consistently a few tens of milliseconds ahead/behind the reference should still score close to full timing credit, not get cut in half.
 - [ ] **Vibrato tolerance:** a note played with your own natural vibrato (not necessarily matching the reference recording's vibrato width/rate) should still score well on pitch — vibrato itself should not read as "wrong note."
+- [ ] **Pitch/timing breakdown:** the Result card shows "Pitch agreement: X% · Timing agreement: Y%" under the overall score — a surprising overall number should be explainable by looking at which of the two is dragging it down, rather than being a mystery.
+- [ ] **Discrimination check:** a genuinely bad take (wrong notes and/or erratic timing, not just ordinary human variation) should score clearly low — if a take you know is bad still comes back around 50% or higher, that's the scoring being too lenient again, not a one-off; note which of Pitch/Timing agreement is the inflated one.
 
 ## 7. Play Along — top strip
 

@@ -517,6 +517,14 @@ async function aiLabScoreTake() {
     const overallEl = document.getElementById("ailab-rmt-overall");
     overallEl.textContent = r.overall_pct !== null ? `Overall: ${r.overall_pct}%` : "Overall: --";
     overallEl.className = "ailab-rmt-overall " + aiLabRmtOverallClass(r.overall_pct);
+    // Raw 0-1 pitch/timing components, not run through the 0-100
+    // calibration stretch — deliberately shown alongside the overall
+    // number so a surprising score can be traced to one side of the 60/40
+    // blend specifically, instead of guessing.
+    const breakdownEl = document.getElementById("ailab-rmt-breakdown");
+    breakdownEl.textContent = (r.overall_pitch !== null && r.overall_timing !== null)
+      ? `Pitch agreement: ${(r.overall_pitch * 100).toFixed(0)}%  ·  Timing agreement: ${(r.overall_timing * 100).toFixed(0)}%`
+      : "";
     document.getElementById("ailab-rmt-heatmap-img").src =
       `/api/output?path=${encodeURIComponent(r.heatmap_path)}&t=${Date.now()}`;
     resultCard.style.display = "";

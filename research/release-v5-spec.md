@@ -376,6 +376,25 @@ about right, it was the underlying leniency of each that needed adjusting.
 The RMT go/no-go call is still outstanding, now with a scoring pass more
 likely to match real playing.
 
+**Update, the vibrato leniency overcorrected:** a genuinely bad take
+(wrong notes, not just normal variation) came back around 50% when it
+should have scored closer to 5%. Rather than guess at constants blind, a
+Pitch/Timing breakdown was added to the score result (both the API
+response and the AI Lab UI) so a surprising overall number can be
+diagnosed instead of just observed. A synthetic test (notes shifted 1-4
+semitones off, no real vibrato) then showed the vibrato-smoothing kernel
+from the previous update was the main culprit: at its original strength
+it inflated a wrong-note pitch score from 0.68 (no smoothing) to 0.84,
+while realistic ±30-50 cent vibrato scored ~0.98-0.99 either way and
+barely benefited from smoothing at all — only unrealistic 70-100 cent
+mistuning showed real benefit. The kernel was weakened substantially
+(keeping a small margin for that extreme case without meaningfully
+blurring wrong notes into right ones); the same synthetic bad-take
+scenario improved from 66.6% to 42.7%, a measured but not necessarily
+complete fix — synthetic pure-tone tests likely don't fully capture real
+guitar harmonic content, so the next real dry-take retest (now with the
+breakdown visible) is what actually closes this out.
+
 Also added, once it became clear finding "where the solo starts" without
 leaving the screen mattered in practice: a small Backing Track card on
 Rate My Take (Play/Stop/Loop/Count-in + a new scrub timeline), the same

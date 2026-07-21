@@ -1186,7 +1186,10 @@ switching back to the Mixer to find the spot first.
 4. **Score this take.** The result shows the overall percentage, how many
    beats actually scored, and a heatmap scoped to just the take's own
    span (not the whole song) — green means close agreement, red means
-   drift, gray means no confident read for that beat.
+   drift, gray means no confident read for that beat. A **Pitch
+   agreement / Timing agreement** breakdown appears under the overall
+   number, so a surprising score can be explained by which of the two is
+   dragging it down, rather than staying a mystery.
 
 **What the score is actually measuring:** a blend of pitch (60%) and
 timing (40%) agreement per beat, averaged across the take. Pitch compares

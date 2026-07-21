@@ -754,14 +754,27 @@ RATE_TIMING_WEIGHT = 0.4
 RATE_CONFIDENCE_FLOOR = 0.02  # reference RMS below this = no real signal to score against, excluded from the aggregate
 # Vibrato spreads a note's pitch content across its own neighboring semitone
 # bins in the chroma vector — two independent vibrato sweeps on "the same"
-# note (a real player's phrasing is never identical to the reference
-# recording's, even playing it well) don't line up bin-for-bin, which read
-# as pitch disagreement even though a listener would hear the same note.
-# A small circular smoothing kernel blurs each chroma bin's energy slightly
-# into its immediate neighbors before comparing, so being a bit sharp/flat
-# around a target note (any vibrato, not just matching Gary Moore's own
-# exact width/rate) costs less than getting the wrong note outright.
-CHROMA_VIBRATO_SMOOTH_KERNEL = (0.15, 0.70, 0.15)  # (prev semitone, self, next semitone)
+# note don't line up bin-for-bin, which can read as pitch disagreement even
+# though a listener hears the same note. A small circular smoothing kernel
+# blurs each chroma bin's energy slightly into its immediate neighbors
+# before comparing, so real player-to-player vibrato/intonation variance
+# costs a bit less than getting the wrong note outright.
+#
+# Deliberately weak, after measuring the tradeoff directly: a synthetic
+# genuinely-wrong-note take (root shifted 1-4 semitones, no vibrato at all)
+# scored pitch=0.68 with no smoothing, but 0.84 at the first version's
+# (0.15, 0.70, 0.15) weights — the smoothing was blurring wrong-note
+# discrimination away almost as much as it helped real vibrato, and
+# realistic vibrato/intonation wobble (+-30-50 cents, well under a full
+# semitone) barely benefited from smoothing at all either way (>=0.98 with
+# or without it) — raw chroma cosine similarity already tolerates that much
+# on its own, since it falls mostly within the same bin. The only case
+# smoothing meaningfully helped was extreme (70-100 cent) mistuning, which
+# reads more as playing sharp/flat than vibrato. Kept small rather than
+# removed entirely, as a modest safety margin for that extreme case,
+# without meaningfully compromising wrong-note discrimination the way the
+# original weights did.
+CHROMA_VIBRATO_SMOOTH_KERNEL = (0.05, 0.90, 0.05)  # (prev semitone, self, next semitone)
 
 # UNCALIBRATED. rate-my-take-spec.md §3 is explicit that finding a mapping
 # where "~60% reads rough and ~90% reads tight" is the spike's own job,
@@ -881,13 +894,21 @@ def score_take(take_path: Path, reference_path: Path, beats: list, offset_sec: f
         overall_raw = float(np.average(scores, weights=weights))
         span = RATE_CALIBRATION_CEILING - RATE_CALIBRATION_FLOOR
         overall_pct = max(0.0, min(100.0, (overall_raw - RATE_CALIBRATION_FLOOR) / span * 100)) if span > 0 else None
+        # Diagnostic breakdown, same weighting as overall_raw itself — lets
+        # a surprising overall score (e.g. "this is clearly a bad take, why
+        # is it scoring ~50?") be traced to pitch vs. timing specifically,
+        # rather than guessing which side of the 60/40 blend is the culprit.
+        overall_pitch = float(np.average([b["pitch"] for b in confident], weights=weights))
+        overall_timing = float(np.average([b["timing"] for b in confident], weights=weights))
     else:
-        overall_raw = overall_pct = None
+        overall_raw = overall_pct = overall_pitch = overall_timing = None
 
     return {
         "beats": beat_scores,
         "overall_raw": round(overall_raw, 3) if overall_raw is not None else None,
         "overall_pct": round(overall_pct, 1) if overall_pct is not None else None,
+        "overall_pitch": round(overall_pitch, 3) if overall_pitch is not None else None,
+        "overall_timing": round(overall_timing, 3) if overall_timing is not None else None,
     }
 
 
@@ -1606,6 +1627,8 @@ def cmd_rate(args: argparse.Namespace) -> None:
         print(f"Overall closeness: {result['overall_pct']}% "
               f"(raw blended score: {result['overall_raw']} — UNCALIBRATED, see "
               f"RATE_CALIBRATION_FLOOR/CEILING in backing_track.py)")
+        print(f"  Pitch (weight {RATE_PITCH_WEIGHT}): {result['overall_pitch']}   "
+              f"Timing (weight {RATE_TIMING_WEIGHT}): {result['overall_timing']}")
     else:
         print("Overall closeness: -- (every scored beat was below the reference-confidence floor; "
               "the reference guitar may be silent/very quiet throughout the scored range)")

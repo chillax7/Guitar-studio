@@ -1223,6 +1223,8 @@ def svc_rate_score(source_path: str, take_path: str, model: str, stem: str,
     return {
         "overall_pct": result["overall_pct"],
         "overall_raw": result["overall_raw"],
+        "overall_pitch": result["overall_pitch"],
+        "overall_timing": result["overall_timing"],
         "scored_count": len(scored),
         "total_count": len(result["beats"]),
         "used_offset": offset,
