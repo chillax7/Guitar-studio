@@ -1214,15 +1214,22 @@ switching back to the Mixer to find the spot first.
    dragging it down, rather than staying a mystery.
 
 **What the score is actually measuring:** a blend of pitch (60%) and
-timing (40%) agreement per beat, averaged across the take. Pitch compares
-the take's and the reference's note content directly, and tolerates
-ordinary vibrato — a slight sweep around the target note costs little,
-since nobody's vibrato is going to match the original recording's
-exactly. Timing compares how closely your note attacks land relative to
-the reference's, within a ±150ms window, with a gentle falloff rather
-than a harsh one — small, normal timing variation stays close to full
-credit; only a genuinely late or early attack drops off sharply near the
-edge of that window.
+timing (40%) agreement per beat, averaged across the take. For a single-
+note lead line, pitch is measured directly (the actual note being played,
+not just an aggregate "what pitches are roughly present" reading), so a
+genuinely wrong note reads as wrong rather than blending into whichever
+key the song's in; for a chord or rhythm part it falls back to comparing
+overall note content, since a single melodic pitch reading doesn't apply
+to a strum. Either way it tolerates ordinary vibrato — a slight sweep
+around the target note costs little, since nobody's vibrato is going to
+match the original recording's exactly. Timing compares how closely your
+note attacks land relative to the reference's, within a ±150ms window,
+with a gentle falloff rather than a harsh one — small, normal timing
+variation stays close to full credit; only a genuinely late or early
+attack drops off sharply near the edge of that window. Scoring a
+single-note solo take is noticeably slower than a chord/rhythm one (the
+per-note pitch check does more work) — expect it to take longer than the
+offset search alone did.
 
 Same honesty framing as everywhere else: this is a heuristic, not a
 verdict — judge it against what your own ears say happened, especially on

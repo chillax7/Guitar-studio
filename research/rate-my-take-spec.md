@@ -68,6 +68,51 @@ genuinely bigger redesign of the pitch metric, not a tuning knob, and not
 attempted yet pending a decision on scope (same kind of call as the
 phase-vocoder rewrite-vs-tune decision elsewhere this session).
 
+**Update — monophonic pitch-tracking implemented, user-proposed sanity
+tests added and passing.** The user proposed the right test before any
+more tuning: score the reference guitar stem against itself (should read
+~100%) and against itself with a 5-second offset (should read close to
+0%). Chroma alone failed this decisively — a 5-second-misaligned
+comparison of a solo against itself read as **59%** (pitch 0.73), because
+a solo that stays in one key/scale shares most of its pitch classes with
+any other few-second excerpt of itself; chroma is octave-blind and
+aggregates a whole beat window, exactly wrong for a single-note lead
+line. Same test with real pitch-tracking instead: **~100% at zero
+offset, ~5% at 5 seconds off** — matching what a listener would call it.
+
+Getting there took two iterations, not one: raw `librosa.pyin` F0
+comparison alone gave real discrimination on the actual Good/Bad take
+pair (mean pitch 0.41 vs. 0.10, vs. chroma's indistinguishable 0.84 vs.
+0.80) but was noisy — a home-recorded dry take has a worse SNR than the
+pristine separated reference stem, and low-confidence pyin frames (mid-
+bend, palm-muted transients, string noise) produced essentially random
+pitch estimates that occasionally tanked a well-played beat's score.
+Filtering to only high-confidence frames (`voiced_prob >=
+RATE_PITCH_VOICED_PROB_FLOOR`, 0.5) on both sides fixed this: median
+pitch agreement went to 0.84 (Good) vs. 0.00 (Bad) — a real, sharp
+separation, not just a directional one.
+
+Implemented in `score_take` as `_extract_confident_f0` (pyin, confidence-
+filtered, restricted to the take's own span of the reference rather than
+the whole file — pyin is meaningfully slower than chroma/onset) — used
+per-beat whenever BOTH sides have a confident monophonic reading; falls
+back to the existing chroma-cosine method otherwise (a chord strum, a
+palm-muted chug, near-silence), so chordal/rhythm-part scoring — the
+*other* real use case for this feature — is unaffected. Verified: a
+synthetic identical-chord-take-vs-itself test still returns a clean 100%
+via the fallback path.
+
+Real-world result on the actual Good/Bad take pair: **64.7% (Good) vs.
+45.3% (Bad)** — up from 80.7%/74.9% (timing-fix-only) and miles from the
+original 51.2%/48.7%. Not yet the user's ~80%/~5% ear-judgment split;
+`RATE_CALIBRATION_FLOOR`/`CEILING` are still the same UNCALIBRATED
+placeholders from R1a, now mapping a meaningfully different raw-score
+distribution than they were eyeballed against — deliberately **not**
+re-tuned against just these two data points (that's exactly the kind of
+overfit-to-one-example guessing this session has avoided everywhere
+else); a real calibration pass needs more than one real Good/Bad pair to
+judge against.
+
 **One-line pitch:** play a solo or rhythm part along to a song, hit stop,
 and get an honest "how close was that to the record?" readout — an
 overall percentage, per-section scores, and a timeline heatmap showing

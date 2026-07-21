@@ -1079,6 +1079,37 @@ RATE_CONFIDENCE_FLOOR = 0.02  # reference RMS below this = no real signal to sco
 # original weights did.
 CHROMA_VIBRATO_SMOOTH_KERNEL = (0.05, 0.90, 0.05)  # (prev semitone, self, next semitone)
 
+# Real-audio finding (rate-my-take-spec.md's Update): chroma cosine
+# similarity is octave-blind and averaged across a whole beat window, which
+# is exactly right for chords/rhythm but far too coarse for a monophonic
+# solo — proven with a "guitar stem vs. itself, 5 seconds misaligned"
+# sanity test, which SHOULD read as ~0% (completely different content) but
+# read as 59% on chroma alone, since a solo that stays in one key/scale
+# still shares most of its pitch classes with any other few-second excerpt
+# of itself. Real pitch-tracking (fundamental frequency, not aggregate
+# pitch-class energy) discriminates a specific wrong note the way a
+# listener does; the same sanity test reads ~100% at zero offset and ~0%
+# at 5 seconds off once real F0 comparison is used instead.
+#
+# Confidence filtering (RATE_PITCH_VOICED_PROB_FLOOR) turned out to matter
+# as much as the F0 tracking itself: a home-recorded dry take is noisier
+# than the pristine separated reference stem, and low-confidence pyin
+# frames (bends mid-slide, palm-muted transients, string noise, silence)
+# produce essentially random pitch estimates that read as wild "wrong
+# note" cents differences even on a genuinely well-played take if left
+# unfiltered. Measured directly on a real Good/Bad take pair: unfiltered
+# F0 gave mean pitch 0.41 (Good) vs. 0.10 (Bad) — real discrimination,
+# but noisy; filtering to only high-confidence frames on both sides
+# sharpened that to median 0.84 (Good) vs. 0.00 (Bad).
+#
+# A beat with no confident F0 reading on either side (a chord strum, a
+# palm-muted chug, near-silence) falls back to the chroma method above —
+# monophonic pitch tracking doesn't apply there, chroma still does.
+RATE_PITCH_FMIN_HZ = 82.4    # E2, low E string open
+RATE_PITCH_FMAX_HZ = 1318.5  # E6, generous headroom for high frets/bends
+RATE_PITCH_VOICED_PROB_FLOOR = 0.5  # pyin frames below this confidence are excluded, not just low-weighted
+RATE_PITCH_CENTS_WINDOW = 100  # cents (~1 semitone); beyond this a note reads as genuinely different, not intonation/vibrato
+
 # UNCALIBRATED. rate-my-take-spec.md §3 is explicit that finding a mapping
 # where "~60% reads rough and ~90% reads tight" is the spike's own job,
 # not something to guess at up front — this linear remap of the raw
@@ -1100,6 +1131,23 @@ def _smooth_chroma_for_vibrato(vec: "np.ndarray") -> "np.ndarray":
     return self_w * vec + prev_w * np.roll(vec, 1) + next_w * np.roll(vec, -1)
 
 
+def _extract_confident_f0(y: "np.ndarray", sr: int, time_offset: float) -> tuple:
+    """Monophonic pitch contour via pyin, confidence-filtered — see
+    RATE_PITCH_VOICED_PROB_FLOOR's docstring for why the filtering matters
+    as much as the tracking itself. Returns (f0_hz, times) with every
+    low-confidence/unvoiced frame already dropped, so callers never see
+    them. time_offset shifts the returned times into the same song-time
+    axis every other reading in score_take already uses (take audio needs
+    +offset_sec; a reference excerpt that doesn't start at song-time 0
+    needs its own excerpt start — same idiom as chroma/onset above)."""
+    import librosa
+
+    f0, _, voiced_prob = librosa.pyin(y, fmin=RATE_PITCH_FMIN_HZ, fmax=RATE_PITCH_FMAX_HZ, sr=sr)
+    times = librosa.times_like(f0, sr=sr) + time_offset
+    confident = ~np.isnan(f0) & (voiced_prob >= RATE_PITCH_VOICED_PROB_FLOOR)
+    return f0[confident], times[confident]
+
+
 def score_take(take_path: Path, reference_path: Path, beats: list, offset_sec: float = 0.0) -> dict:
     """offset_sec: take.wav's sample 0 corresponds to song-time offset_sec
     — substitutes here for the shared-transport-clock alignment the real
@@ -1113,11 +1161,19 @@ def score_take(take_path: Path, reference_path: Path, beats: list, offset_sec: f
     ref_y, _ = librosa.load(str(reference_path), sr=sr, mono=True)  # resampled to the take's rate
 
     if not beats or len(beats) < 2:
-        # No beat grid — fixed 0.5s windows, per spec §3's fallback.
-        duration = min(len(take_y) / sr - offset_sec, len(ref_y) / sr)
+        # No beat grid — fixed 0.5s windows, per spec §3's fallback. The
+        # overlap is bounded by the take's own duration and by however much
+        # of the reference remains after offset_sec (not the reference's
+        # full duration) — a take starting late in a long reference file
+        # would otherwise get a duration bigger than what's actually left
+        # to compare against, and negative "duration" was even possible on
+        # a real test (a fixed offset applied to a take longer than the
+        # remaining reference), silently producing 0 beats.
+        duration = min(len(take_y) / sr, len(ref_y) / sr - offset_sec)
         beats = list(np.arange(0, max(duration, 0), 0.5))
         if len(beats) < 2:
-            return {"beats": [], "overall_pct": None, "overall_raw": None}
+            return {"beats": [], "overall_pct": None, "overall_raw": None,
+                     "overall_pitch": None, "overall_timing": None}
 
     take_chroma = librosa.feature.chroma_cqt(y=take_y, sr=sr)
     take_chroma_t = librosa.frames_to_time(np.arange(take_chroma.shape[1]), sr=sr) + offset_sec
@@ -1128,6 +1184,20 @@ def score_take(take_path: Path, reference_path: Path, beats: list, offset_sec: f
     take_onset_t = librosa.frames_to_time(np.arange(len(take_onset)), sr=sr) + offset_sec
     ref_onset = librosa.onset.onset_strength(y=ref_y, sr=sr)
     ref_onset_t = librosa.frames_to_time(np.arange(len(ref_onset)), sr=sr)
+
+    # Monophonic pitch tracking (see RATE_PITCH_CENTS_WINDOW's docstring for
+    # why chroma alone is too coarse for a solo) — used per-beat below
+    # whenever both sides have a confident reading; falls back to chroma
+    # otherwise (a chord strum, a palm-muted chug, near-silence). pyin is
+    # meaningfully slower than chroma/onset, so it only ever runs over the
+    # take's own span of the reference (beats is already trimmed to that
+    # span by the caller — trim_beats_to_take_span) rather than the whole
+    # reference file, which can be several minutes for one scored take.
+    ref_pitch_lo = max(0.0, beats[0] - 1.0)
+    ref_pitch_hi = min(len(ref_y) / sr, beats[-1] + 1.0)
+    ref_y_for_pitch = ref_y[int(ref_pitch_lo * sr):int(ref_pitch_hi * sr)]
+    take_f0, take_f0_t = _extract_confident_f0(take_y, sr, offset_sec)
+    ref_f0, ref_f0_t = _extract_confident_f0(ref_y_for_pitch, sr, ref_pitch_lo)
     onset_hop_sec = librosa.frames_to_time(1, sr=sr)
 
     lag_window_sec = RATE_ONSET_LAG_WINDOW_MS / 1000
@@ -1139,11 +1209,22 @@ def score_take(take_path: Path, reference_path: Path, beats: list, offset_sec: f
             beat_scores.append({"time": round(float(start), 3), "score": None, "confidence": 0.0})
             continue
 
-        take_c = _smooth_chroma_for_vibrato(take_chroma[:, take_mask].mean(axis=1))
-        ref_c = _smooth_chroma_for_vibrato(ref_chroma[:, ref_mask].mean(axis=1))
-        take_norm, ref_norm = np.linalg.norm(take_c), np.linalg.norm(ref_c)
-        pitch_score = (float(np.dot(take_c, ref_c)) / (take_norm * ref_norm)) if take_norm > 0 and ref_norm > 0 else 0.0
-        pitch_score = max(0.0, min(1.0, pitch_score))
+        take_f0_beat = take_f0[(take_f0_t >= start) & (take_f0_t < end)]
+        ref_f0_beat = ref_f0[(ref_f0_t >= start) & (ref_f0_t < end)]
+        if len(take_f0_beat) and len(ref_f0_beat):
+            # Confident monophonic pitch on both sides — compare the actual
+            # note, not aggregate pitch-class energy (see
+            # RATE_PITCH_CENTS_WINDOW's docstring for why this matters).
+            cents = 1200 * np.log2(np.median(take_f0_beat) / np.median(ref_f0_beat))
+            pitch_score = max(0.0, 1.0 - (abs(cents) / RATE_PITCH_CENTS_WINDOW) ** 2)
+        else:
+            # No confident monophonic reading on one or both sides (a chord,
+            # a palm-muted chug, near-silence) — chroma still applies here.
+            take_c = _smooth_chroma_for_vibrato(take_chroma[:, take_mask].mean(axis=1))
+            ref_c = _smooth_chroma_for_vibrato(ref_chroma[:, ref_mask].mean(axis=1))
+            take_norm, ref_norm = np.linalg.norm(take_c), np.linalg.norm(ref_c)
+            pitch_score = (float(np.dot(take_c, ref_c)) / (take_norm * ref_norm)) if take_norm > 0 and ref_norm > 0 else 0.0
+            pitch_score = max(0.0, min(1.0, pitch_score))
 
         # Interpolate both onset envelopes onto one shared, fine time grid
         # covering this beat + the lag search margin, rather than
