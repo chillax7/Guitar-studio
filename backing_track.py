@@ -1319,7 +1319,8 @@ def cmd_mix(args: argparse.Namespace) -> None:
     print(f"Backing track written to: {out_path}")
 
 
-def _render_rate_heatmap(beat_scores: list, out_path: Path, take_name: str, song_name: str) -> None:
+def _render_rate_heatmap(beat_scores: list, out_path: Path, take_name: str, song_name: str,
+                          overall_pct: float = None) -> None:
     import matplotlib
     matplotlib.use("Agg")  # headless — no display server needed, this just writes a PNG
     import matplotlib.pyplot as plt
@@ -1339,6 +1340,15 @@ def _render_rate_heatmap(beat_scores: list, out_path: Path, take_name: str, song
     ax.set_xlabel("Song time (s)")
     ax.set_title(f"Rate My Take spike — {take_name} vs. {song_name}\n"
                  f"green = agreement, red = drift, gray = no confident read")
+
+    # Overall closeness front and center — the actual go/no-go number
+    # (rate-my-take-spec.md §6), not just buried in the console output the
+    # heatmap is meant to be judged alongside.
+    score_label = f"{overall_pct}%" if overall_pct is not None else "--"
+    ax.text(0.99, 0.97, f"Overall: {score_label}", transform=ax.transAxes,
+            ha="right", va="top", fontsize=15, fontweight="bold", color="#1a1a1a",
+            bbox=dict(boxstyle="round,pad=0.35", facecolor="white", edgecolor="#333333", alpha=0.9))
+
     fig.colorbar(im, ax=ax, orientation="horizontal", pad=0.35, label="per-beat agreement (raw, uncalibrated)")
     fig.tight_layout()
     fig.savefig(str(out_path), dpi=150)
@@ -1513,6 +1523,32 @@ def cmd_rate(args: argparse.Namespace) -> None:
             print(f"\n--offset-search refined {args.offset}s -> {refined['offset']}s (match quality {refined['quality']}).")
             offset = refined["offset"]
 
+    if beats:
+        # A take is usually a short section of a full song (a solo, a
+        # verse) — scoring/rendering against the WHOLE song's beat grid
+        # produced one gray (unscored) entry per beat outside the take's
+        # actual span, drowning the real result in noise on both the
+        # printed table and the heatmap. Trim to just the beats bounding
+        # the take's actual time range: the last beat at-or-before the
+        # take's start (so the first window still starts in the right
+        # place) through the first beat at-or-after its end (so the last
+        # window has a real closing edge, not a hard cut mid-window).
+        take_info = sf.info(str(take_path))
+        take_duration = take_info.frames / take_info.samplerate
+        end_time = offset + take_duration
+        idx_start = 0
+        for i, b in enumerate(beats):
+            if b <= offset:
+                idx_start = i
+            else:
+                break
+        idx_end = len(beats)
+        for i, b in enumerate(beats):
+            if b >= end_time:
+                idx_end = i + 1
+                break
+        beats = beats[idx_start:idx_end] or None
+
     result = score_take(take_path, reference_path, beats, offset_sec=offset)
     beat_scores = result["beats"]
     scored = [b for b in beat_scores if b["score"] is not None]
@@ -1537,7 +1573,7 @@ def cmd_rate(args: argparse.Namespace) -> None:
             print(f"{b['time']:8.2f}  {b['score']:6.3f}  {b['pitch']:6.3f}  {b['timing']:6.3f}  {b['confidence']:6.4f}")
 
     out_path = Path(args.out) if args.out else take_path.with_name(f"{take_path.stem}_rate_heatmap.png")
-    _render_rate_heatmap(beat_scores, out_path, take_path.name, song_path.name)
+    _render_rate_heatmap(beat_scores, out_path, take_path.name, song_path.name, result["overall_pct"])
     print(f"\nHeatmap written to: {out_path}")
     print("\nGo/no-go call (rate-my-take-spec.md §6): does this ranking and heatmap match what your "
           "ears say happened? That judgment call is the actual point of this command — nothing above "
