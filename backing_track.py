@@ -115,8 +115,14 @@ ANALYSIS_FILE = "analysis.json"
 # beat (chord-detection-v2-spec.md CD-2); v8: detect_chords' chroma now
 # gets harmonic/percussive separation, tuning estimation, and log
 # compression before template matching (CD-3), and gets a small bonus
-# toward whatever root the isolated bass stem agrees with each beat (CD-4).
-ANALYSIS_VERSION = 8
+# toward whatever root the isolated bass stem agrees with each beat (CD-4);
+# v9: the CD-2 power-chord gate now also suppresses maj/min/7 (not just
+# enables "5" to compete) when a beat's third is genuinely absent — real
+# distorted power chords carry incidental harmonic/distortion energy near
+# a flat 7th even with no 3rd at all, and the "7" template being a
+# superset of "5"'s two bins kept winning anyway (real user report: power
+# chords showing up as "7" almost everywhere instead of "5").
+ANALYSIS_VERSION = 9
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -543,14 +549,29 @@ def _apply_bass_root_bonus(scores: "np.ndarray", bass_window_chroma: "np.ndarray
 
 
 def _gate_power_chord_scores(scores: "np.ndarray", window_chroma: "np.ndarray") -> None:
-    """CD-2: suppresses each root's "5" template score in place unless a
-    third is genuinely absent at that root (CHORD_POWER_THIRD_ABSENCE_RATIO's
-    docstring above has the full reasoning). window_chroma is the same
-    per-beat chroma window detect_chords already computed — energy ratios
-    are scale-invariant, so it doesn't matter whether it's been normalized
-    yet. Suppressed scores are set below every real template's possible
-    range (cosine similarity of non-negative vectors is >= 0) so a gated
-    "5" can never win, including against the N/no-chord state."""
+    """CD-2 (real-song fix): a third-present/absent gate has to cut both
+    ways, not just one. The original version of this only ever suppressed
+    "5" when a third WAS present — it never stopped maj/min/7 from
+    winning anyway when a third was genuinely ABSENT. That looked fine on
+    synthetic tests (a bare root+fifth vector has nothing else to match),
+    but on real distorted-guitar audio a bare power chord still carries
+    incidental harmonic/distortion energy near a flat 7th (an
+    intermodulation artifact of playing a root and its fifth through
+    distortion, not a played note) — so the "7" template (root, 3rd, 5th,
+    b7), being a superset of "5"'s two bins plus that one, kept
+    out-scoring "5" even with zero actual third. Real user report: power
+    chords showing up as "7" almost everywhere instead of "5". Fixed by
+    making the gate symmetric: when a root's third is genuinely absent,
+    every OTHER template that root could compete under (maj/min/7, all of
+    which require a 3rd) gets suppressed too, so "5" wins outright instead
+    of merely being allowed to compete.
+
+    window_chroma is the same per-beat chroma window detect_chords
+    already computed — energy ratios are scale-invariant, so it doesn't
+    matter whether it's been normalized yet. Suppressed scores are set
+    below every real template's possible range (cosine similarity of
+    non-negative vectors is >= 0) so a gated candidate can never win,
+    including against the N/no-chord state."""
     for root_pc in range(12):
         root_fifth_energy = window_chroma[root_pc] + window_chroma[(root_pc + 7) % 12]
         idx5 = CHORD_POWER_TEMPLATE_INDEX[root_pc]
@@ -560,8 +581,14 @@ def _gate_power_chord_scores(scores: "np.ndarray", window_chroma: "np.ndarray") 
         minor3 = window_chroma[(root_pc + 3) % 12]
         major3 = window_chroma[(root_pc + 4) % 12]
         threshold = CHORD_POWER_THIRD_ABSENCE_RATIO * root_fifth_energy
-        if minor3 >= threshold or major3 >= threshold:
+        third_present = minor3 >= threshold or major3 >= threshold
+        if third_present:
             scores[idx5] = -1.0
+        else:
+            for quality in CHORD_QUALITY_INTERVALS:
+                if quality == "5":
+                    continue
+                scores[CHORD_TEMPLATE_INDEX[(KEY_NOTE_NAMES[root_pc], quality)]] = -1.0
 
 
 def _decode_chord_sequence(raw_scores: "np.ndarray") -> list[tuple]:

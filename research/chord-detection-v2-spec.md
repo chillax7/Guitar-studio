@@ -286,6 +286,42 @@ CD-1's test now decodes as three correctly-rooted `5` chips instead of
 `min`/`maj`/`maj`. Real-song tuning of the 0.2 threshold against actual
 guitar tone is still CD-5's job.
 
+**CD-5 finding, first real-song pass ("Too Much, Too Young, Too Fast"):**
+power chords were showing up as "7" almost everywhere instead of "5".
+Root cause: the gate above only ever suppressed "5" (the "third present"
+branch) — it never suppressed maj/min/7 in the "third absent" branch, so
+they stayed free to compete anyway. On synthetic bare-root+fifth vectors
+that never mattered (nothing else for maj/min/7 to match), but real
+distorted guitar carries genuine incidental harmonic/distortion energy
+near a flat 7th even on a true power chord (an intermodulation artifact
+of playing a root and its fifth through distortion, not a played note) —
+and the "7" template (root, 3rd, 5th, b7) is a strict superset of "5"'s
+two bins plus that one, so it kept winning on real audio specifically.
+Fixed by making the gate symmetric: when a root's third is genuinely
+absent, maj/min/7 are now suppressed for that root too, so "5" wins
+outright rather than merely being allowed to compete. Re-verified with a
+new synthetic test built specifically to reproduce this: a bare power
+chord with added b7-bin energy up to 1.2x the root/fifth level still
+decodes as "5" at every level tested; real maj/min/7 triads (where a
+third genuinely is present) still decode correctly; the CD-1 A5→D5→E5
+regression test still holds at a realistic noise level. `ANALYSIS_VERSION`
+bumped 8→9.
+
+Two more things flagged from that same first real-song pass, **not yet
+acted on** pending either more evidence or the actual audio file itself:
+the lane read as noticeably static in places (many beats held on one A7 —
+now presumably A5 after the above fix, but the *run length* itself is a
+separate question from its label) and AI Lab's Follow mode appeared
+stuck on one chord. Both are consistent with either (a) a genuinely long
+riff hold that the song really does have, or (b) `CHORD_SELF_TRANSITION_P`
+(0.88) over-smoothing real changes into one run — and Follow mode has
+nothing to move between if there's genuinely only one run to follow, so
+it may not be an independent bug at all. Deliberately not tuning
+`CHORD_SELF_TRANSITION_P` blind without real evidence (same reasoning as
+the Rate My Take scoring saga: add visibility before guessing at
+constants) — needs either the actual audio file or a concrete count of
+how many real chord changes the lane is merging together.
+
 **CD-3 and CD-4 shipped together** (both are chroma-quality changes
 upstream of CD-1/CD-2's decode, easiest to land and re-test as one
 pass). `_compute_chord_chroma` now runs `librosa.effects.harmonic`
