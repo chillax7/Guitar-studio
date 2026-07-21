@@ -1413,6 +1413,10 @@ button:disabled:hover { filter: none; }
 .ailab-scale-block-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 .ailab-scale-block-head .name { font-size: 14px; font-weight: 700; }
 .ailab-scale-block-head .why { font-size: 11px; color: var(--text-dim); }
+.ailab-scale-badge {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+  padding: 2px 7px; border-radius: 10px; background: var(--accent); color: #fff;
+}
 .ailab-scale-block + .ailab-scale-block { border-top: 1px solid var(--border); padding-top: 16px; }
 
 .ailab-key-region-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 2px; }

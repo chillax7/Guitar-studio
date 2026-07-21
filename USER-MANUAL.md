@@ -1129,6 +1129,19 @@ switches between two lenses on the same data:
   when active, next to the Per chord/Whole song toggle) turns following
   back on and snaps to whatever's under the playhead. Reopening AI Lab
   always starts in follow mode.
+
+  The song's overall key scale is always pinned as the **top** entry in
+  the stack, badged **Whole song**, regardless of which chord is
+  selected — it stays valid basically everywhere in the song (bar a real
+  key change or an unusually complex bridge), so it's worth having in
+  view at a glance rather than only in Whole song mode. It leads with the
+  single most universally-safe pentatonic for the key (minor pentatonic
+  for a minor-key song, major pentatonic for major) — rock and blues
+  lead over a bare power chord favors a minor-leaning scale far more
+  often than major, matching the same reasoning a "5" chord's own scale
+  suggestions already use. If the current chord's own top suggestion
+  happens to be that exact same root and scale, it isn't shown twice —
+  that one entry just carries the **Whole song** badge instead.
 - **Whole song** shows the scales that fit the song's overall detected
   key instead of one chord at a time — the more useful default for a lot
   of soloing, since most of a song sits in one key regardless of which

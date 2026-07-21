@@ -39,6 +39,13 @@ const AILAB_SCALES_BY_KEY_MODE = {
   major: ["major", "majpent"],
   minor: ["minor", "minpent", "dorian", "blues"],
 };
+// Per-chord (Follow) mode's permanently-pinned "always valid" scale: the
+// single most universally-safe choice for the whole song's key, not the
+// full per-key list above — a pentatonic, not the 7-note scale, since
+// that's the classic "works over almost anything in this key" pick for
+// rock/blues lead (same reasoning AILAB_SCALES_BY_QUALITY.5 already
+// leads with minor pentatonic over a bare power chord).
+const AILAB_SAFE_SCALE_BY_KEY_MODE = { major: "majpent", minor: "minpent" };
 
 const AiLab = { mode: "chord", selectedIndex: null, panel: "scales", follow: true };
 
@@ -141,16 +148,24 @@ function aiLabRootPc(rootName, semitones) {
   return ((idx + semitones) % 12 + 12) % 12;
 }
 
-function aiLabRenderScaleStack(rootName, rootPc, scaleList) {
+// entries: [{ rootName, rootPc, scaleKey, badge? }] — a flat list rendered
+// top to bottom in order, so a caller can pin an "always valid" entry
+// (a different root than the rest, e.g. the whole song's key) ahead of a
+// chord-specific list without those two ever being the same root/scale.
+// Indexed by position (not scaleKey) since the same scale can legitimately
+// appear twice (a chord's own suggestion happening to equal the pinned
+// whole-song scale further down would collide on a scaleKey-based id).
+function aiLabRenderScaleStack(entries) {
   const jumpEl = document.getElementById("ailab-jumprow");
   jumpEl.innerHTML = "";
   const jumpFrag = document.createDocumentFragment();
-  scaleList.forEach((k) => {
+  entries.forEach((entry, i) => {
+    const scale = AILAB_SCALES[entry.scaleKey];
     const btn = document.createElement("button");
     btn.className = "ailab-scale-chip";
-    btn.innerHTML = `<span class="ailab-dot"></span>${AILAB_SCALES[k].name}`;
+    btn.innerHTML = `<span class="ailab-dot"></span>${entry.rootName} ${scale.name}`;
     btn.addEventListener("click", () => {
-      const target = document.getElementById(`ailab-block-${k}`);
+      const target = document.getElementById(`ailab-block-${i}`);
       if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     jumpFrag.appendChild(btn);
@@ -160,17 +175,18 @@ function aiLabRenderScaleStack(rootName, rootPc, scaleList) {
   const stackEl = document.getElementById("ailab-scale-stack");
   stackEl.innerHTML = "";
   const stackFrag = document.createDocumentFragment();
-  scaleList.forEach((k) => {
-    const scale = AILAB_SCALES[k];
+  entries.forEach((entry, i) => {
+    const scale = AILAB_SCALES[entry.scaleKey];
     const block = document.createElement("div");
     block.className = "ailab-scale-block";
-    block.id = `ailab-block-${k}`;
+    block.id = `ailab-block-${i}`;
     block.innerHTML = `
       <div class="ailab-scale-block-head">
-        <span class="name">${rootName} ${scale.name}</span>
+        <span class="name">${entry.rootName} ${scale.name}</span>
+        ${entry.badge ? `<span class="ailab-scale-badge">${entry.badge}</span>` : ""}
         <span class="why">— ${scale.why}</span>
       </div>
-      <div class="ailab-fretboard-wrap">${aiLabFretboardSVG(rootPc, [k])}</div>
+      <div class="ailab-fretboard-wrap">${aiLabFretboardSVG(entry.rootPc, [entry.scaleKey])}</div>
     `;
     stackFrag.appendChild(block);
   });
@@ -260,7 +276,28 @@ function aiLabRenderChordMode() {
   const rootName = transposedKeyName(run.root, semitones) || run.root;
   const rootPc = aiLabRootPc(run.root, semitones);
   const scaleList = AILAB_SCALES_BY_QUALITY[run.quality] || AILAB_SCALES_BY_QUALITY.maj;
-  aiLabRenderScaleStack(rootName, rootPc, scaleList);
+  const chordEntries = scaleList.map((k) => ({ rootName, rootPc, scaleKey: k }));
+
+  // The whole song's key scale stays valid basically everywhere (bar a
+  // real key change or an unusually harmonically complex bridge) — pin it
+  // to the top, permanently, ahead of whichever chord is currently
+  // selected, rather than making it something you'd only see in Whole
+  // song mode. If it's literally the same (root, scale) as the chord's
+  // own top suggestion, badge that entry instead of showing it twice.
+  const songKey = key && AILAB_SAFE_SCALE_BY_KEY_MODE[key.mode];
+  let entries = chordEntries;
+  if (songKey) {
+    const songRootName = transposedKeyName(key.key, semitones) || key.key;
+    const songRootPc = aiLabRootPc(key.key, semitones);
+    const first = chordEntries[0];
+    if (first && first.rootPc === songRootPc && first.scaleKey === songKey) {
+      first.badge = "Whole song";
+      entries = chordEntries;
+    } else {
+      entries = [{ rootName: songRootName, rootPc: songRootPc, scaleKey: songKey, badge: "Whole song" }, ...chordEntries];
+    }
+  }
+  aiLabRenderScaleStack(entries);
 }
 
 function aiLabRenderSongMode() {
@@ -284,7 +321,7 @@ function aiLabRenderSongMode() {
   const rootName = transposedKeyName(key.key, semitones) || key.key;
   const rootPc = aiLabRootPc(key.key, semitones);
   const scaleList = AILAB_SCALES_BY_KEY_MODE[key.mode] || AILAB_SCALES_BY_KEY_MODE.major;
-  aiLabRenderScaleStack(rootName, rootPc, scaleList);
+  aiLabRenderScaleStack(scaleList.map((k) => ({ rootName, rootPc, scaleKey: k })));
 }
 
 function renderAiLab() {
