@@ -1477,17 +1477,34 @@ def svc_save_rig_presets(presets: dict) -> dict:
 SETTINGS_FILE = PROJECTS_DIR / "_settings.json"
 
 
+# V5-R1 follow-up: a provider picker (Claude/Anthropic, Google AI Studio,
+# Groq) rather than one hardcoded provider — Google AI Studio and Groq both
+# have a genuinely free tier for a small/fast model, which matters for a
+# feature whose whole premise is "cheap enough for casual practice-session
+# use." Every provider here still needs its own API key (free tier isn't
+# "no key"); settings just grows one optional key per provider instead of
+# a single Anthropic-only one. Each provider's own default model is
+# next to its LICK_PROVIDERS entry below, not scattered through this file.
+LICK_PROVIDERS = {
+    "anthropic": {"key_field": "anthropic_api_key", "model": "claude-haiku-4-5-20251001"},
+    "google": {"key_field": "google_api_key", "model": "gemini-2.5-flash"},
+    "groq": {"key_field": "groq_api_key", "model": "llama-3.3-70b-versatile"},
+}
+
+
 def svc_load_settings() -> dict:
-    if not SETTINGS_FILE.exists():
-        return {"has_anthropic_key": False}
-    try:
-        raw = json.loads(SETTINGS_FILE.read_text())
-    except (json.JSONDecodeError, OSError):
-        return {"has_anthropic_key": False}
-    return {"has_anthropic_key": bool(raw.get("anthropic_api_key"))}
+    raw = {}
+    if SETTINGS_FILE.exists():
+        try:
+            raw = json.loads(SETTINGS_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            raw = {}
+    return {f"has_{provider}_key": bool(raw.get(info["key_field"])) for provider, info in LICK_PROVIDERS.items()}
 
 
-def svc_save_anthropic_key(api_key: str) -> dict:
+def svc_save_provider_key(provider: str, api_key: str) -> dict:
+    if provider not in LICK_PROVIDERS:
+        raise ApiError(400, f"Unknown provider '{provider}'. Expected one of: {', '.join(LICK_PROVIDERS)}")
     api_key = (api_key or "").strip()
     raw = {}
     if SETTINGS_FILE.exists():
@@ -1495,25 +1512,86 @@ def svc_save_anthropic_key(api_key: str) -> dict:
             raw = json.loads(SETTINGS_FILE.read_text())
         except (json.JSONDecodeError, OSError):
             raw = {}
+    key_field = LICK_PROVIDERS[provider]["key_field"]
     if api_key:
-        raw["anthropic_api_key"] = api_key
+        raw[key_field] = api_key
     else:
-        raw.pop("anthropic_api_key", None)  # empty submission clears it, same as any other saved setting
+        raw.pop(key_field, None)  # empty submission clears it, same as any other saved setting
     SETTINGS_FILE.write_text(json.dumps(raw, indent=2))
-    return {"ok": True, "has_anthropic_key": bool(api_key)}
+    return {"ok": True, f"has_{provider}_key": bool(api_key)}
 
 
-def _load_anthropic_key() -> str:
+def _load_provider_key(provider: str) -> str:
     if not SETTINGS_FILE.exists():
         return ""
     try:
         raw = json.loads(SETTINGS_FILE.read_text())
     except (json.JSONDecodeError, OSError):
         return ""
-    return (raw.get("anthropic_api_key") or "").strip()
+    return (raw.get(LICK_PROVIDERS[provider]["key_field"]) or "").strip()
 
 
-ANTHROPIC_LICK_MODEL = "claude-haiku-4-5-20251001"  # cheap-tier per release-v5-spec.md §7's cost estimate
+def _call_anthropic(prompt: str, api_key: str) -> str:
+    body = json.dumps({
+        "model": LICK_PROVIDERS["anthropic"]["model"],
+        "max_tokens": 400,
+        "messages": [{"role": "user", "content": prompt}],
+    }).encode("utf-8")
+    req = Request(
+        "https://api.anthropic.com/v1/messages", data=body, method="POST",
+        headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+    )
+    try:
+        with urlopen(req, timeout=30) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except HTTPError as exc:
+        raise ApiError(exc.code, f"Anthropic API error ({exc.code}): {exc.read().decode('utf-8', errors='replace')[:300]}")
+    except URLError as exc:
+        raise ApiError(502, f"Couldn't reach the Anthropic API: {exc.reason}")
+    return "".join(b.get("text", "") for b in payload.get("content", []) if b.get("type") == "text")
+
+
+def _call_google(prompt: str, api_key: str) -> str:
+    model = LICK_PROVIDERS["google"]["model"]
+    body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
+    req = Request(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
+        data=body, method="POST", headers={"content-type": "application/json"},
+    )
+    try:
+        with urlopen(req, timeout=30) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except HTTPError as exc:
+        raise ApiError(exc.code, f"Google AI Studio error ({exc.code}): {exc.read().decode('utf-8', errors='replace')[:300]}")
+    except URLError as exc:
+        raise ApiError(502, f"Couldn't reach Google AI Studio: {exc.reason}")
+    candidates = payload.get("candidates") or []
+    if not candidates:
+        raise ApiError(502, f"Google AI Studio returned no suggestion (possibly blocked by a safety filter): {payload}")
+    parts = candidates[0].get("content", {}).get("parts", [])
+    return "".join(p.get("text", "") for p in parts)
+
+
+def _call_groq(prompt: str, api_key: str) -> str:
+    # OpenAI-compatible chat completions shape.
+    body = json.dumps({
+        "model": LICK_PROVIDERS["groq"]["model"],
+        "max_tokens": 400,
+        "messages": [{"role": "user", "content": prompt}],
+    }).encode("utf-8")
+    req = Request(
+        "https://api.groq.com/openai/v1/chat/completions", data=body, method="POST",
+        headers={"authorization": f"Bearer {api_key}", "content-type": "application/json"},
+    )
+    try:
+        with urlopen(req, timeout=30) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except HTTPError as exc:
+        raise ApiError(exc.code, f"Groq API error ({exc.code}): {exc.read().decode('utf-8', errors='replace')[:300]}")
+    except URLError as exc:
+        raise ApiError(502, f"Couldn't reach the Groq API: {exc.reason}")
+    choices = payload.get("choices") or []
+    return choices[0]["message"]["content"] if choices else ""
 
 
 def _summarize_chord_progression(chords: list, max_runs: int = 40) -> str:
@@ -1538,17 +1616,23 @@ def _summarize_chord_progression(chords: list, max_runs: int = 40) -> str:
     return " - ".join(runs)
 
 
-def svc_lick_suggest(source_path: str, model: str, genre: str) -> dict:
+def svc_lick_suggest(source_path: str, model: str, genre: str, provider: str) -> dict:
     """V5-R1's research spike (release-v5-spec.md §3), delivered as an AI
     Lab panel rather than CLI-only — same underlying judgment call either
     way ("does this read as genuinely useful, specific-to-this-song
     phrasing advice, or generic filler"), just a faster way for the user to
     actually run it against real songs and judge honestly. Sends only
     derived musical data (key/tempo/chord progression + an optional
-    free-text style tag) — never raw audio — per §7's privacy posture."""
-    api_key = _load_anthropic_key()
+    free-text style tag) — never raw audio — per §7's privacy posture.
+
+    `provider` picks which of LICK_PROVIDERS actually gets called — same
+    prompt either way, since the gate question ("is this genuinely useful
+    phrasing advice") doesn't change with which model answers it."""
+    if provider not in LICK_PROVIDERS:
+        raise ApiError(400, f"Unknown provider '{provider}'. Expected one of: {', '.join(LICK_PROVIDERS)}")
+    api_key = _load_provider_key(provider)
     if not api_key:
-        raise ApiError(400, "No Anthropic API key saved yet — add one in AI Lab's Lick Ideas panel first.")
+        raise ApiError(400, f"No {provider} API key saved yet — add one in AI Lab's Lick Ideas panel first.")
 
     input_path = resolve_source_path(source_path)
     out_dir = engine.track_stem_dir(input_path, model)
@@ -1583,34 +1667,14 @@ def svc_lick_suggest(source_path: str, model: str, genre: str) -> dict:
         "around\", \"when it shifts to F#m\")."
     )
 
-    body = json.dumps({
-        "model": ANTHROPIC_LICK_MODEL,
-        "max_tokens": 400,
-        "messages": [{"role": "user", "content": prompt}],
-    }).encode("utf-8")
-    req = Request(
-        "https://api.anthropic.com/v1/messages", data=body, method="POST",
-        headers={
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-    )
-    try:
-        with urlopen(req, timeout=30) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-    except HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise ApiError(exc.code, f"Anthropic API error ({exc.code}): {detail[:300]}")
-    except URLError as exc:
-        raise ApiError(502, f"Couldn't reach the Anthropic API: {exc.reason}")
-
-    text = "".join(block.get("text", "") for block in payload.get("content", []) if block.get("type") == "text")
+    caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
+    text = caller(prompt, api_key)
     return {
         "suggestion": text.strip(),
         "key": f"{key['key']} {key['mode']}",
         "bpm": round(bpm, 1),
         "progression": progression,
+        "provider": provider,
     }
 
 
@@ -2121,15 +2185,16 @@ class Handler(BaseHTTPRequestHandler):
                 result = svc_save_playlists(body.get("playlists", {}))
                 return self._send_json(200, result)
 
-            if path == "/api/settings/anthropic_key":
+            if path == "/api/settings/provider_key":
                 body = self._read_json_body()
-                result = svc_save_anthropic_key(body.get("api_key", ""))
+                result = svc_save_provider_key(body.get("provider", ""), body.get("api_key", ""))
                 return self._send_json(200, result)
 
             if path == "/api/lick/suggest":
                 body = self._read_json_body()
                 result = svc_lick_suggest(
                     body.get("source_path", ""), body.get("model", engine.DEFAULT_MODEL), body.get("genre", ""),
+                    body.get("provider", "anthropic"),
                 )
                 return self._send_json(200, result)
 

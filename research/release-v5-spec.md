@@ -253,6 +253,27 @@ Still only one real song tested this way (via direct API calls to sanity
 -check the plumbing, not through the actual UI) — the real 3-song gate
 still needs the user trying it in AI Lab against songs they know well.
 
+**Update — provider picker.** User request: choose between Claude
+(Anthropic), Google AI Studio (Gemini), and Groq (Llama) rather than
+being locked to Anthropic — the latter two have a genuinely free tier,
+which matters for a feature whose whole premise is "cheap enough for
+casual practice-session use" (§7). Every provider still needs its own
+key (a free tier isn't "no key"); `server.py`'s `LICK_PROVIDERS` maps
+each to its own settings field and default model
+(`claude-haiku-4-5-20251001` / `gemini-2.5-flash` /
+`llama-3.3-70b-versatile`) and its own small API-calling function
+(`_call_anthropic`/`_call_google`/`_call_groq` — Anthropic's Messages
+API, Google's Generative Language API, Groq's OpenAI-compatible chat
+completions endpoint). The prompt itself is identical regardless of
+provider — the gate question doesn't change with which model answers
+it. AI Lab's Lick Ideas tab gained a provider dropdown; switching it
+swaps the key-status check, placeholder, and "where to get a key" hint
+to that provider specifically, with each provider's key stored and
+checked independently (verified: saving a key under one provider leaves
+the others' status untouched). This is a genuine opportunity to run the
+real 3-song gate against more than one model cheaply, not just against
+Claude.
+
 ## 4. "Explain this" chat panel (V5-F3 · S/M, ships only if §3's gate passes)
 
 A small conversational panel grounded in the current song's key/chords/

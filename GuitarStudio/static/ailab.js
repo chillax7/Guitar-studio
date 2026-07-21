@@ -621,20 +621,42 @@ async function aiLabScoreTake() {
 // Lick Ideas (V5-R1) — the Lick/Phrasing Assistant research spike, run from
 // AI Lab instead of CLI-only so real songs are actually easy to try. The
 // only feature in this app that makes a network call — opt-in, key-only,
-// text-only (release-v5-spec.md §7).
+// text-only (release-v5-spec.md §7). A provider picker (Claude, Google AI
+// Studio, Groq) since the latter two have a genuinely free tier — each
+// keeps its own separately-saved key server-side (server.py's
+// LICK_PROVIDERS), this file just needs to know their display info.
 // ---------------------------------------------------------------------------
 
+const AILAB_LICK_PROVIDERS = {
+  anthropic: { hasKeyField: "has_anthropic_key", placeholder: "sk-ant-...",
+    hint: "Get a key at console.anthropic.com (Settings → API Keys) and add a little billing credit — usage here costs fractions of a cent per request." },
+  google: { hasKeyField: "has_google_key", placeholder: "AIza...",
+    hint: "Get a free key at aistudio.google.com (Get API key) — Gemini's free tier covers casual use here." },
+  groq: { hasKeyField: "has_groq_key", placeholder: "gsk_...",
+    hint: "Get a free key at console.groq.com/keys — Groq's free tier covers casual use here." },
+};
+
+function aiLabLickCurrentProvider() {
+  return document.getElementById("ailab-lick-provider").value;
+}
+
 async function aiLabLickOpen() {
+  aiLabLickUpdateProviderHint();
   await aiLabLickRefreshKeyStatus();
+}
+
+function aiLabLickUpdateProviderHint() {
+  const info = AILAB_LICK_PROVIDERS[aiLabLickCurrentProvider()];
+  document.getElementById("ailab-lick-provider-hint").textContent = info.hint;
+  document.getElementById("ailab-lick-apikey").placeholder = info.placeholder;
 }
 
 async function aiLabLickRefreshKeyStatus() {
   const statusEl = document.getElementById("ailab-lick-key-status");
+  const info = AILAB_LICK_PROVIDERS[aiLabLickCurrentProvider()];
   try {
     const r = await Api.get("/api/settings");
-    statusEl.textContent = r.has_anthropic_key
-      ? "Key saved."
-      : "No key saved yet — get one at console.anthropic.com and paste it above.";
+    statusEl.textContent = r[info.hasKeyField] ? "Key saved." : "No key saved yet for this provider — see above.";
   } catch (e) {
     statusEl.textContent = `Couldn't check key status: ${e.message}`;
   }
@@ -643,10 +665,12 @@ async function aiLabLickRefreshKeyStatus() {
 async function aiLabLickSaveKey() {
   const input = document.getElementById("ailab-lick-apikey");
   const statusEl = document.getElementById("ailab-lick-key-status");
+  const provider = aiLabLickCurrentProvider();
+  const info = AILAB_LICK_PROVIDERS[provider];
   try {
-    const r = await Api.post("/api/settings/anthropic_key", { api_key: input.value });
+    const r = await Api.post("/api/settings/provider_key", { provider, api_key: input.value });
     input.value = ""; // never leave a saved secret sitting in a visible (even password-masked) input
-    statusEl.textContent = r.has_anthropic_key ? "Key saved." : "Key cleared.";
+    statusEl.textContent = r[info.hasKeyField] ? "Key saved." : "Key cleared.";
   } catch (e) {
     statusEl.textContent = `Couldn't save key: ${e.message}`;
   }
@@ -661,13 +685,14 @@ async function aiLabLickSuggest() {
     return;
   }
   const genre = document.getElementById("ailab-lick-genre").value;
+  const provider = aiLabLickCurrentProvider();
 
   btn.disabled = true;
-  hintEl.textContent = "Asking Claude for phrasing ideas…";
+  hintEl.textContent = "Asking for phrasing ideas…";
   resultCard.style.display = "none";
   try {
     const r = await Api.post("/api/lick/suggest", {
-      source_path: State.track, model: State.model, genre,
+      source_path: State.track, model: State.model, genre, provider,
     });
     hintEl.textContent = "";
     document.getElementById("ailab-lick-context").textContent = `${r.key} · ${r.bpm} BPM · ${r.progression}`;
@@ -721,6 +746,10 @@ function wireAiLab() {
 
   document.getElementById("ailab-lick-savekey-btn").addEventListener("click", aiLabLickSaveKey);
   document.getElementById("ailab-lick-suggest-btn").addEventListener("click", aiLabLickSuggest);
+  document.getElementById("ailab-lick-provider").addEventListener("change", async () => {
+    aiLabLickUpdateProviderHint();
+    await aiLabLickRefreshKeyStatus();
+  });
 }
 
 wireAiLab();

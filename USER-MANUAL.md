@@ -1238,19 +1238,32 @@ a first pass with a new song.
 ### 6.3 Lick Ideas
 
 An experimental research feature, and the **only part of this app that
-makes a network call** — everything else works fully offline. Sends
-Claude (Anthropic) a text description of the current song — detected
-key, tempo, and chord progression, never any audio — and asks for
-concrete lead-guitar phrasing ideas: target notes to land on over
-specific chords, call-and-response shapes, a technique to try at a
-particular moment.
+makes a network call** — everything else works fully offline. Sends a
+text description of the current song — detected key, tempo, and chord
+progression, never any audio — to a text LLM and asks for concrete
+lead-guitar phrasing ideas: target notes to land on over specific
+chords, call-and-response shapes, a technique to try at a particular
+moment.
 
-**Setting it up.** Get an API key at **console.anthropic.com** (Settings
-→ API Keys) and add a little billing credit — realistic usage here costs
-fractions of a cent per request. Paste the key into the field at the top
-of AI Lab's Lick Ideas tab and click **Save key**. It's stored locally in
-this app's own project folder, never committed to source control, and
-never sent anywhere except directly to Anthropic's API.
+**Choosing a provider.** A dropdown at the top of the Lick Ideas tab
+picks which LLM answers:
+
+- **Claude (Anthropic)** — get a key at **console.anthropic.com**
+  (Settings → API Keys) and add a little billing credit; realistic
+  usage here costs fractions of a cent per request.
+- **Google AI Studio (Gemini)** — get a free key at
+  **aistudio.google.com** (Get API key); the free tier covers casual
+  use here.
+- **Groq (Llama)** — get a free key at **console.groq.com/keys**; same
+  free-tier coverage.
+
+Each provider needs its own key (a free tier still means an API key,
+just no billing) and is saved separately — switching the dropdown shows
+that provider's own key status and where to get one, without touching
+whichever key you've saved for the others. Paste a key and click **Save
+key**. Every key is stored locally in this app's own project folder,
+never committed to source control, and never sent anywhere except
+directly to that provider's own API.
 
 **Using it.** Optionally type a style/genre tag (blues rock, metal, jazz
 fusion — whatever fits), then click **Get phrasing ideas**. The result

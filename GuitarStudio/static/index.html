@@ -963,17 +963,24 @@
         <div id="ailab-lickideas-panel" class="ailab-column" style="display:none;">
 
           <section class="pa-card">
-            <h3>Anthropic API key</h3>
-            <p class="hint">This is a research spike for phrasing suggestions from a text LLM (Claude Haiku) — the one feature in this app that makes a network call. Get a key at <strong>console.anthropic.com</strong> (Settings &rarr; API Keys), add a little billing credit, and paste it below. Stored locally in this app's own project folder, never committed to source control, never sent anywhere except directly to Anthropic's API.</p>
+            <h3>LLM provider &amp; API key</h3>
+            <p class="hint">This is a research spike for phrasing suggestions from a text LLM — the one feature in this app that makes a network call. Pick a provider, get a free/cheap API key from its own console, and paste it below. Each provider's key is stored separately (locally, in this app's own project folder — never committed to source control, never sent anywhere except directly to that provider's own API).</p>
+            <label>Provider</label>
+            <select id="ailab-lick-provider">
+              <option value="anthropic">Claude (Anthropic) — needs billing credit</option>
+              <option value="google">Google AI Studio (Gemini) — free tier</option>
+              <option value="groq">Groq (Llama) — free tier</option>
+            </select>
+            <p class="hint" id="ailab-lick-provider-hint"></p>
             <label>API key</label>
-            <input type="password" id="ailab-lick-apikey" placeholder="sk-ant-...">
+            <input type="password" id="ailab-lick-apikey" placeholder="">
             <button id="ailab-lick-savekey-btn">Save key</button>
             <p class="hint" id="ailab-lick-key-status"></p>
           </section>
 
           <section class="pa-card">
             <h3>Get phrasing ideas</h3>
-            <p class="hint">Sends this song's detected key, tempo, and chord progression (text only) to Claude and asks for concrete lead-guitar phrasing ideas — target notes, call-and-response shapes, a technique to try at a specific moment. Judge it honestly: does it feel specific to this song, or generic scale advice you already knew?</p>
+            <p class="hint">Sends this song's detected key, tempo, and chord progression (text only) to the selected provider and asks for concrete lead-guitar phrasing ideas — target notes, call-and-response shapes, a technique to try at a specific moment. Judge it honestly: does it feel specific to this song, or generic scale advice you already knew?</p>
             <label>Style/genre (optional)</label>
             <input type="text" id="ailab-lick-genre" placeholder="e.g. blues rock, metal, jazz fusion">
             <button id="ailab-lick-suggest-btn" class="primary">Get phrasing ideas</button>
