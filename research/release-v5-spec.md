@@ -302,14 +302,66 @@ the others' status untouched). This is a genuine opportunity to run the
 real 3-song gate against more than one model cheaply, not just against
 Claude.
 
-## 4. "Explain this" chat panel (V5-F3 · S/M, ships only if §3's gate passes)
+## 4. LLM assistant panel: Explain This + Practice Tips (V5-F3 · S/M, ships only if §3's gate passes)
 
-A small conversational panel grounded in the current song's key/chords/
-tempo: "why does this scale work here," "what's a ii–V–I," "what's the
-difference between this mode and that one." Reuses §3's LLM plumbing
-entirely — no new integration work, just a different prompt shape and a
-chat-style UI instead of a suggestion card. Pedagogical framing rather than
-a generation feature: it's meant to answer questions, not write parts.
+**Scoping update, post-M0/M2 shipping — two modes, one panel, not two more
+tabs.** AI Lab's tab bar is already three tabs deep (Scales / Rate My Take /
+Lick Ideas); a literal reading of §3's "Explain this" idea plus a new
+"Practice Tips" idea below would make five. Instead of tab sprawl,
+consolidate all three LLM-backed features (Lick Ideas, Explain This,
+Practice Tips) into Lick Ideas' existing tab, renamed **AI Assistant**, with
+a small mode selector at the top (same idiom as the provider dropdown
+already there) swapping only the prompt-building and input area — the
+provider/API-key section above it is genuinely shared and stays as-is.
+Nothing about the underlying plumbing changes: same `LICK_PROVIDERS`, same
+three `_call_anthropic`/`_call_google`/`_call_groq` functions, same
+per-provider stored key, same "derived song data only, never raw audio"
+privacy posture (§7). Only the prompt text and the input widget change per
+mode.
+
+**Mode 1 — Explain This.** A free-text question box grounded in the
+current song's key/chords/tempo: "why does this scale work here," "what's
+a ii–V–I," "what's the difference between this mode and that one." A row
+of a few clickable example prompts (not a fixed menu — just prefills the
+box) lowers the "what do I even ask" barrier without pretending this is a
+curated set of pre-baked questions. Single-shot Q→A to start, not a full
+multi-turn conversation with retained history — same phased-gate instinct
+as everything else here: prove a single grounded answer is actually useful
+before taking on conversation-state complexity (context window growth,
+"does turn 3 still remember the key") for a second version that may not be
+needed. Reuses §3's fabricated-bar-number fix (the prompt already tells
+the model there's no bar/measure data) since a free-text question is just
+as likely to invite a confidently wrong "bar 12" answer as a phrasing
+suggestion was.
+
+**Mode 2 — Practice Tips.** The one mode that isn't just Lick Ideas with a
+different prompt — it's the direct payoff of shipping Rate My Take (V5-B1)
+and Lick Ideas (V5-R1) as the same release: grounds its prompt in *this
+user's own* Rate My Take result for the current song, not just the song's
+static key/chords/tempo. Concretely: pull the take's per-beat pitch/timing
+scores (already computed by `score_take`, already surfaced as the heatmap),
+identify the weakest few beat regions, and summarize them by time and
+which side (pitch vs. timing) drove the low score — the same breakdown a
+guitarist already reads off the heatmap, just handed to the LLM as text
+instead of a color. Prompt asks for concrete practice exercises tied to
+those specific weak spots ("the timing drop around 0:45-0:52 suggests
+practicing that phrase at half speed with a metronome before rejoining
+tempo") rather than generic "practice scales" filler — same "does this
+feel specific or generic" honesty bar §3 already applies to phrasing
+ideas. Degrades honestly, not silently, when there's no take to ground on:
+if the current song has no Rate My Take result yet, the mode stays
+selectable but its button is disabled with an explanatory hint ("record
+and score a take first") rather than falling back to generic advice
+dressed up as personalized — a fallback that quietly gets worse defeats
+the entire point of this mode existing as something-other-than-Lick-Ideas.
+
+**Gate:** both modes ship under §3's same blind-comparison gate — genuinely
+additive over the user's own instincts, not correct-but-obvious filler.
+Practice Tips carries an extra bar on top: the practice suggestions have to
+demonstrably trace back to this take's actual weak beats (a guitarist
+should be able to look at the heatmap and the tip and see the connection),
+not just be generic technique advice that happens to be true of most
+solos.
 
 ## 5. Stretch, hard-gated: solo-skeleton generator (V5-F4 · XL, punt by default)
 
@@ -657,8 +709,12 @@ unchanged, this just sequences it against §9)
   something worth waiting on a formal gate for. M0 has since passed (see
   above), so this is no longer ahead of its own gate, just was for a
   while.
-- **M3 — AI Lab: LLM spike + Explain-this chat (§8's M3/M4).** *Gate:*
-  §3's blind-comparison call.
+- **M3 — AI Lab: LLM spike (Lick Ideas) + AI Assistant panel's two new
+  modes, Explain This and Practice Tips (§8's M3/M4, scoped as one
+  consolidated panel in §4's Update).** *Gate:* §3's blind-comparison call
+  — still outstanding for Lick Ideas itself (one real song tested via
+  direct API calls, not yet the real 3-song judged gate in the UI); Explain
+  This and Practice Tips don't get built until that gate passes.
 - **M4 — Hands-free rig: MIDI + multi-preset cycling (V5-B3).**
 - **M5 — Polish: Social export presets (V5-B4) + Artifact cleanup pass
   (V5-B2, timeboxed).**
