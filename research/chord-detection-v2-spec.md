@@ -307,20 +307,50 @@ third genuinely is present) still decode correctly; the CD-1 A5→D5→E5
 regression test still holds at a realistic noise level. `ANALYSIS_VERSION`
 bumped 8→9.
 
-Two more things flagged from that same first real-song pass, **not yet
-acted on** pending either more evidence or the actual audio file itself:
-the lane read as noticeably static in places (many beats held on one A7 —
-now presumably A5 after the above fix, but the *run length* itself is a
-separate question from its label) and AI Lab's Follow mode appeared
-stuck on one chord. Both are consistent with either (a) a genuinely long
-riff hold that the song really does have, or (b) `CHORD_SELF_TRANSITION_P`
-(0.88) over-smoothing real changes into one run — and Follow mode has
-nothing to move between if there's genuinely only one run to follow, so
-it may not be an independent bug at all. Deliberately not tuning
-`CHORD_SELF_TRANSITION_P` blind without real evidence (same reasoning as
-the Rate My Take scoring saga: add visibility before guessing at
-constants) — needs either the actual audio file or a concrete count of
-how many real chord changes the lane is merging together.
+Two more things flagged from that same first real-song pass — chord lane
+reading as noticeably static in places, and AI Lab's Follow mode
+appearing stuck on one chord — turned out to be worth revisiting once
+real evidence (a chord chart, the actual isolated guitar+bass stems) was
+in hand: see the CD-2 real-song fix below. The song genuinely does hold
+A5 for very long stretches in its verses (the chart confirms it — "Some
+people like to make all the rules" etc. is 8 lines of unchanging A5),
+so "static in places" was partly an accurate read, not purely
+over-smoothing; `CHORD_SELF_TRANSITION_P` (0.88) is unchanged pending
+still-real evidence it needs adjusting.
+
+**CD-2 real-song fix, with a chord chart + isolated stems as ground
+truth:** the same track's actual guitar.mp3/bass.mp3 stems (no drums,
+no vocals — exactly what `detect_chords` consumes) plus a chord chart
+(all power chords: A5/D5/G5/E5/C5, verses holding a single A5 for 8
+lines) gave real ground truth to test against, and the "5 mostly reads
+as 7" problem was still there even after the fix above. Root cause this
+time: the gate's third-absence *ratio* test runs on the same chroma
+template matching uses — CD-3's log-compressed chroma
+(`np.log1p(10 * chroma)`). log1p is monotonic, so it's safe for
+cosine-similarity matching and for `key_from_chords`' minor3-vs-major3
+*ordering* comparison, but a RATIO test is a different animal: log
+compression inflates a small bin's apparent share of a large bin's
+energy well past its real physical proportion. Measured: a genuine power
+chord with ~15% real harmonic bleed at the 3rd (clearly "no 3rd" by any
+reasonable reading) reads as ~19% after log compression — right at the
+gate's 20% threshold, tripping "third present" at bleed levels a real
+power chord actually produces. Fixed by giving `_compute_chord_chroma`
+a second return value (`chroma_raw`, pre-log-compression) and feeding
+that — not the compressed chroma — into `_gate_power_chord_scores`'
+ratio test specifically; everything else (template matching, the bass
+bonus, `chroma_mean`) keeps using the compressed chroma as before, since
+those only need ordering/cosine-similarity, not literal ratios.
+
+Result, on the real stems: quality distribution across the whole song
+went from `{'7': 290, '5': 112, 'maj': 16, 'min': 5}` to
+`{'7': 77, '5': 339, 'min': 7}` — power chords now dominate as they
+should, including two ~35-second stable A5 runs that line up with the
+chart's all-A5 verses. Not a perfect match to the chart everywhere (a
+handful of "7"/"min" beats remain, and section boundaries are
+approximate since this test used a rough beat grid, not the app's real
+drum-stem-driven one), but a clear, measured, ground-truth-validated
+improvement rather than another synthetic guess. `ANALYSIS_VERSION`
+bumped 9→10.
 
 **CD-3 and CD-4 shipped together** (both are chroma-quality changes
 upstream of CD-1/CD-2's decode, easiest to land and re-test as one

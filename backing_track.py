@@ -121,8 +121,14 @@ ANALYSIS_FILE = "analysis.json"
 # distorted power chords carry incidental harmonic/distortion energy near
 # a flat 7th even with no 3rd at all, and the "7" template being a
 # superset of "5"'s two bins kept winning anyway (real user report: power
-# chords showing up as "7" almost everywhere instead of "5").
-ANALYSIS_VERSION = 9
+# chords showing up as "7" almost everywhere instead of "5"); v10: CD-2's
+# gate now does its ratio test against raw, pre-log-compression chroma —
+# log1p (CD-3) inflates a small bin's apparent share of a large bin's
+# energy well past its real physical proportion, so on real distorted
+# guitar the gate was still tripping into "third present" at harmonic
+# bleed levels that are actually a genuine power chord (real user report,
+# with real isolated stems + a chord chart as ground truth this time).
+ANALYSIS_VERSION = 10
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -566,12 +572,17 @@ def _gate_power_chord_scores(scores: "np.ndarray", window_chroma: "np.ndarray") 
     which require a 3rd) gets suppressed too, so "5" wins outright instead
     of merely being allowed to compete.
 
-    window_chroma is the same per-beat chroma window detect_chords
-    already computed — energy ratios are scale-invariant, so it doesn't
-    matter whether it's been normalized yet. Suppressed scores are set
-    below every real template's possible range (cosine similarity of
-    non-negative vectors is >= 0) so a gated candidate can never win,
-    including against the N/no-chord state."""
+    window_chroma MUST be the pre-log-compression (raw, linear) chroma
+    window, not the compressed one template matching uses — this is a
+    ratio test, and log compression (CD-3) inflates a small bin's
+    apparent share of a large bin's energy well past its real physical
+    proportion (measured: ~15% real harmonic bleed at the 3rd reads as
+    ~19% after log1p(10x), nearly tripping this gate's 20% threshold —
+    see _compute_chord_chroma's docstring). Normalization doesn't matter
+    (ratios are scale-invariant), only the log compression does.
+    Suppressed scores are set below every real template's possible range
+    (cosine similarity of non-negative vectors is >= 0) so a gated
+    candidate can never win, including against the N/no-chord state."""
     for root_pc in range(12):
         root_fifth_energy = window_chroma[root_pc] + window_chroma[(root_pc + 7) % 12]
         idx5 = CHORD_POWER_TEMPLATE_INDEX[root_pc]
@@ -720,15 +731,27 @@ def _compute_chord_chroma(y: "np.ndarray", sr: int) -> tuple:
     most); explicit tuning estimation keeps a band that's slightly off
     A440 from smearing energy across two adjacent semitone bins instead of
     one; log compression stops a single loud frame from dominating its
-    beat window's averaged reading. Returns (chroma, frame_times)."""
+    beat window's averaged reading. Returns (chroma_compressed, chroma_raw,
+    frame_times) — chroma_raw (pre-log-compression) exists specifically
+    for CD-2's power-chord gate, which does a ratio test between bins.
+    log1p is monotonic, so it preserves ORDERING between bins (fine for
+    cosine template matching, and fine for key_from_chords' minor3-vs-major3
+    comparison) but distorts RATIOS between bins of very different
+    magnitude — it inflates a small bin's apparent share of a large bin's
+    energy well beyond its real, physical proportion (verified: a genuine
+    power chord with ~15% real harmonic bleed at the 3rd reads as ~19% in
+    log space, nearly tripping the gate's 20% threshold that was designed
+    against real physical proportions). A ratio test needs the raw
+    values; only cosine similarity and orderings can safely use the
+    compressed ones."""
     import librosa
 
     harmonic = librosa.effects.harmonic(y, margin=CHORD_HPSS_MARGIN)
     tuning = librosa.estimate_tuning(y=harmonic, sr=sr)
-    chroma = librosa.feature.chroma_cqt(y=harmonic, sr=sr, tuning=tuning)
-    chroma = np.log1p(CHORD_CHROMA_LOG_COMPRESSION_K * chroma)
+    chroma_raw = librosa.feature.chroma_cqt(y=harmonic, sr=sr, tuning=tuning)
+    chroma = np.log1p(CHORD_CHROMA_LOG_COMPRESSION_K * chroma_raw)
     frame_times = librosa.frames_to_time(np.arange(chroma.shape[1]), sr=sr)
-    return chroma, frame_times
+    return chroma, chroma_raw, frame_times
 
 
 def _beat_windowed_chroma(chroma: "np.ndarray", frame_times: "np.ndarray", beats: list) -> list:
@@ -781,9 +804,10 @@ def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"]
     for y in sources:
         mono[:len(y)] += y
 
-    chroma, frame_times = _compute_chord_chroma(mono, sr)
+    chroma, chroma_raw, frame_times = _compute_chord_chroma(mono, sr)
     chroma_mean = chroma.mean(axis=1)
     main_windows = _beat_windowed_chroma(chroma, frame_times, beats)
+    main_windows_raw = _beat_windowed_chroma(chroma_raw, frame_times, beats)  # CD-2's gate needs real (pre-log) ratios
 
     # CD-4: the bass stem states a chord's root more reliably than the full
     # mix — a small per-beat bonus toward whatever root the bass agrees
@@ -797,7 +821,7 @@ def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"]
     if bass_paths:
         try:
             bass_y, bass_sr = librosa.load(str(bass_paths[0]), sr=None, mono=True)
-            bass_chroma, bass_frame_times = _compute_chord_chroma(bass_y, bass_sr)
+            bass_chroma, _, bass_frame_times = _compute_chord_chroma(bass_y, bass_sr)
             bass_windows = _beat_windowed_chroma(bass_chroma, bass_frame_times, beats)
         except Exception:
             bass_windows = None
@@ -807,7 +831,7 @@ def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"]
         norm = np.linalg.norm(window_chroma)
         normed_chroma = window_chroma / norm if norm > 0 else window_chroma
         scores = CHORD_TEMPLATE_MATRIX @ normed_chroma
-        _gate_power_chord_scores(scores, window_chroma)  # CD-2 — only let "5" compete where no third is actually present
+        _gate_power_chord_scores(scores, main_windows_raw[i])  # CD-2 — ratio test needs real, pre-log-compression proportions
         if bass_windows is not None:
             _apply_bass_root_bonus(scores, bass_windows[i])  # CD-4
         raw_scores[i] = scores
