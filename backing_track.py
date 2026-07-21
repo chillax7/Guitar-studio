@@ -108,8 +108,12 @@ ANALYSIS_FILE = "analysis.json"
 # (real user report on real songs; see key_from_chords' docstring); v6:
 # detect_chords now Viterbi-decodes the whole beat sequence instead of an
 # independent per-beat argmax, fixing chord-lane flicker on ordinary chroma
-# noise (chord-detection-v2-spec.md CD-1; real user report: "way too busy").
-ANALYSIS_VERSION = 6
+# noise (chord-detection-v2-spec.md CD-1; real user report: "way too busy");
+# v7: detect_chords adds a "5" (power chord) template, gated to only win
+# where a beat's third is genuinely absent — a bare root+fifth no longer
+# gets force-labeled maj or min by whichever way overtone noise leans that
+# beat (chord-detection-v2-spec.md CD-2).
+ANALYSIS_VERSION = 7
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -446,8 +450,24 @@ CHORD_QUALITY_INTERVALS = {
     "maj": (0, 4, 7),
     "min": (0, 3, 7),
     "7": (0, 4, 7, 10),
+    "5": (0, 7),  # CD-2 (chord-detection-v2-spec.md §5.1) — power chord; see CHORD_POWER_THIRD_ABSENCE_RATIO for why this doesn't just eat every maj/min match
 }
 CHORD_CONFIDENCE_FLOOR = 0.5  # below this, report "no chord" rather than a guess that's probably noise
+
+# CD-2: a bare root+fifth is a strict subset of both the maj and min
+# templates, so as a candidate it cosine-matches almost anything they do —
+# left unguarded, "5" would win a huge share of beats that are actually
+# ordinary triads just because the third contributes a little less energy
+# than the root/fifth do. Real power chords are common on distorted guitar
+# specifically because there IS no third being played at all, not because
+# it's merely quiet — so the gate isn't about relative confidence, it's a
+# hard "is a third even present" check: at a candidate root, if either the
+# minor- or major-third chroma bin holds at least this fraction of the
+# root+fifth energy, a third is being played and the ordinary maj/min/7
+# templates get to compete for that root as before. Only when both thirds
+# are genuinely near-silent does "5" get to compete at all (see
+# detect_chords). One constant, tuned against real riffs during CD-5.
+CHORD_POWER_THIRD_ABSENCE_RATIO = 0.2
 
 # chord-detection-v2-spec.md CD-1: per-beat argmax had no memory of the
 # previous beat, so ordinary chroma noise (a passing note, a bend, a fill)
@@ -479,6 +499,31 @@ def _build_chord_templates() -> tuple[list[tuple[str, str]], "np.ndarray"]:
 
 CHORD_TEMPLATE_LABELS, CHORD_TEMPLATE_MATRIX = _build_chord_templates()
 CHORD_TEMPLATE_INDEX = {label: i for i, label in enumerate(CHORD_TEMPLATE_LABELS)}
+CHORD_POWER_TEMPLATE_INDEX = {
+    root_pc: CHORD_TEMPLATE_INDEX[(KEY_NOTE_NAMES[root_pc], "5")] for root_pc in range(12)
+}
+
+
+def _gate_power_chord_scores(scores: "np.ndarray", window_chroma: "np.ndarray") -> None:
+    """CD-2: suppresses each root's "5" template score in place unless a
+    third is genuinely absent at that root (CHORD_POWER_THIRD_ABSENCE_RATIO's
+    docstring above has the full reasoning). window_chroma is the same
+    per-beat chroma window detect_chords already computed — energy ratios
+    are scale-invariant, so it doesn't matter whether it's been normalized
+    yet. Suppressed scores are set below every real template's possible
+    range (cosine similarity of non-negative vectors is >= 0) so a gated
+    "5" can never win, including against the N/no-chord state."""
+    for root_pc in range(12):
+        root_fifth_energy = window_chroma[root_pc] + window_chroma[(root_pc + 7) % 12]
+        idx5 = CHORD_POWER_TEMPLATE_INDEX[root_pc]
+        if root_fifth_energy <= 0:
+            scores[idx5] = -1.0
+            continue
+        minor3 = window_chroma[(root_pc + 3) % 12]
+        major3 = window_chroma[(root_pc + 4) % 12]
+        threshold = CHORD_POWER_THIRD_ABSENCE_RATIO * root_fifth_energy
+        if minor3 >= threshold or major3 >= threshold:
+            scores[idx5] = -1.0
 
 
 def _decode_chord_sequence(raw_scores: "np.ndarray") -> list[tuple]:
@@ -648,9 +693,10 @@ def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"]
         mask = (frame_times >= start) & (frame_times < end)
         window_chroma = chroma[:, mask].mean(axis=1) if np.any(mask) else np.zeros(12)
         norm = np.linalg.norm(window_chroma)
-        if norm > 0:
-            window_chroma = window_chroma / norm
-        raw_scores[i] = CHORD_TEMPLATE_MATRIX @ window_chroma
+        normed_chroma = window_chroma / norm if norm > 0 else window_chroma
+        scores = CHORD_TEMPLATE_MATRIX @ normed_chroma
+        _gate_power_chord_scores(scores, window_chroma)  # CD-2 — only let "5" compete where no third is actually present
+        raw_scores[i] = scores
 
     # CD-1: decode the whole beat sequence at once (Viterbi, not per-beat
     # argmax) so ordinary chroma noise no longer flips single beats to a
@@ -690,18 +736,22 @@ def key_from_chords(chords: list, chroma_mean: "np.ndarray" = None) -> dict | No
     Mode is judged directly from minor-3rd vs major-3rd chroma energy at
     that root (whole-song mean, same chroma detect_chords already
     computed) rather than from whichever quality label the single
-    most-frequent chord happened to get. Power chords (root+5th, no 3rd
-    at all) are a genuine tie between the maj (0,4,7) and min (0,3,7)
-    templates in detect_chords — both share 2 of 3 active bins and get
-    zero contribution from the one bin that would tell them apart — and
-    ties resolve to whichever template was built first (maj), plus a
-    distorted guitar's real harmonic series naturally carries energy at
-    the major-3rd overtone regardless of the chord's intended quality.
-    Both effects systematically bias riff/power-chord-heavy rock and metal
-    — a genre this app specifically targets — toward false 'major' reads.
-    Checking the actual note energy at the chosen tonic sidesteps that
-    bias instead of inheriting it. Falls back to the naive quality-label
-    rule if no chroma_mean is available (keeps this function usable
+    most-frequent chord happened to get. This predates detect_chords having
+    an explicit "5" (power chord) template (CD-2, chord-detection-v2-spec.md):
+    before that, a genuine power chord (root+5th, no 3rd at all) was a tie
+    between the maj (0,4,7) and min (0,3,7) templates — both share 2 of 3
+    active bins and get zero contribution from the one bin that would tell
+    them apart — resolved arbitrarily to whichever template was built first
+    (maj), and a distorted guitar's real harmonic series naturally adds
+    energy at the major-3rd overtone regardless of the chord's intended
+    quality. Both effects systematically biased riff/power-chord-heavy rock
+    and metal — a genre this app specifically targets — toward false
+    'major' reads. Checking the actual note energy at the chosen tonic
+    sidesteps that bias directly rather than inheriting it from a label —
+    and stays correct now that "5"-quality chords carry no mode information
+    of their own to inherit in the first place. Falls back to the naive
+    quality-label rule if no chroma_mean is available (keeps this function
+    usable
     without a re-run for any old caller)."""
     root_counts = {}
     for c in chords:

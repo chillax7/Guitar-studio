@@ -242,7 +242,7 @@ position at open) and never moves. Spec:
 |---|-----------|------|------------|
 | CD-0 | AI Lab live-follow (§6) — **shipped** | S | nothing — ship immediately |
 | CD-1 | Viterbi decode + min-duration merge (§5.4, §5.5) — **shipped** | M | nothing |
-| CD-2 | Power-chord template + third-absence gate (§5.1) | S | CD-1 (tune together) |
+| CD-2 | Power-chord template + third-absence gate (§5.1) — **shipped** | S | CD-1 (tune together) |
 | CD-3 | Chroma front end: HPSS, tuning, log compression (§5.2) | S | CD-1 |
 | CD-4 | Bass-anchored root bonus (§5.3) | S | CD-1 |
 | CD-5 | **Acceptance test on "Too Much, Too Young, Too Fast"** + 1–2 easier pop/rock tracks; tune `SELF_TRANSITION_P`, third-absence gate, bass bonus against what the lane shows vs a published chord chart | S | CD-1..4 |
@@ -260,6 +260,31 @@ same noise level) still decoded as exactly 3 chips with the correct
 roots, confirming the smoothing doesn't just freeze on the first guess.
 `CHORD_TEMPLATE_MATRIX`/labels, `key_from_chords`, the JSON shape, and
 the UI are all untouched, per §5.6.
+
+**CD-2 shipped:** a `"5": (0, 7)` template plus `_gate_power_chord_scores`,
+which suppresses every root's "5" candidate score in place unless both
+the minor- and major-third chroma bins sit below
+`CHORD_POWER_THIRD_ABSENCE_RATIO` (0.2) of that root's combined root+fifth
+energy — the hard "is a third actually being played" check §5.1 called
+for, applied before the Viterbi decode so CD-1's smoothing sees a clean
+per-beat score matrix either way. `chordSymbol` (app.js) already fell
+through to printing the raw quality string for anything it didn't
+special-case, so "5" chips render correctly with no UI change; AI Lab's
+`AILAB_SCALES_BY_QUALITY` gained a `"5"` entry (minor pentatonic/blues
+first, major pentatonic as the other option, since a bare power chord
+doesn't commit to a mode). `ANALYSIS_VERSION` bumped 6→7.
+
+Verified with synthetic tests at a noise level scaled to be a modest
+fraction of the actual notes played (0.15, vs. CD-1's deliberately
+extreme 0.6 flicker-inducing noise — third-absence detection needs the
+signal-to-noise ratio a real recording actually has, not a worst case):
+a pure power-chord riff decoded entirely as `A5`; a real A major triad
+and a real A minor triad both still decoded correctly as `maj`/`min` —
+confirming the gate doesn't let "5" cannibalize genuine triads just
+because it's a broader match; and the same A5→D5→E5 progression from
+CD-1's test now decodes as three correctly-rooted `5` chips instead of
+`min`/`maj`/`maj`. Real-song tuning of the 0.2 threshold against actual
+guitar tone is still CD-5's job.
 
 Test protocol for CD-5 (goes into TEST-PLAN.md when CD-1 lands):
 1. Re-run analysis on the test song (version bump forces it).

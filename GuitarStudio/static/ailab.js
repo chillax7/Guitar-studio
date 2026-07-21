@@ -26,6 +26,11 @@ const AILAB_SCALES_BY_QUALITY = {
   "7":   ["mixolydian", "minpent", "majpent", "blues"],
   "maj": ["major", "majpent"],
   "min": ["minor", "minpent", "dorian"],
+  // A power chord (root+5th, no 3rd) doesn't commit to major or minor —
+  // rock/metal riffing over one leans minor pentatonic/blues far more
+  // often than major, so that's the lead suggestion, with major pentatonic
+  // offered as the other real option rather than picking one silently.
+  "5":   ["minpent", "blues", "majpent"],
 };
 // Whole-song mode offers scales for the *key*, not a specific chord — no
 // Mixolydian here, since that suggestion is specifically "this matches a

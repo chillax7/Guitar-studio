@@ -549,10 +549,15 @@ Markers are saved per-song, same as everything else in this section.
 ribbon" (only appears once chord analysis exists — it's computed
 automatically alongside BPM/beats/key, so older tracks pick it up the
 next time they're selected). Each chip spans one beat-grid interval;
-click one to jump the playhead there. This is a **maj/min/7-only
+click one to jump the playhead there. This is a **maj/min/7/5-only
 heuristic** — beat-synchronous chroma matched against simple chord
 templates, not a real chord-recognition model — assistive and best on
-pop/rock, same honesty framing as §3.8's guitar split. A dimmed **?**
+pop/rock, same honesty framing as §3.8's guitar split. Chord changes are
+smoothed across beats rather than picked one beat at a time, so an
+ordinary riff or chug reads as one steady chord instead of flickering
+between neighboring guesses; a bare power chord (root+fifth, no third —
+most distorted rhythm-guitar parts) reads as e.g. **A5** rather than
+being forced into major or minor. A dimmed **?**
 chip means no confident read for that beat rather than a guess; zoom in
 (above) to actually read the chord names, since a whole song's worth of
 chips at full width just reads as a solid bar. Chord roots transpose live
@@ -1268,9 +1273,9 @@ current song has attached.
 - The latency figure in Play Along is an estimate, not a measurement.
 - The Click and beat grid assume 4/4 time — there's no time-signature
   detection, so the downbeat accent will be wrong in 3/4 or odd meters.
-- The chord lane is a maj/min/7 heuristic and can over-fragment on
-  riff-heavy songs (§3.7) — a known rough edge being reconsidered for a
-  future release, not a data bug.
+- The chord lane is a maj/min/7/5 heuristic (§3.7) — still assistive,
+  best on pop/rock, and worth confirming by ear, not a real
+  chord-recognition model.
 
 ## 10. File locations reference
 
