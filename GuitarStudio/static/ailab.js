@@ -35,7 +35,23 @@ const AILAB_SCALES_BY_KEY_MODE = {
   minor: ["minor", "minpent", "dorian", "blues"],
 };
 
-const AiLab = { mode: "chord", selectedIndex: null };
+const AiLab = { mode: "chord", selectedIndex: null, panel: "scales" };
+
+// V5-B1: Rate My Take — dry-recording state, isolated from Recorder
+// (recorder.js)'s regular take pipeline on purpose. A regular take mixes
+// the backing track in with the guitar (Recorder.recordBus) so it's
+// watchable/listenable as a performance; scoring that against the
+// reference guitar stem is comparing the reference to itself-plus-your-
+// playing, which trivially inflates and flattens every take's score
+// together regardless of how well it was actually played (confirmed: three
+// real takes meant to rank tight > variation > sloppy came back within ~1%
+// of each other). A "dry" recording taps only the guitar rig's output
+// (PA.outputMute), never the backing track, so it's valid input for
+// score_take's comparison.
+const AiLabDry = {
+  bus: null, dest: null, recorder: null, chunks: [],
+  state: "idle", startedAt: 0, tickInterval: null,
+};
 
 function aiLabSemitones() {
   const tuneEl = transportEls("tune-slider")[0];
@@ -261,6 +277,7 @@ function aiLabRenderSongMode() {
 
 function renderAiLab() {
   if (!document.getElementById("ailab-overlay").classList.contains("show")) return;
+  if (AiLab.panel !== "scales") return;
   if (AiLab.mode === "chord") aiLabRenderChordMode();
   else aiLabRenderSongMode();
 }
@@ -278,16 +295,219 @@ function openAiLab() {
   document.getElementById("playalong-overlay").classList.remove("show");
   paSetActiveScreen("ailab-open-btn");
   AiLab.selectedIndex = null; // re-pick the chord under the playhead on open
-  renderAiLab();
+  if (AiLab.panel === "scales") renderAiLab();
+  else aiLabRmtOpen();
 }
 
 function closeAiLab() {
   document.getElementById("ailab-overlay").classList.remove("show");
 }
 
+function aiLabSwitchPanel(panel) {
+  AiLab.panel = panel;
+  document.getElementById("ailab-scales-panel").style.display = panel === "scales" ? "" : "none";
+  document.getElementById("ailab-ratemytake-panel").style.display = panel === "ratemytake" ? "" : "none";
+  document.querySelectorAll(".ailab-tab-btn").forEach((btn) => {
+    btn.classList.toggle("on", btn.dataset.panel === panel);
+  });
+  if (panel === "scales") renderAiLab();
+  else aiLabRmtOpen();
+}
+
+// ---------------------------------------------------------------------------
+// Rate My Take
+// ---------------------------------------------------------------------------
+
+async function aiLabRmtOpen() {
+  await paEnsureRigSessionReady(); // playalong.js — need PA.outputMute to exist for the dry-record tap
+  await aiLabRmtRefreshTakes();
+}
+
+async function aiLabRmtRefreshTakes() {
+  const listEl = document.getElementById("ailab-rmt-takes-list");
+  const selectEl = document.getElementById("ailab-rmt-take-select");
+  if (!State.track) {
+    listEl.innerHTML = "<p class=\"hint\">No song selected.</p>";
+    selectEl.innerHTML = "";
+    return;
+  }
+  let takes = [];
+  try {
+    const r = await Api.get(`/api/recordings?track=${encodeURIComponent(State.track)}`);
+    takes = (r.takes || []).filter((t) => t.dry);
+  } catch (e) {
+    listEl.innerHTML = `<p class="hint">Couldn't load takes: ${e.message}</p>`;
+    return;
+  }
+
+  if (!takes.length) {
+    listEl.innerHTML = "<p class=\"hint\">No dry takes yet for this song — record one below.</p>";
+    selectEl.innerHTML = "";
+    return;
+  }
+
+  listEl.innerHTML = "";
+  const frag = document.createDocumentFragment();
+  takes.forEach((t) => {
+    const row = document.createElement("div");
+    row.className = "ailab-rmt-take-row";
+    row.innerHTML = `<span class="name">${t.filename}</span><span class="size">${(t.size / 1024 / 1024).toFixed(1)} MB</span>`;
+    frag.appendChild(row);
+  });
+  listEl.appendChild(frag);
+
+  const prevValue = selectEl.value;
+  selectEl.innerHTML = "";
+  takes.forEach((t) => {
+    const opt = document.createElement("option");
+    opt.value = t.path;
+    opt.textContent = t.filename;
+    selectEl.appendChild(opt);
+  });
+  if (takes.some((t) => t.path === prevValue)) selectEl.value = prevValue;
+  else selectEl.selectedIndex = takes.length - 1; // default to the most recent
+}
+
+function aiLabDryEnsureBus() {
+  ensureCtx();
+  if (!AiLabDry.bus) AiLabDry.bus = Audio.ctx.createGain();
+  if (typeof PA !== "undefined" && PA.outputMute) PA.outputMute.connect(AiLabDry.bus);
+  if (!AiLabDry.dest) {
+    AiLabDry.dest = Audio.ctx.createMediaStreamDestination();
+    AiLabDry.bus.connect(AiLabDry.dest);
+  }
+}
+
+const AILAB_DRY_MIME_CANDIDATES = [
+  "audio/mp4;codecs=mp4a.40.2",
+  "audio/mp4",
+  "audio/webm;codecs=opus",
+  "audio/webm",
+];
+function aiLabDryPickMimeType() {
+  return AILAB_DRY_MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m)) || "";
+}
+
+function aiLabDryTick() {
+  if (AiLabDry.state !== "recording") return;
+  const elapsed = (performance.now() - AiLabDry.startedAt) / 1000;
+  const m = Math.floor(elapsed / 60), s = Math.floor(elapsed % 60);
+  document.getElementById("ailab-rmt-elapsed").textContent = `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function aiLabRmtUpdateRecordUI() {
+  const recording = AiLabDry.state === "recording";
+  document.getElementById("ailab-rmt-record-btn").style.display = recording ? "none" : "";
+  document.getElementById("ailab-rmt-stop-btn").style.display = recording ? "" : "none";
+}
+
+async function aiLabStartDryRecording() {
+  const hintEl = document.getElementById("ailab-rmt-record-hint");
+  await paEnsureRigSessionReady();
+  aiLabDryEnsureBus();
+  const mimeType = aiLabDryPickMimeType();
+  if (!mimeType) {
+    hintEl.textContent = "This browser can't record audio (no supported MediaRecorder format).";
+    return;
+  }
+  const chunks = [];
+  const recorder = new MediaRecorder(AiLabDry.dest.stream, { mimeType, audioBitsPerSecond: 192_000 });
+  recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+  recorder.onerror = (e) => {
+    console.error("Dry recorder error", e.error);
+    hintEl.textContent = "Recorder error — stopped early, salvaging what was captured.";
+    aiLabStopDryRecording();
+  };
+  recorder.onstop = () => aiLabFinalizeDryRecording(chunks, mimeType);
+  AiLabDry.recorder = recorder;
+  AiLabDry.chunks = chunks;
+  AiLabDry.state = "recording";
+  AiLabDry.startedAt = performance.now();
+  recorder.start(1000);
+  hintEl.textContent = "Recording — guitar only, backing track is not being captured.";
+  aiLabRmtUpdateRecordUI();
+  aiLabDryTick();
+  AiLabDry.tickInterval = setInterval(aiLabDryTick, 250);
+}
+
+function aiLabStopDryRecording() {
+  if (!AiLabDry.recorder || AiLabDry.recorder.state === "inactive") return;
+  AiLabDry.recorder.stop();
+  AiLabDry.state = "saving";
+  if (AiLabDry.tickInterval) { clearInterval(AiLabDry.tickInterval); AiLabDry.tickInterval = null; }
+  aiLabRmtUpdateRecordUI();
+}
+
+async function aiLabFinalizeDryRecording(chunks, mimeType) {
+  const hintEl = document.getElementById("ailab-rmt-record-hint");
+  const blob = new Blob(chunks, { type: mimeType });
+  const ext = mimeType.includes("mp4") ? "m4a" : "webm";
+  hintEl.textContent = "Saving dry take…";
+  try {
+    const r = await Api.postRaw(
+      `/api/recording/save?track=${encodeURIComponent(State.track || "")}&ext=${ext}&prefix=dry`, blob);
+    hintEl.textContent = `Saved as ${r.filename}.`;
+    await aiLabRmtRefreshTakes();
+  } catch (e) {
+    hintEl.textContent = `Save failed: ${e.message}`;
+  } finally {
+    AiLabDry.state = "idle";
+    aiLabRmtUpdateRecordUI();
+  }
+}
+
+function aiLabRmtOverallClass(pct) {
+  if (pct === null || pct === undefined) return "";
+  if (pct >= 70) return "good";
+  if (pct >= 40) return "mid";
+  return "low";
+}
+
+async function aiLabScoreTake() {
+  const hintEl = document.getElementById("ailab-rmt-score-hint");
+  const resultCard = document.getElementById("ailab-rmt-result-card");
+  const takePath = document.getElementById("ailab-rmt-take-select").value;
+  if (!takePath) {
+    hintEl.textContent = "No dry take selected — record one above first.";
+    return;
+  }
+  const offset = parseFloat(document.getElementById("ailab-rmt-offset").value) || 0;
+  const offsetSearch = parseFloat(document.getElementById("ailab-rmt-offset-search").value) || 0;
+
+  hintEl.textContent = "Scoring…";
+  resultCard.style.display = "none";
+  try {
+    const r = await Api.post("/api/rate/score", {
+      source_path: State.track, take_path: takePath,
+      model: State.model, stem: "guitar",
+      offset, offset_search: offsetSearch,
+    });
+    let msg = `Scored ${r.scored_count}/${r.total_count} beats.`;
+    if (r.refine) {
+      msg += r.refine.applied
+        ? ` Offset auto-refined ${offset}s -> ${r.refine.offset}s (match quality ${r.refine.quality}).`
+        : ` Offset auto-refine found ${r.refine.offset}s but match quality (${r.refine.quality}) was too low to trust — used ${offset}s as given.`;
+    }
+    hintEl.textContent = msg;
+
+    const overallEl = document.getElementById("ailab-rmt-overall");
+    overallEl.textContent = r.overall_pct !== null ? `Overall: ${r.overall_pct}%` : "Overall: --";
+    overallEl.className = "ailab-rmt-overall " + aiLabRmtOverallClass(r.overall_pct);
+    document.getElementById("ailab-rmt-heatmap-img").src =
+      `/api/output?path=${encodeURIComponent(r.heatmap_path)}&t=${Date.now()}`;
+    resultCard.style.display = "";
+  } catch (e) {
+    hintEl.textContent = `Scoring failed: ${e.message}`;
+  }
+}
+
 function wireAiLab() {
   document.getElementById("ailab-open-btn").addEventListener("click", openAiLab);
   document.getElementById("ailab-close-btn").addEventListener("click", closeAiLab);
+
+  document.querySelectorAll(".ailab-tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => aiLabSwitchPanel(btn.dataset.panel));
+  });
 
   document.getElementById("ailab-mode-toggle").querySelectorAll("button").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -298,6 +518,10 @@ function wireAiLab() {
       renderAiLab();
     });
   });
+
+  document.getElementById("ailab-rmt-record-btn").addEventListener("click", aiLabStartDryRecording);
+  document.getElementById("ailab-rmt-stop-btn").addEventListener("click", aiLabStopDryRecording);
+  document.getElementById("ailab-rmt-score-btn").addEventListener("click", aiLabScoreTake);
 }
 
 wireAiLab();

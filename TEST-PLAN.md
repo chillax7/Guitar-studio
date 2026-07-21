@@ -104,6 +104,16 @@ instead — open it directly in a browser, no server required.
 - [ ] Moving the Tune slider live-updates AI Lab's chord names, key name, and which fret is marked as the root — same transposition the chord lane and key hint already apply, checked in both Per chord and Whole song modes.
 - [ ] The scale-name chips above the stack jump-scroll to that scale's diagram rather than hiding the others; a track with no chord analysis yet shows an honest message in Per chord mode instead of an empty blank area.
 - [ ] Switching tracks while AI Lab is open re-renders against the new track's chords/key (and re-picks the chord under the playhead) rather than showing stale data from the previous track.
+- [ ] **Tab bar:** AI Lab's top bar shows **Scales** / **Rate My Take** buttons aligned left and **Close** aligned right, on their own row above the rest of the screen. Clicking a tab shows only that panel's content; the previously-active tab stays selected across closing and reopening the screen.
+
+## 6b. AI Lab — Rate My Take (V5-B1)
+
+- [ ] **Dry recording:** the **Record dry take** button captures audio and, on Stop, uploads and lists it — verify by ear (or waveform) that the saved file contains ONLY your guitar, not the backing track, even with the backing track playing loudly during the recording.
+- [ ] The takes list under "Dry takes for this song" only ever shows dry recordings for the currently-selected song — a regular Play Along take (Record tab) must never appear here, and a dry take must never appear in Play Along's own Takes tab's normal browsing (both read the same folder; only the listing/filtering differs).
+- [ ] **Scoring:** picking a take, entering an offset, and clicking **Score this take** returns an overall percentage, a scored/total beat count, and displays a heatmap image inline (no separate download/Finder trip needed) — scoped to just the take's own time span, not the whole song.
+- [ ] **Offset search:** leaving the default (a few seconds) auto-refines a rough offset guess and reports the refined value + a match-quality number in the hint text; setting it to 0 uses the entered offset exactly, unmodified.
+- [ ] **The actual test (rate-my-take-spec.md §6):** record three real takes of a part you know well (tight / sloppy / tasteful variation) as **dry** recordings, score all three, and check they rank tight > variation > sloppy — with a *dry* recording this should now actually discriminate between takes, unlike scoring a regular (backing-track-included) take, which was confirmed to compress all three takes' scores together regardless of how they were actually played.
+- [ ] A song with no separated guitar stem yet shows a clear error when scoring, not a crash; a take with no dry recordings yet shows an honest empty state instead of a blank list.
 
 ## 7. Play Along — top strip
 

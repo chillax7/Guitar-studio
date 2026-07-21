@@ -1044,6 +1044,31 @@ def next_riff_number(rec_dir: Path) -> int:
     return max_riff + 1
 
 
+# V5-B1: a regular take/riff records the backing track + guitar together
+# (Recorder.recordBus in recorder.js — deliberate, so a take is actually
+# listenable/watchable as a normal performance). That's exactly wrong input
+# for Rate My Take: scoring a take against the reference guitar stem when
+# the take *also contains that same reference bled in* trivially inflates
+# every take's agreement regardless of how well it was actually played,
+# and compresses real differences between takes into noise (confirmed:
+# three real takes meant to rank tight > variation > sloppy came back
+# within ~1% of each other, with the deliberately-varied take scoring
+# highest). "Dry" recordings tap only the guitar rig output, no backing
+# track — a third, independent numbering sequence (own regex, like riffs)
+# so it doesn't collide with or get counted by regular take/riff numbering.
+DRY_RE = re.compile(r"dry (\d+)", re.IGNORECASE)
+
+
+def next_dry_number(rec_dir: Path) -> int:
+    max_dry = 0
+    if rec_dir.exists():
+        for f in rec_dir.iterdir():
+            m = DRY_RE.search(f.stem)
+            if m:
+                max_dry = max(max_dry, int(m.group(1)))
+    return max_dry + 1
+
+
 def svc_recording_save(track: str, ext: str, data: bytes, prefix: str = "take") -> dict:
     # GP-08: "m4a" is an audio-only take (recorder.js's REC_AUDIO_MIME_CANDIDATES)
     # — same MPEG-4 container as mp4, different extension so it reads as what
@@ -1051,14 +1076,19 @@ def svc_recording_save(track: str, ext: str, data: bytes, prefix: str = "take") 
     # riffs never go through MediaRecorder at all, see riff-capture-processor.js).
     if ext not in ("mp4", "webm", "m4a", "wav"):
         raise ApiError(400, f"Unsupported extension '{ext}' — use mp4, webm, m4a, or wav")
-    if prefix not in ("take", "riff"):
-        raise ApiError(400, f"Unsupported prefix '{prefix}' — use take or riff")
+    if prefix not in ("take", "riff", "dry"):
+        raise ApiError(400, f"Unsupported prefix '{prefix}' — use take, riff, or dry")
     if not data:
         raise ApiError(400, "Empty upload")
     track_name = safe_name(track) if track else "_untracked"
     rec_dir = recordings_dir_for(track)
     rec_dir.mkdir(parents=True, exist_ok=True)
-    n = next_riff_number(rec_dir) if prefix == "riff" else next_take_number(rec_dir)
+    if prefix == "riff":
+        n = next_riff_number(rec_dir)
+    elif prefix == "dry":
+        n = next_dry_number(rec_dir)
+    else:
+        n = next_take_number(rec_dir)
     filename = f"{track_name} - {prefix} {n:02d}.{ext}"
     path = rec_dir / filename
     path.write_bytes(data)
@@ -1094,8 +1124,79 @@ def svc_recordings_list(track: str) -> dict:
                 takes.append({
                     "filename": f.name, "path": str(f), "size": f.stat().st_size,
                     "starred": f.name in starred,
+                    # V5-B1: only a "dry" recording (guitar rig only, no
+                    # backing track baked in) is valid input for Rate My
+                    # Take — see DRY_RE's comment for why a regular take
+                    # scores meaninglessly high regardless of performance.
+                    "dry": bool(DRY_RE.search(f.stem)),
                 })
     return {"takes": takes}
+
+
+def svc_rate_score(source_path: str, take_path: str, model: str, stem: str,
+                    offset: float, offset_search: float) -> dict:
+    """AI Lab's Rate My Take panel — the HTTP-facing twin of cmd_rate
+    (backing_track.py), reusing every piece of that CLI spike (score_take,
+    refine_offset, trim_beats_to_take_span, _render_rate_heatmap) rather
+    than re-implementing any of the scoring math for the browser. Renders
+    the heatmap next to the take file and returns a path servable through
+    the existing /api/output?path=... route — no new file-serving code."""
+    input_path = resolve_source_path(source_path)
+    out_dir = engine.track_stem_dir(input_path, model)
+    if not engine.has_cached_stems(out_dir):
+        raise ApiError(400, f"No stems found for {input_path.name} with model '{model}'. Separate it first.")
+    reference_path = out_dir / f"{stem}.wav"
+    if not reference_path.exists():
+        raise ApiError(400, f"No '{stem}' stem found for this track/model — this needs a guitar stem.")
+
+    target = Path(take_path).resolve()
+    try:
+        target.relative_to(engine.OUTPUT_DIR.resolve())
+    except ValueError:
+        raise ApiError(400, "take_path must be inside output/")
+    if not target.exists():
+        raise ApiError(404, "Take file not found")
+
+    analysis = engine.ensure_analysis(out_dir)
+    beats = analysis.get("beats")
+
+    refine_info = None
+    if offset_search and offset_search > 0:
+        refined = engine.refine_offset(target, reference_path, offset, search_radius=offset_search)
+        refine_info = {"offset": refined["offset"], "quality": refined["quality"], "clipped": refined["clipped"]}
+        if not refined["clipped"] and refined["quality"] >= engine.RATE_OFFSET_SEARCH_MIN_QUALITY:
+            offset = refined["offset"]
+            refine_info["applied"] = True
+        else:
+            refine_info["applied"] = False
+
+    beats = engine.trim_beats_to_take_span(beats, offset, target)
+    result = engine.score_take(target, reference_path, beats, offset_sec=offset)
+    scored = [b for b in result["beats"] if b["score"] is not None]
+    if not scored:
+        raise ApiError(400, f"No beats could be scored at offset {offset}s — check the offset and that "
+                             f"both files have real audio in them.")
+
+    # A hidden subfolder, not next to the take directly — svc_recordings_list
+    # lists every plain file under the recordings dir for the Takes tab, and
+    # a heatmap PNG living there would show up as a fake extra "take" (and,
+    # since its filename carries the take's own name, could even mismatch
+    # the "dry" flag). iterdir() doesn't recurse, so a subfolder is invisible
+    # to that listing without needing its own filter there.
+    heatmap_dir = target.parent / ".rate_heatmaps"
+    heatmap_dir.mkdir(exist_ok=True)
+    heatmap_path = heatmap_dir / f"{target.stem}_rate_heatmap.png"
+    engine._render_rate_heatmap(result["beats"], heatmap_path, target.name, input_path.name, result["overall_pct"])
+
+    return {
+        "overall_pct": result["overall_pct"],
+        "overall_raw": result["overall_raw"],
+        "scored_count": len(scored),
+        "total_count": len(result["beats"]),
+        "used_offset": offset,
+        "heatmap_path": str(heatmap_path),
+        "refine": refine_info,
+    }
 
 
 def svc_recording_star(path: str, starred: bool) -> dict:
@@ -1783,6 +1884,15 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/recording/rename":
                 body = self._read_json_body()
                 result = svc_recording_rename(body.get("path", ""), body.get("new_name", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/rate/score":
+                body = self._read_json_body()
+                result = svc_rate_score(
+                    body.get("source_path", ""), body.get("take_path", ""),
+                    body.get("model", engine.DEFAULT_MODEL), body.get("stem", "guitar"),
+                    float(body.get("offset", 0) or 0), float(body.get("offset_search", 0) or 0),
+                )
                 return self._send_json(200, result)
 
             if path == "/api/recording/trim":

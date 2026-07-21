@@ -1094,14 +1094,18 @@ at the time.
 ## 6. AI Lab
 
 A fourth screen alongside Mixer / Tone Lab / Play Along, opened with the
-🧠 **AI Lab** button in the sidebar. The first function it ships with is
-the **Scale/Mode Advisor** (V5-F2): straight interval arithmetic over the
-same chord lane (§3.7) and detected key (BT-03) the Mixer already
-computes — no model call, no network, no per-use cost, and nothing here
-can go stale or get rate-limited. More functions land on this same screen
-over time; see [research/release-v5-spec.md](research/release-v5-spec.md)
+🧠 **AI Lab** button in the sidebar. A tab bar along the top switches
+between its functions — **Scales** and **Rate My Take** so far, more land
+here over time; see [research/release-v5-spec.md](research/release-v5-spec.md)
 for what else is planned (an opt-in LLM tier for phrasing suggestions and
 a music-theory Q&A panel, gated on its own honesty research spike).
+
+### 6.1 Scales
+
+The **Scale/Mode Advisor** (V5-F2): straight interval arithmetic over the
+same chord lane (§3.7) and detected key (BT-03) the Mixer already
+computes — no model call, no network, no per-use cost, and nothing here
+can go stale or get rate-limited.
 
 **Per chord vs. Whole song.** A toggle at the top of the Scales card
 switches between two lenses on the same data:
@@ -1139,6 +1143,41 @@ Same honesty posture as every other heuristic in this app: chord and key
 detection are both assistive, best on pop/rock, and worth confirming by
 ear — a scale suggestion is only as good as the chord/key read it's
 built on.
+
+### 6.2 Rate My Take
+
+Scores a recorded solo/riff against the song's own guitar performance —
+per-beat pitch and timing agreement, an overall closeness percentage, and
+a heatmap you can judge by eye (rate-my-take-spec.md's research spike,
+now with a real screen instead of only a command line).
+
+**Important: this needs a "dry" recording, not a regular take.** A
+regular Play Along take (Record tab) deliberately mixes the backing track
+in with your guitar, so it's watchable/listenable as a normal performance
+— but that's exactly the wrong input for scoring: the reference is
+already baked into the file regardless of how well you actually played,
+which inflates every take's score and flattens real differences between
+a tight take and a sloppy one into noise. This screen has its own
+**Record dry take** button for exactly this reason — it captures only
+your guitar rig's output (post-amp/pedals), never the backing track. Only
+"dry" recordings show up in this screen's takes list; your regular
+performance takes still live in Play Along's own Takes tab, untouched.
+
+**To score a take:**
+1. Record a dry take (or pick one already recorded for this song).
+2. Enter roughly where in the song the take starts, in seconds (**Offset**).
+3. Leave **Offset search** at its default (a few seconds) so it auto-fine-tunes
+   your rough guess to the actual best-aligned start — cross-correlating
+   both timing and pitch content, accurate to a few milliseconds in
+   testing, so getting Offset exactly right by ear isn't necessary.
+4. **Score this take.** The result shows the overall percentage, how many
+   beats actually scored, and a heatmap scoped to just the take's own
+   span (not the whole song) — green means close agreement, red means
+   drift, gray means no confident read for that beat.
+
+Same honesty framing as everywhere else: this is a heuristic, not a
+verdict — judge it against what your own ears say happened, especially on
+a first pass with a new song.
 
 ---
 

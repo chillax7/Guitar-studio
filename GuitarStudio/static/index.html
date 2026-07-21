@@ -831,36 +831,96 @@
        they ship; this is the first. -->
   <div id="ailab-overlay" class="screen-overlay">
     <div id="ailab-panel" class="screen-panel">
-      <div id="ailab-header" class="screen-header">
+      <div id="ailab-header" class="screen-header ailab-header">
+        <div class="ailab-tabs" id="ailab-tabs">
+          <button id="ailab-tab-scales" class="ailab-tab-btn on" data-panel="scales">Scales</button>
+          <button id="ailab-tab-ratemytake" class="ailab-tab-btn" data-panel="ratemytake">Rate My Take</button>
+        </div>
         <button id="ailab-close-btn">✕ Close</button>
       </div>
-      <div id="ailab-body" class="screen-body ailab-column">
+      <div id="ailab-body" class="screen-body">
 
-        <div class="ailab-chord-ribbon" id="ailab-ribbon"></div>
+        <div id="ailab-scales-panel" class="ailab-column">
 
-        <section class="pa-card" id="ailab-readout-card">
-          <h3>Now over</h3>
-          <div class="ailab-readout">
-            <span class="ailab-chord-name" id="ailab-chordname"></span>
-            <span class="ailab-key-name" id="ailab-keyname"></span>
-          </div>
-          <p class="hint">Deterministic, not a guess — computed from the detected chord's root + quality against the song's key. Works offline, never changes its mind twice on the same chord.</p>
-        </section>
+          <div class="ailab-chord-ribbon" id="ailab-ribbon"></div>
 
-        <section class="pa-card">
-          <h3 id="ailab-scale-heading">Scales</h3>
-          <div class="ailab-mode-toggle" id="ailab-mode-toggle">
-            <button data-mode="chord" class="on">Per chord</button>
-            <button data-mode="song">Whole song</button>
-          </div>
-          <div class="ailab-jumprow" id="ailab-jumprow"></div>
-          <div class="ailab-legend">
-            <span><span class="ailab-dot" id="ailab-legend-root"></span>Root</span>
-            <span><span class="ailab-dot" id="ailab-legend-scale"></span>Scale tone</span>
-          </div>
-          <div class="ailab-scale-stack" id="ailab-scale-stack"></div>
-          <p class="hint" id="ailab-empty-hint"></p>
-        </section>
+          <section class="pa-card" id="ailab-readout-card">
+            <h3>Now over</h3>
+            <div class="ailab-readout">
+              <span class="ailab-chord-name" id="ailab-chordname"></span>
+              <span class="ailab-key-name" id="ailab-keyname"></span>
+            </div>
+            <p class="hint">Deterministic, not a guess — computed from the detected chord's root + quality against the song's key. Works offline, never changes its mind twice on the same chord.</p>
+          </section>
+
+          <section class="pa-card">
+            <h3 id="ailab-scale-heading">Scales</h3>
+            <div class="ailab-mode-toggle" id="ailab-mode-toggle">
+              <button data-mode="chord" class="on">Per chord</button>
+              <button data-mode="song">Whole song</button>
+            </div>
+            <div class="ailab-jumprow" id="ailab-jumprow"></div>
+            <div class="ailab-legend">
+              <span><span class="ailab-dot" id="ailab-legend-root"></span>Root</span>
+              <span><span class="ailab-dot" id="ailab-legend-scale"></span>Scale tone</span>
+            </div>
+            <div class="ailab-scale-stack" id="ailab-scale-stack"></div>
+            <p class="hint" id="ailab-empty-hint"></p>
+          </section>
+
+        </div>
+
+        <!-- V5-B1: Rate My Take — the HTTP-facing front end for
+             backing_track.py's `rate` CLI spike (score_take/refine_offset/
+             _render_rate_heatmap, via /api/rate/score). A regular take
+             (Play Along's Record tab) bakes the backing track in with the
+             guitar — deliberately, so it's watchable/listenable as a
+             performance — which is exactly wrong input for scoring: the
+             reference bleeds into the take regardless of how well you
+             played, inflating and flattening every take's score together.
+             This panel only works from "dry" recordings (guitar rig only,
+             no backing track) — hence its own dedicated record button
+             rather than reusing the Play Along Takes list. -->
+        <div id="ailab-ratemytake-panel" class="ailab-column" style="display:none;">
+
+          <section class="pa-card">
+            <h3>Dry takes for this song</h3>
+            <p class="hint">Only "dry" recordings (guitar only, no backing track baked in) are listed here — a regular Play Along take can't be scored accurately, since it already contains the reference performance mixed in with yours.</p>
+            <div id="ailab-rmt-takes-list"></div>
+          </section>
+
+          <section class="pa-card">
+            <h3>Record a dry take</h3>
+            <p class="hint">Captures only your guitar rig's output (post-amp/pedals) — never the backing track — so scoring compares your playing against the reference on its own, not a mix that already contains it.</p>
+            <div class="row">
+              <button id="ailab-rmt-record-btn" class="primary">● Record dry take</button>
+              <button id="ailab-rmt-stop-btn" style="display:none;">■ Stop</button>
+              <span id="ailab-rmt-elapsed">0:00</span>
+            </div>
+            <p class="hint" id="ailab-rmt-record-hint"></p>
+          </section>
+
+          <section class="pa-card">
+            <h3>Score a take</h3>
+            <div class="row">
+              <label style="flex:none; width:140px;">Take</label>
+              <select id="ailab-rmt-take-select" style="flex:1;"></select>
+            </div>
+            <label>Offset (seconds into the song this take starts)</label>
+            <input type="number" id="ailab-rmt-offset" step="0.1" value="0">
+            <label>Offset search (auto-fine-tune within +/- this many seconds; 0 = off)</label>
+            <input type="number" id="ailab-rmt-offset-search" step="0.5" value="3">
+            <button id="ailab-rmt-score-btn" class="primary" style="margin-top:10px;">Score this take</button>
+            <p class="hint" id="ailab-rmt-score-hint"></p>
+          </section>
+
+          <section class="pa-card" id="ailab-rmt-result-card" style="display:none;">
+            <h3>Result</h3>
+            <div class="ailab-rmt-overall" id="ailab-rmt-overall"></div>
+            <img id="ailab-rmt-heatmap-img" alt="Rate My Take heatmap">
+          </section>
+
+        </div>
 
       </div>
     </div>

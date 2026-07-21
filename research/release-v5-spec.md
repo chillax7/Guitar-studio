@@ -329,6 +329,33 @@ honest outcome is to stop, not force it. Goes first in the milestone order
 below precisely because it's cheap to resolve and blocks a real
 prioritization decision either way.
 
+**Update, first real go/no-go attempt:** the first three real takes
+recorded came back within ~1% of each other, with the deliberately-varied
+take scoring *highest* — looked like a scoring-algorithm problem at first,
+but the actual cause was upstream of the algorithm entirely. Play Along's
+existing take recorder (Record tab) deliberately mixes the backing track
+in with the guitar (so a take is watchable/listenable as a normal
+performance) — comparing that against the reference guitar stem is really
+comparing the reference to itself-plus-your-playing, which trivially
+inflates and flattens every take's agreement together regardless of
+actual performance quality. Fixed by adding a dedicated "dry" recording
+path (guitar rig output only, no backing track) alongside R1b/c's UI
+build below, rather than treating this as a scoring-tuning problem it
+never was. The go/no-go itself is still pending — needs re-running against
+dry recordings of the same three takes.
+
+R1b/c itself ended up landing sooner than a strict go/no-go gate would
+normally allow, since building the real capture+scoring UI was the
+fastest way to fix the dry-recording gap the go/no-go attempt surfaced —
+shipped as AI Lab's second tab, "Rate My Take" (USER-MANUAL.md §6.2),
+reusing every piece of the CLI spike (`score_take`/`refine_offset`/
+`_render_rate_heatmap`) via a new `/api/rate/score` endpoint rather than
+re-implementing any of the scoring math for the browser. AI Lab's own
+screen (§2 above) grew a top tab bar to host it (Scales / Rate My Take,
+Close aligned right) rather than a fifth nav button — same screen, same
+"same mental context" reasoning §0 gives for AI Lab existing as one
+screen at all.
+
 **V5-B2 = BT-15/V4-F6 · Artifact cleanup pass — M, timeboxed.**
 Post-separation cleanup on the guitar stem specifically. Picked *because*
 it's scheduled alongside Rate My Take completion this release — a
@@ -390,13 +417,18 @@ unchanged, this just sequences it against §9)
 
 - **M0 — Rate My Take go/no-go (V5-B1's gate).** Record and judge the
   three takes. *Blocking-but-cheap: do this first.* Gate: honest
-  pass/fail per rate-my-take-spec.md §6.
+  pass/fail per rate-my-take-spec.md §6. **In progress** — first attempt
+  surfaced the dry-recording gap (V5-B1's "Update" note above), not yet
+  re-run against dry takes.
 - **M1 — AI Lab: Scale/Mode Advisor (§8's M2 / V5-F2).** Chord lane
   prerequisite already shipped; this is the first genuinely new v5 build.
   **Shipped** — see §8's M2 note.
 - **M2 — Rate My Take R1b/c (V5-B1's build) — only if M0 passed** — run
   in parallel with M3 if effort allows, since neither depends on the
-  other.
+  other. **Shipped ahead of M0 passing** (see V5-B1's "Update" note) —
+  the UI/capture build turned out to be the fix for M0's own blocker, not
+  something worth waiting on a formal gate for; the go/no-go judgment
+  call itself is still outstanding.
 - **M3 — AI Lab: LLM spike + Explain-this chat (§8's M3/M4).** *Gate:*
   §3's blind-comparison call.
 - **M4 — Hands-free rig: MIDI + multi-preset cycling (V5-B3).**

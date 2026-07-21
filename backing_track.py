@@ -1480,6 +1480,46 @@ def refine_offset(take_path: Path, reference_path: Path, rough_offset: float,
     }
 
 
+def trim_beats_to_take_span(beats: list, offset: float, take_path: Path) -> list | None:
+    """A take is usually a short section of a full song (a solo, a verse)
+    — scoring/rendering against the WHOLE song's beat grid produces one
+    gray (unscored) entry per beat outside the take's actual span,
+    drowning the real result in noise on both the printed table and the
+    heatmap. Trims to just the beats bounding the take's actual time
+    range: the last beat at-or-before the take's start (so the first
+    window still starts in the right place) through the first beat
+    at-or-after its end (so the last window has a real closing edge, not
+    a hard cut mid-window). Returns None if there aren't at least 2 beats
+    left, so callers can trigger the fixed-window fallback the same way a
+    missing beat grid already does.
+
+    Shared by cmd_rate and the /api/rate/score HTTP endpoint (server.py)
+    so both trim identically rather than keeping two copies in sync."""
+    if not beats:
+        return None
+    import librosa
+
+    # librosa.get_duration(path=...), not raw soundfile — a take can be a
+    # video file (the Play Along video-take feature saves .mp4), which
+    # libsndfile can't open at all; get_duration falls back to audioread
+    # the same way librosa.load already does elsewhere in scoring, instead
+    # of crashing on a format soundfile alone can't read.
+    take_duration = librosa.get_duration(path=str(take_path))
+    end_time = offset + take_duration
+    idx_start = 0
+    for i, b in enumerate(beats):
+        if b <= offset:
+            idx_start = i
+        else:
+            break
+    idx_end = len(beats)
+    for i, b in enumerate(beats):
+        if b >= end_time:
+            idx_end = i + 1
+            break
+    return beats[idx_start:idx_end] or None
+
+
 def cmd_rate(args: argparse.Namespace) -> None:
     """Phase R1a (rate-my-take-spec.md §6): the go/no-go research spike.
     No UI — prints per-beat scores and renders a heatmap PNG. The only
@@ -1523,36 +1563,7 @@ def cmd_rate(args: argparse.Namespace) -> None:
             print(f"\n--offset-search refined {args.offset}s -> {refined['offset']}s (match quality {refined['quality']}).")
             offset = refined["offset"]
 
-    if beats:
-        # A take is usually a short section of a full song (a solo, a
-        # verse) — scoring/rendering against the WHOLE song's beat grid
-        # produced one gray (unscored) entry per beat outside the take's
-        # actual span, drowning the real result in noise on both the
-        # printed table and the heatmap. Trim to just the beats bounding
-        # the take's actual time range: the last beat at-or-before the
-        # take's start (so the first window still starts in the right
-        # place) through the first beat at-or-after its end (so the last
-        # window has a real closing edge, not a hard cut mid-window).
-        # librosa.get_duration(path=...), not raw soundfile — a take can be
-        # a video file (the Play Along video-take feature saves .mp4), which
-        # libsndfile can't open at all; get_duration falls back to audioread
-        # the same way librosa.load already does elsewhere in this command,
-        # instead of crashing on a format soundfile alone can't read.
-        import librosa
-        take_duration = librosa.get_duration(path=str(take_path))
-        end_time = offset + take_duration
-        idx_start = 0
-        for i, b in enumerate(beats):
-            if b <= offset:
-                idx_start = i
-            else:
-                break
-        idx_end = len(beats)
-        for i, b in enumerate(beats):
-            if b >= end_time:
-                idx_end = i + 1
-                break
-        beats = beats[idx_start:idx_end] or None
+    beats = trim_beats_to_take_span(beats, offset, take_path)
 
     result = score_take(take_path, reference_path, beats, offset_sec=offset)
     beat_scores = result["beats"]

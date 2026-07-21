@@ -1424,3 +1424,36 @@ svg.ailab-fretboard { display: block; }
 .ailab-dot-root { fill: var(--accent); stroke: #c8d6ff; stroke-width: 1.5; }
 .ailab-dot-scale { fill: #333a52; stroke: #5b6a8f; stroke-width: 1.2; }
 .ailab-dot-label { fill: #fff; font-size: 8px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+
+/* ---------- AI Lab: top tab bar (Scales / Rate My Take) ---------- */
+
+/* Same .screen-header as Tone Lab/Play Along (sticky, bordered), just
+   space-between instead of flex-end so the tabs sit left and Close stays
+   right — those two screens have nothing to put on the left, AI Lab does. */
+.ailab-header { justify-content: space-between; }
+.ailab-tabs { display: flex; gap: 6px; }
+.ailab-tab-btn {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim);
+  font-size: 12px; font-weight: 600; padding: 7px 16px; border-radius: 6px;
+}
+.ailab-tab-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ailab-tab-btn:not(.on):hover { filter: brightness(1.2); }
+
+/* ---------- AI Lab: Rate My Take ---------- */
+
+.pa-card input[type=number], .pa-card input[type=text] {
+  width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: 5px 6px; font-size: 12px;
+}
+.ailab-rmt-take-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 8px; border-radius: 5px; font-size: 12px; color: var(--text-dim);
+}
+.ailab-rmt-take-row:nth-child(odd) { background: var(--panel-2); }
+.ailab-rmt-take-row .name { color: var(--text); }
+.ailab-rmt-take-row .size { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 11px; }
+.ailab-rmt-overall { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+.ailab-rmt-overall.good { color: var(--success); }
+.ailab-rmt-overall.mid { color: var(--warn); }
+.ailab-rmt-overall.low { color: var(--danger); }
+#ailab-rmt-heatmap-img { max-width: 100%; border-radius: 6px; border: 1px solid var(--border); display: block; }
