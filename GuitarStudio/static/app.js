@@ -3326,6 +3326,30 @@ function wireQuestLog() {
   renderQuestLog();
 }
 
+// ui-review-v5-full.md §6: "Molten Obsidian" theme toggle — ships as a
+// data-theme attribute the whole app's CSS custom properties key off, not
+// a rebuild, so the existing look stays one click away. The actual
+// attribute is applied before first paint by a tiny inline <script> in
+// <head> (avoids a flash-of-wrong-theme on reload); this just wires the
+// button and keeps localStorage in sync going forward.
+const THEME_KEY = "gs_theme";
+
+function applyTheme(theme) {
+  if (theme === "molten") document.documentElement.setAttribute("data-theme", "molten");
+  else document.documentElement.removeAttribute("data-theme");
+  document.getElementById("theme-toggle-btn").title =
+    theme === "molten" ? "Switch to the Studio theme" : "Switch to the Molten Obsidian theme";
+}
+
+function wireThemeToggle() {
+  applyTheme(localStorage.getItem(THEME_KEY) === "molten" ? "molten" : "studio");
+  document.getElementById("theme-toggle-btn").addEventListener("click", () => {
+    const next = localStorage.getItem(THEME_KEY) === "molten" ? "studio" : "molten";
+    localStorage.setItem(THEME_KEY, next);
+    applyTheme(next);
+  });
+}
+
 // XC-04: in-app onboarding/help — auto-shown once on first launch (nobody
 // reads USER-MANUAL.md before diving in), reachable any time after via the
 // sidebar's ❓ Help button.
@@ -3499,6 +3523,7 @@ async function init() {
   wireHelp();
   wireSidebarResize();
   wireQuestLog();
+  wireThemeToggle();
   showState("empty-state"); // syncs Quest Log vs. normal-panels visibility on first load
 
   const modelsResp = await Api.get("/api/models");

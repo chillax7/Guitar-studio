@@ -5,6 +5,15 @@
 <title>Guitar Studio</title>
 <link rel="icon" href="app-icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
+<!-- Applied before first paint so switching to Molten Obsidian doesn't
+     flash the default theme first on every reload — see wireThemeToggle
+     (app.js) for the persisted-toggle logic this mirrors. -->
+<script>
+  (function () {
+    var t = localStorage.getItem("gs_theme");
+    if (t === "molten") document.documentElement.setAttribute("data-theme", "molten");
+  })();
+</script>
 </head>
 <body>
 <div id="app">
@@ -28,6 +37,11 @@
     <button id="rig-status-pill" title="Rig status — click to open Tone Lab's Input card">
       <span id="rig-status-led"></span><span id="rig-status-label">Rig silent</span>
     </button>
+    <!-- ui-review-v5-full.md §6: "Molten Obsidian" theme, shipped as a
+         toggle (data-theme attribute on <html>) rather than a replacement
+         — the existing look stays one click away for anyone who prefers
+         it. Persisted via localStorage (wireThemeToggle, app.js). -->
+    <button id="theme-toggle-btn" title="Switch visual theme">🔥</button>
   </div>
 
   <div id="sidebar">
