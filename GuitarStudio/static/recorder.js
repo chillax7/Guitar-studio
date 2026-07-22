@@ -864,6 +864,13 @@ function wireRecorderControls() {
   document.getElementById("rec-pill").addEventListener("click", () => {
     document.getElementById("playalong-open-btn").click();
   });
+  // ui-review-v5-full.md §2.6: cross-link chip to the other "record"
+  // button's screen, since finding one gives no signal the other exists.
+  document.getElementById("rec-jump-to-rmt").addEventListener("click", (e) => {
+    e.preventDefault();
+    document.getElementById("ailab-open-btn").click();
+    document.getElementById("ailab-tab-ratemytake").click();
+  });
   document.getElementById("rec-av-offset").addEventListener("change", (e) => {
     Recorder.avOffsetMs = parseFloat(e.target.value) || 0;
     localStorage.setItem("gs_av_offset_ms", String(Recorder.avOffsetMs));

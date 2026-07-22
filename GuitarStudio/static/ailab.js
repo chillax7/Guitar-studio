@@ -769,7 +769,7 @@ function aiLabAssistantRestoreMode(mode) {
 
 async function aiLabLickOpen() {
   aiLabLickUpdateProviderHint();
-  await aiLabLickRefreshKeyStatus();
+  await aiLabLickRefreshKeyStatus(true);
   await aiLabTrackInfoOpen();
   await aiLabAssistantRefreshCache();
   if (AiLab.amode === "practicetips") await aiLabTipsRefreshTakes();
@@ -811,17 +811,26 @@ async function aiLabTrackInfoOpen() {
   const artistEl = document.getElementById("ailab-trackinfo-artist");
   const titleEl = document.getElementById("ailab-trackinfo-title");
   const statusEl = document.getElementById("ailab-trackinfo-status");
+  const detailsEl = document.getElementById("ailab-trackinfo-details");
+  const summaryEl = document.getElementById("ailab-trackinfo-summary");
   if (!State.track) {
     artistEl.value = ""; titleEl.value = "";
     statusEl.textContent = "No song selected.";
+    summaryEl.textContent = "";
     return;
   }
   try {
     const r = await Api.get(`/api/trackinfo?track=${encodeURIComponent(State.track)}`);
     artistEl.value = r.artist || "";
     titleEl.value = r.title || (r.guessed_title || "");
-    statusEl.textContent = r.artist || r.title
+    const configured = !!(r.artist || r.title);
+    statusEl.textContent = configured
       ? "" : `Guessed title "${r.guessed_title}" from the filename — check/edit before saving.`;
+    // ui-review-v5-full.md §2.7: collapse once configured, on the "just
+    // opened this tab/switched song" moment only — not on every keystroke
+    // or re-save, which would fight a user who deliberately reopened it.
+    summaryEl.textContent = configured ? `${r.title || "?"} — ${r.artist || "?"}` : "not set";
+    detailsEl.open = !configured;
   } catch (e) {
     statusEl.textContent = `Couldn't load song info: ${e.message}`;
   }
@@ -849,12 +858,25 @@ function aiLabLickUpdateProviderHint() {
   document.getElementById("ailab-lick-apikey").placeholder = info.placeholder;
 }
 
-async function aiLabLickRefreshKeyStatus() {
+// collapseIfConfigured: only passed true from the "just opened this tab"
+// call site (aiLabLickOpen) — ui-review-v5-full.md §2.7 wants this card to
+// collapse once a key exists, but NOT every time this refreshes for other
+// reasons (switching the provider dropdown, right after saving a key)
+// while the user is actively looking at it.
+async function aiLabLickRefreshKeyStatus(collapseIfConfigured) {
   const statusEl = document.getElementById("ailab-lick-key-status");
-  const info = AILAB_LICK_PROVIDERS[aiLabLickCurrentProvider()];
+  const summaryEl = document.getElementById("ailab-lick-provider-summary");
+  const detailsEl = document.getElementById("ailab-lick-provider-details");
+  const provider = aiLabLickCurrentProvider();
+  const info = AILAB_LICK_PROVIDERS[provider];
   try {
     const r = await Api.get("/api/settings");
-    statusEl.textContent = r[info.hasKeyField] ? "Key saved." : "No key saved yet for this provider — see above.";
+    const hasKey = !!r[info.hasKeyField];
+    const providerSelect = document.getElementById("ailab-lick-provider");
+    const providerLabel = providerSelect.options[providerSelect.selectedIndex].text.split(" —")[0];
+    statusEl.textContent = hasKey ? "Key saved." : "No key saved yet for this provider — see above.";
+    summaryEl.textContent = hasKey ? `${providerLabel} — key saved` : `${providerLabel} — no key yet`;
+    if (collapseIfConfigured) detailsEl.open = !hasKey;
   } catch (e) {
     statusEl.textContent = `Couldn't check key status: ${e.message}`;
   }
@@ -1174,6 +1196,12 @@ function wireAiLab() {
 
   document.querySelectorAll(".ailab-tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => aiLabSwitchPanel(btn.dataset.panel));
+  });
+
+  // ui-review-v5-full.md §2.6: reverse of recorder.js's rec-jump-to-rmt link.
+  document.getElementById("rmt-jump-to-playalong").addEventListener("click", (e) => {
+    e.preventDefault();
+    document.getElementById("playalong-open-btn").click();
   });
 
   document.getElementById("ailab-mode-toggle").querySelectorAll("button").forEach((btn) => {

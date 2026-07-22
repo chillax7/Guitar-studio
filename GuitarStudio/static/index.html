@@ -18,6 +18,16 @@
          sync with the current screen by paSetActiveScreen (playalong.js),
          the same function that highlights the sidebar nav button. -->
     <span id="top-banner-screen-label">Mixer</span>
+    <!-- ui-review-v5-full.md §2.5: global rig status pill, visible on
+         every screen — Enable Input stays in Tone Lab (it's rig setup),
+         but a user on Play Along/AI Lab had no signal input even exists
+         until they'd already found Tone Lab by luck. One glance here
+         answers "is my rig on, and is it clipping," and clicking it jumps
+         straight to Tone Lab's Input card. Updated by paUpdateRigPill
+         (playalong.js) whenever input enable/clip/latency state changes. -->
+    <button id="rig-status-pill" title="Rig status — click to open Tone Lab's Input card">
+      <span id="rig-status-led"></span><span id="rig-status-label">Rig silent</span>
+    </button>
   </div>
 
   <div id="sidebar">
@@ -49,23 +59,31 @@
          normal selectTrack() -> /api/project auto-recall. -->
     <h2>Library</h2>
     <div id="track-list"></div>
-    <div id="import-drop">Drop an audio file here<br>or click to import</div>
-    <input type="file" id="import-input" accept="audio/*" style="display:none">
-    <div id="import-zip-drop">Drop a stem pack (.zip) file here<br>or click to import</div>
-    <input type="file" id="import-zip-input" accept=".zip" style="display:none">
+    <!-- ui-review-v5-full.md §2.3: one smart drop zone instead of two — the
+         file's own extension (checked in wireImport's drop/change handlers)
+         decides whether it's a single audio file or a stem-pack .zip, so
+         the user never has to pick the right box. -->
+    <div id="import-drop">Drop a song here<br><span class="import-drop-sub">audio file or stem-pack .zip</span><br>or click to import</div>
+    <input type="file" id="import-input" accept="audio/*,.zip" style="display:none">
 
     <!-- system-audio-rip-spec.md: captures whatever's currently playing on
          the Mac (a streaming tab, another app) via a BlackHole virtual
          audio device, straight into input/ as a new song — a second way to
-         get a song in when you don't have the file itself in hand. -->
-    <h2>Rip system audio</h2>
-    <div id="rip-panel">
-      <select id="rip-device-select"></select>
-      <div id="rip-hint">Checking for a BlackHole input device…</div>
-      <button id="rip-start-btn">● Start Rip</button>
-      <button id="rip-stop-btn" style="display:none">■ Stop Rip</button>
-      <span id="rip-elapsed" style="display:none">0:00</span>
-    </div>
+         get a song in when you don't have the file itself in hand.
+         ui-review-v5-full.md §2.3: collapsed by default (remembers open/
+         closed state) — it was previously permanently expanded, showing an
+         error-looking "No input devices listed yet" hint on every launch
+         even for users who will never install BlackHole. -->
+    <details id="rip-details">
+      <summary>Rip system audio…</summary>
+      <div id="rip-panel">
+        <select id="rip-device-select"></select>
+        <div id="rip-hint">Checking for a BlackHole input device…</div>
+        <button id="rip-start-btn">● Start Rip</button>
+        <button id="rip-stop-btn" style="display:none">■ Stop Rip</button>
+        <span id="rip-elapsed" style="display:none">0:00</span>
+      </div>
+    </details>
   </div>
 
   <!-- Drag to resize the sidebar (wireSidebarResize in app.js); double-click
@@ -347,6 +365,11 @@
               <video id="rec-preview" muted playsinline></video>
               <canvas id="rec-framing-overlay"></canvas>
             </div>
+            <!-- ui-review-v5-full.md §2.6: the two-record-buttons ambiguity
+                 (this is a watchable performance take; AI Lab's dry take is
+                 for scoring) — a direct link instead of relying on a user
+                 having read both cards' hint text already. -->
+            <p class="hint">Recording to get a score instead? <a href="#" id="rec-jump-to-rmt">Go to Rate My Take →</a></p>
             <p class="hint" id="rec-mode-hint"></p>
             <div class="row">
               <button id="rec-toggle-btn" class="primary">● Record</button>
@@ -923,6 +946,7 @@
             <h3>Record a dry take</h3>
             <p class="hint">Captures only your guitar rig's output (post-amp/pedals) — never the backing track — so scoring compares your playing against the reference on its own, not a mix that already contains it.</p>
             <p class="hint">This is different from the takes recorded in <strong>Play Along</strong>'s Record tab, which deliberately mix the backing track in with your guitar so you have a normal, watchable/listenable performance video afterward. That's the right choice for a take you want to watch back — but the wrong input for scoring, since the reference performance would already be baked into the file regardless of how well you actually played. Use Play Along's Record tab for a real performance recording; use this button when you specifically want a take to score here.</p>
+            <p class="hint">Want a watchable performance instead? <a href="#" id="rmt-jump-to-playalong">Go to Play Along →</a></p>
             <div class="row">
               <button id="ailab-rmt-record-btn" class="primary">● Record dry take</button>
               <button id="ailab-rmt-stop-btn" style="display:none;">■ Stop</button>
@@ -963,8 +987,14 @@
              never raw audio (§7). -->
         <div id="ailab-lickideas-panel" class="ailab-column" style="display:none;">
 
-          <section class="pa-card">
-            <h3>LLM provider &amp; API key</h3>
+          <!-- ui-review-v5-full.md §2.7: both setup cards below are
+               configure-once-per-song(-ish) — collapse automatically once
+               configured (ailab.js sets .open = false and fills the
+               summary status line), same disclosure treatment the Input
+               card's Setup already uses elsewhere. Still openable any time
+               to change provider/key or fix the Artist/Title guess. -->
+          <details class="pa-card ailab-setup-details" id="ailab-lick-provider-details" open>
+            <summary><h3>LLM provider &amp; API key</h3><span class="ailab-setup-status" id="ailab-lick-provider-summary"></span></summary>
             <p class="hint">This is a research spike — the only feature in this app that makes a network call. Pick a provider, get a free/cheap API key from its own console, and paste it below. Each provider's key is stored separately (locally, in this app's own project folder — never committed to source control, never sent anywhere except directly to that provider's own API).</p>
             <label>Provider</label>
             <select id="ailab-lick-provider">
@@ -977,7 +1007,7 @@
             <input type="password" id="ailab-lick-apikey" placeholder="">
             <button id="ailab-lick-savekey-btn">Save key</button>
             <p class="hint" id="ailab-lick-key-status"></p>
-          </section>
+          </details>
 
           <!-- §4a: This Track/This Artist need an Artist/Title the app has
                no other way to know — filename parsing is too unreliable to
@@ -986,8 +1016,8 @@
                pre-filled with a best-effort filename guess but always
                user-edited/confirmed. Shared by This Track, This Artist, and
                Ask AI (for context), not just one mode. -->
-          <section class="pa-card">
-            <h3>This song</h3>
+          <details class="pa-card ailab-setup-details" id="ailab-trackinfo-details" open>
+            <summary><h3>This song</h3><span class="ailab-setup-status" id="ailab-trackinfo-summary"></span></summary>
             <p class="hint">Needed by This Track/This Artist below (and used as context by Ask AI) — the app has no other way to know what song this actually is. A guess is prefilled from the filename; always check/edit it.</p>
             <label>Artist</label>
             <input type="text" id="ailab-trackinfo-artist" placeholder="e.g. Gary Moore">
@@ -995,7 +1025,7 @@
             <input type="text" id="ailab-trackinfo-title" placeholder="e.g. Empty Rooms">
             <button id="ailab-trackinfo-save-btn">Save</button>
             <p class="hint" id="ailab-trackinfo-status"></p>
-          </section>
+          </details>
 
           <div class="ailab-mode-row">
             <div class="ailab-mode-toggle" id="ailab-assistant-mode-toggle">

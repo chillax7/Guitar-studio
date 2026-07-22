@@ -2853,8 +2853,13 @@ function wireImport() {
   const sidebarEl = document.getElementById("sidebar");
   const inputEl = document.getElementById("import-input");
   dropEl.addEventListener("click", () => inputEl.click());
+  // One smart drop zone (ui-review-v5-full.md §2.3): the extension decides
+  // which import path a file takes, same routing logic whether it arrived
+  // via click-to-browse or drag-and-drop.
   inputEl.addEventListener("change", (e) => {
-    if (e.target.files[0]) importFile(e.target.files[0]);
+    const f = e.target.files[0];
+    if (f && f.name.toLowerCase().endsWith(".zip")) importStemZip(f);
+    else if (f) importFile(f);
   });
 
   // Without a document-level dragover/drop handler, a drop that misses the
@@ -2864,40 +2869,25 @@ function wireImport() {
   document.addEventListener("dragover", (e) => e.preventDefault());
   document.addEventListener("drop", (e) => e.preventDefault());
 
-  const zipDropEl = document.getElementById("import-zip-drop");
-
   // The whole sidebar is a drop target, not just the dashed box — "drop it
   // somewhere in the library area" is what people actually do, and the box
-  // alone is a small target to hit precisely. Both drop zones highlight
-  // together on dragover — a browser's dragover event can't see the
-  // dragged file's name/extension (only drop can), so there's no way to
-  // know in advance which of the two it'll actually route to.
+  // alone is a small target to hit precisely.
   sidebarEl.addEventListener("dragover", (e) => {
     e.preventDefault();
     dropEl.classList.add("dragover");
-    zipDropEl.classList.add("dragover");
   });
   sidebarEl.addEventListener("dragleave", (e) => {
-    if (!sidebarEl.contains(e.relatedTarget)) {
-      dropEl.classList.remove("dragover");
-      zipDropEl.classList.remove("dragover");
-    }
+    if (!sidebarEl.contains(e.relatedTarget)) dropEl.classList.remove("dragover");
   });
   sidebarEl.addEventListener("drop", (e) => {
     e.preventDefault();
     dropEl.classList.remove("dragover");
-    zipDropEl.classList.remove("dragover");
     const f = e.dataTransfer.files[0];
     // A dropped .zip is a stem pack, not a single audio file to run
     // through separation — route it to the other import path rather than
     // letting /api/import reject it with a confusing error.
     if (f && f.name.toLowerCase().endsWith(".zip")) importStemZip(f);
     else if (f) importFile(f);
-  });
-  const zipInputEl = document.getElementById("import-zip-input");
-  zipDropEl.addEventListener("click", () => zipInputEl.click());
-  zipInputEl.addEventListener("change", (e) => {
-    if (e.target.files[0]) importStemZip(e.target.files[0]);
   });
 }
 
@@ -2983,7 +2973,7 @@ async function importFile(file) {
 }
 
 async function importStemZip(file) {
-  const dropEl = document.getElementById("import-zip-drop");
+  const dropEl = document.getElementById("import-drop");
   const originalHtml = dropEl.innerHTML;
   dropEl.textContent = `Importing stem pack ${file.name}…`;
   try {
@@ -3161,11 +3151,22 @@ function updateRipUI() {
   if (!recording) elapsedEl.textContent = "0:00";
 }
 
+const RIP_DETAILS_OPEN_KEY = "gs_rip_details_open";
+
 function wireRip() {
   document.getElementById("rip-start-btn").addEventListener("click", ripStart);
   document.getElementById("rip-stop-btn").addEventListener("click", ripStop);
   ripRefreshDevices();
   updateRipUI();
+
+  // ui-review-v5-full.md §2.3: collapsed by default, but remembers the
+  // user's own choice once they've opened it (e.g. because they actually
+  // use system-audio rip regularly) rather than re-collapsing every launch.
+  const detailsEl = document.getElementById("rip-details");
+  if (localStorage.getItem(RIP_DETAILS_OPEN_KEY) === "1") detailsEl.open = true;
+  detailsEl.addEventListener("toggle", () => {
+    localStorage.setItem(RIP_DETAILS_OPEN_KEY, detailsEl.open ? "1" : "0");
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -786,6 +786,7 @@ async function paEnableInput() {
     const activeId = document.getElementById("pa-device-select").value;
     if (activeId) localStorage.setItem(PA_INPUT_DEVICE_KEY, activeId);
     paStartMeters();
+    paUpdateRigPill();
   } catch (e) {
     hintEl.textContent = `Could not access input: ${e.message}. Check System Settings > Privacy & Security > Microphone.`;
   }
@@ -902,6 +903,35 @@ function updateClipIndicator() {
   const el = document.getElementById("pa-clip-indicator");
   el.textContent = PA.inputClipped ? "CLIPPED" : "clip";
   el.classList.toggle("clipped", !!PA.inputClipped);
+  paUpdateRigPill();
+}
+
+// ui-review-v5-full.md §2.5: global rig status pill, visible on every
+// screen (not just Tone Lab) — silent/live/clipped, same source of truth
+// as Tone Lab's own Input card (PA.stream, PA.inputClipped). Called
+// whenever any of that state changes: paEnableInput's success path,
+// updateClipIndicator (both setting and clearing the latch).
+function paUpdateRigPill() {
+  const pill = document.getElementById("rig-status-pill");
+  const label = document.getElementById("rig-status-label");
+  pill.classList.remove("live", "clipped");
+  if (!PA.stream) {
+    label.textContent = "Rig silent";
+    pill.title = "Input not enabled yet — click to open Tone Lab's Input card.";
+    return;
+  }
+  if (PA.inputClipped) {
+    pill.classList.add("clipped");
+    label.textContent = "Clipped";
+    pill.title = "Input clipped — click to open Tone Lab and Clear it (or back off the gain).";
+    return;
+  }
+  pill.classList.add("live");
+  const est = Audio.ctx ? ((Audio.ctx.baseLatency || 0) + (Audio.ctx.outputLatency || 0)) * 1000 : 0;
+  label.textContent = est > 0 ? `Rig live · ~${est.toFixed(0)} ms` : "Rig live";
+  pill.title = "Input enabled" + (est > 0
+    ? ` · ~${est.toFixed(0)} ms estimated OUTPUT-side latency only (browser-reported, excludes input/USB/driver latency) — click for Tone Lab's Input card.`
+    : " — click to open Tone Lab's Input card.");
 }
 
 function paStartMeters() {
@@ -2956,3 +2986,17 @@ wireRiffCapture();
 // #pa-latency-hint lives on the Output card, which moved into Tone Lab
 // along with the rest of #pa-pedalboard — this listener moved with it.
 document.getElementById("tonelab-open-btn").addEventListener("click", paShowLatencyEstimate);
+
+// ui-review-v5-full.md §2.5: global rig status pill — click jumps straight
+// to Tone Lab (the Input card sits at the very top, so no further scroll
+// is needed). Initialized once at load in the "silent" state.
+document.getElementById("rig-status-pill").addEventListener("click", openToneLab);
+paUpdateRigPill();
+// Real gap the nav quiet/active contrast fix (ui-review-v5-full.md §2.3)
+// surfaced: every nav button was solid accent color by the old house
+// style, so Mixer never visibly being "active" on initial load was
+// invisible. Now that inactive buttons are quiet, Mixer needs the same
+// paSetActiveScreen("mixer-open-btn") call closeAllScreens already makes
+// when returning to it — just also on first load, before any screen has
+// been opened yet.
+paSetActiveScreen("mixer-open-btn");
