@@ -1622,10 +1622,14 @@ svg.ailab-fretboard { display: block; }
 .ailab-fret-line { stroke: #454b5c; stroke-width: 1; }
 .ailab-fret-line.nut { stroke: #7d8393; stroke-width: 3; }
 .ailab-string-line { stroke: #4a5064; stroke-width: 1; }
-.ailab-fret-marker { fill: #31364580; }
-.ailab-fret-num { fill: #565d70; font-size: 9px; }
+.ailab-fret-marker { fill: #4c5470; }
+.ailab-fret-num { fill: #aab1c9; font-size: 10px; font-weight: 600; }
 .ailab-dot-root { fill: var(--accent); stroke: #c8d6ff; stroke-width: 1.5; }
-.ailab-dot-scale { fill: #333a52; stroke: #5b6a8f; stroke-width: 1.2; }
+/* Non-root scale tones: previously #333a52 on #5b6a8f, close enough to the
+   panel background that a real user report ("non-root notes don't stand
+   out well") called it out — lightened well past the fretboard's own
+   grays so every in-scale note reads clearly, not just the root. */
+.ailab-dot-scale { fill: #7c88ad; stroke: #c3cbe6; stroke-width: 1.4; }
 .ailab-dot-label { fill: #fff; font-size: 8px; font-weight: 700; text-anchor: middle; pointer-events: none; }
 
 /* ---------- AI Lab: top tab bar (Scales / Rate My Take) ---------- */
