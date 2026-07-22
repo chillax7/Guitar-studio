@@ -1141,6 +1141,31 @@ def _write_dry_takes(rec_dir: Path, dry_takes: set) -> None:
     (rec_dir / DRY_TAKES_FILE).write_text(json.dumps({"dry": sorted(dry_takes)}))
 
 
+# Caches the last Rate My Take result per take filename, so reopening the
+# tab (or just picking a take you already scored while comparing a few)
+# shows the existing rating/heatmap instantly instead of re-running
+# score_take — same sidecar-JSON idiom as starred/dry_takes above, and
+# same "survive a rename" requirement (see svc_recording_rename). Deleting
+# a take removes its entry and its heatmap file (see svc_recording_discard)
+# rather than leaving an orphaned rating pointing at a file that no longer
+# exists.
+RATINGS_FILE = ".rate_ratings.json"
+
+
+def _read_ratings(rec_dir: Path) -> dict:
+    meta = rec_dir / RATINGS_FILE
+    if not meta.exists():
+        return {}
+    try:
+        return json.loads(meta.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _write_ratings(rec_dir: Path, ratings: dict) -> None:
+    (rec_dir / RATINGS_FILE).write_text(json.dumps(ratings, indent=2))
+
+
 def svc_recordings_list(track: str) -> dict:
     """VD-02: every take for a track, inline-playable and starrable — ends
     the round-trip to Finder/QuickTime for every review."""
@@ -1149,6 +1174,7 @@ def svc_recordings_list(track: str) -> dict:
     if rec_dir.exists():
         starred = _read_starred(rec_dir)
         dry_takes = _read_dry_takes(rec_dir)
+        ratings = _read_ratings(rec_dir)
         for f in sorted(rec_dir.iterdir()):
             if f.is_file() and not f.name.startswith("."):
                 takes.append({
@@ -1163,6 +1189,11 @@ def svc_recordings_list(track: str) -> dict:
                     # a fallback for a dry file that predates the sidecar
                     # or was dropped in by hand.
                     "dry": f.name in dry_takes or bool(DRY_RE.search(f.stem)),
+                    # Cached Rate My Take result (see RATINGS_FILE's
+                    # comment) — None if never scored, so the client can
+                    # show a take's last rating instantly on selection
+                    # instead of re-running score_take just to compare.
+                    "rating": ratings.get(f.name),
                 })
     return {"takes": takes}
 
@@ -1222,7 +1253,7 @@ def svc_rate_score(source_path: str, take_path: str, model: str, stem: str,
     heatmap_path = heatmap_dir / f"{target.stem}_rate_heatmap.png"
     engine._render_rate_heatmap(result["beats"], heatmap_path, target.name, input_path.name, result["overall_pct"])
 
-    return {
+    response = {
         "overall_pct": result["overall_pct"],
         "overall_raw": result["overall_raw"],
         "overall_pitch": result["overall_pitch"],
@@ -1233,6 +1264,19 @@ def svc_rate_score(source_path: str, take_path: str, model: str, stem: str,
         "heatmap_path": str(heatmap_path),
         "refine": refine_info,
     }
+
+    # Cache this result under the take's own filename (see RATINGS_FILE's
+    # comment) so reopening/comparing takes doesn't need to re-run
+    # score_take just to see a rating that was already computed. Re-scoring
+    # the same take (e.g. after adjusting the offset) simply overwrites its
+    # entry — the cache always reflects the most recent scoring, not the
+    # first one.
+    rec_dir = target.parent
+    ratings = _read_ratings(rec_dir)
+    ratings[target.name] = {**response, "scored_at": time.time()}
+    _write_ratings(rec_dir, ratings)
+
+    return response
 
 
 def svc_recording_star(path: str, starred: bool) -> dict:
@@ -1278,6 +1322,8 @@ def svc_recording_rename(path: str, new_name: str) -> dict:
     # its current filename and shouldn't lose that the moment it's renamed
     # to something the regex no longer matches.
     was_dry = target.name in dry_takes or bool(DRY_RE.search(target.stem))
+    ratings = _read_ratings(rec_dir)
+    old_rating = ratings.get(target.name)
     old_name = target.name
     target.rename(new_path)
     if was_starred:
@@ -1288,6 +1334,20 @@ def svc_recording_rename(path: str, new_name: str) -> dict:
         dry_takes.discard(old_name)
         dry_takes.add(new_path.name)
         _write_dry_takes(rec_dir, dry_takes)
+    if old_rating:
+        # The heatmap file is keyed by the take's own filename stem — a
+        # rename means the OLD heatmap would silently orphan (never found
+        # again, since a re-score would generate a new one under the new
+        # name) unless it's renamed to match right here.
+        old_heatmap = Path(old_rating["heatmap_path"]) if old_rating.get("heatmap_path") else None
+        new_rating = dict(old_rating)
+        if old_heatmap and old_heatmap.exists():
+            new_heatmap = old_heatmap.parent / f"{new_path.stem}_rate_heatmap.png"
+            old_heatmap.rename(new_heatmap)
+            new_rating["heatmap_path"] = str(new_heatmap)
+        ratings.pop(old_name, None)
+        ratings[new_path.name] = new_rating
+        _write_ratings(rec_dir, ratings)
 
     return {"ok": True, "path": str(new_path), "filename": new_path.name}
 
@@ -1375,6 +1435,17 @@ def svc_recording_discard(path: str) -> dict:
         target.relative_to((engine.OUTPUT_DIR).resolve())
     except ValueError:
         raise ApiError(400, "path must be inside output/")
+    # Deleting a take (this is also the real "Delete" action, not just the
+    # post-recording review discard) shouldn't leave an orphaned Rate My
+    # Take rating/heatmap pointing at a file that no longer exists.
+    rec_dir = target.parent
+    ratings = _read_ratings(rec_dir)
+    rating = ratings.pop(target.name, None)
+    if rating:
+        heatmap = Path(rating["heatmap_path"]) if rating.get("heatmap_path") else None
+        if heatmap and heatmap.exists():
+            heatmap.unlink()
+        _write_ratings(rec_dir, ratings)
     if target.exists():
         target.unlink()
     return {"ok": True}

@@ -1196,6 +1196,22 @@ scrub timeline. Play or scrub to the spot the solo actually starts, then
 field below — no more nudging the Offset number by trial and error, or
 switching back to the Mixer to find the spot first.
 
+**Managing takes right here.** Each row in the takes list has its own
+**▶ Play**, **✎ Rename**, and **🗑 Delete** — the same actions Play
+Along's own Takes tab has, so comparing takes doesn't mean bouncing back
+and forth between screens. A percentage badge on the row shows a take's
+last rating, if it has one. Deleting a take also deletes its saved
+rating and heatmap — nothing is left pointing at a file that no longer
+exists.
+
+**Ratings are saved, not just shown once.** Scoring a take caches its
+result (percentage, breakdown, heatmap) under that take's own name.
+Picking a different take from the dropdown shows its last rating
+instantly, with no re-scoring — useful when comparing two or three takes
+back and forth. Renaming a take carries its saved rating along with it;
+only clicking **Score this take** again re-runs the scoring (overwriting
+whatever was cached before, e.g. after changing the Offset).
+
 **To score a take:**
 1. Record a dry take (or pick one already recorded for this song).
 2. Find where the take starts using the Backing Track card above, then

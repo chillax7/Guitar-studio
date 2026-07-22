@@ -808,6 +808,44 @@ not a re-statement of the bad take's new percent) — not blocking, just
 worth keeping in mind if a future take's score looks off, now that
 `overall_raw` is on screen to check against.
 
+**Update — post-gate polish: ratings persist, and takes are manageable
+from this screen.** Two real gaps the user found while actually using the
+now-passed feature: (1) re-comparing a few takes meant re-running
+`score_take` every time, even for a take already scored moments ago; (2)
+this screen's take list only had Rename — Play and Delete meant switching
+to Play Along's Takes tab. Fixed:
+
+- A new `.rate_ratings.json` sidecar per recordings directory (same idiom
+  as `.starred.json`/`.dry_takes.json`) caches each take's last Rate My
+  Take result — `/api/recordings` now returns it inline per take (a
+  `rating` field, `None` if never scored), so picking a take shows its
+  cached result instantly instead of re-scoring, and the takes list shows
+  a percentage badge per take.
+- Deleting a take (`svc_recording_discard` — the same function used by
+  both the post-recording "Discard" button and every "Delete" button)
+  now also removes that take's cached rating and its heatmap file, so
+  nothing is left pointing at audio that no longer exists.
+- Renaming a take (`svc_recording_rename`) now carries its rating along —
+  including renaming the heatmap file itself, since it was keyed by the
+  take's old filename stem and would otherwise silently orphan (a
+  re-score would just generate a new heatmap under the new name, leaving
+  the old one dangling forever).
+- The AI Lab take list grew **▶ Play** (a plain inline `<audio>` element,
+  not a full trim-capable player — trimming stays Play Along's job) and
+  **🗑 Delete** next to the existing Rename, mirroring Play Along's own
+  Takes tab exactly rather than a scaled-down version of it.
+
+Verified directly (bypassing the expensive real `score_take` computation,
+which is unchanged by this work — only the caching/rename/delete plumbing
+around it is new): a synthetic rating written to the sidecar appears
+correctly in `svc_recordings_list`'s output; `svc_recording_rename`
+correctly moves the rating entry and renames the heatmap file (old
+heatmap confirmed gone afterward); `svc_recording_discard` correctly
+removes both the rating entry and the heatmap file. A headless browser
+pass confirmed the take list renders the rating badge and all three
+buttons, and that selecting a take with a cached rating displays it
+immediately with the correct "last rating" hint text, no console errors.
+
 **V5-B2 = BT-15/V4-F6 · Artifact cleanup pass — M, timeboxed.**
 Post-separation cleanup on the guitar stem specifically. Picked *because*
 it's scheduled alongside Rate My Take completion this release — a

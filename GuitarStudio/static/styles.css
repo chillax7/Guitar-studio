@@ -1482,12 +1482,18 @@ svg.ailab-fretboard { display: block; }
 #ailab-rmt-heatmap-img { max-width: 100%; border-radius: 6px; border: 1px solid var(--border); display: block; }
 
 .ailab-rmt-take-row-right { display: flex; align-items: center; gap: 8px; }
-.ailab-rmt-rename-btn {
+.ailab-rmt-rename-btn, .ailab-rmt-play-btn, .ailab-rmt-delete-btn {
   flex: none; width: 18px; height: 18px; padding: 0;
   border-radius: 3px; font-size: 11px; line-height: 18px;
   color: var(--text-dim); background: var(--panel-2); border: 1px solid var(--border);
 }
-.ailab-rmt-rename-btn:hover { color: var(--text); background: var(--border); }
+.ailab-rmt-rename-btn:hover, .ailab-rmt-play-btn:hover { color: var(--text); background: var(--border); }
+.ailab-rmt-delete-btn:hover { color: #fff; background: var(--danger); border-color: var(--danger); }
+.ailab-rmt-take-rating {
+  flex: none; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 11px;
+  color: var(--text); background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 3px; padding: 1px 6px;
+}
 
 /* Mirrored "timeline" transport control (Mixer's Backing Track card, Play
    Along's copy, and AI Lab's Rate My Take card) — a plain scrub slider,

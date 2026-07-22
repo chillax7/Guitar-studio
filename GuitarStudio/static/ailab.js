@@ -402,6 +402,11 @@ function aiLabSwitchPanel(panel) {
 // Rate My Take
 // ---------------------------------------------------------------------------
 
+let AiLabRmtTakesCache = []; // last-fetched takes list, so take-select's
+// "change" handler can look up a cached rating (see svc_recordings_list's
+// "rating" field) without a round trip just to display what's already
+// there.
+
 async function aiLabRmtOpen() {
   await paEnsureRigSessionReady(); // playalong.js — need PA.outputMute to exist for the dry-record tap
   await aiLabRmtRefreshTakes();
@@ -410,9 +415,12 @@ async function aiLabRmtOpen() {
 async function aiLabRmtRefreshTakes() {
   const listEl = document.getElementById("ailab-rmt-takes-list");
   const selectEl = document.getElementById("ailab-rmt-take-select");
+  const playerEl = document.getElementById("ailab-rmt-take-player");
   if (!State.track) {
     listEl.innerHTML = "<p class=\"hint\">No song selected.</p>";
     selectEl.innerHTML = "";
+    playerEl.style.display = "none";
+    AiLabRmtTakesCache = [];
     return;
   }
   let takes = [];
@@ -423,10 +431,12 @@ async function aiLabRmtRefreshTakes() {
     listEl.innerHTML = `<p class="hint">Couldn't load takes: ${e.message}</p>`;
     return;
   }
+  AiLabRmtTakesCache = takes;
 
   if (!takes.length) {
     listEl.innerHTML = "<p class=\"hint\">No dry takes yet for this song — record one below.</p>";
     selectEl.innerHTML = "";
+    playerEl.style.display = "none";
     return;
   }
 
@@ -435,14 +445,21 @@ async function aiLabRmtRefreshTakes() {
   takes.forEach((t) => {
     const row = document.createElement("div");
     row.className = "ailab-rmt-take-row";
+    const ratingBadge = t.rating && t.rating.overall_pct !== null
+      ? `<span class="ailab-rmt-take-rating">${t.rating.overall_pct}%</span>` : "";
     row.innerHTML = `
-      <span class="name">${t.filename}</span>
+      <span class="name">${escapeHtml(t.filename)}</span>
       <span class="ailab-rmt-take-row-right">
+        ${ratingBadge}
         <span class="size">${(t.size / 1024 / 1024).toFixed(1)} MB</span>
+        <button class="ailab-rmt-play-btn" title="Play">▶</button>
         <button class="ailab-rmt-rename-btn" title="Rename">✎</button>
+        <button class="ailab-rmt-delete-btn" title="Delete">🗑</button>
       </span>
     `;
+    row.querySelector(".ailab-rmt-play-btn").addEventListener("click", () => aiLabRmtPlayTake(t));
     row.querySelector(".ailab-rmt-rename-btn").addEventListener("click", () => aiLabRmtRenameTake(t));
+    row.querySelector(".ailab-rmt-delete-btn").addEventListener("click", () => aiLabRmtDeleteTake(t));
     frag.appendChild(row);
   });
   listEl.appendChild(frag);
@@ -457,13 +474,26 @@ async function aiLabRmtRefreshTakes() {
   });
   if (takes.some((t) => t.path === prevValue)) selectEl.value = prevValue;
   else selectEl.selectedIndex = takes.length - 1; // default to the most recent
+  aiLabRmtOnTakeSelectChange();
+}
+
+// Playback straight from the take list — same idiom as Play Along's Takes
+// tab (recorder.js's loadTakeIntoPlayer), just a single inline <audio>
+// rather than a full trim-capable player, since trimming stays Play
+// Along's job.
+function aiLabRmtPlayTake(take) {
+  const player = document.getElementById("ailab-rmt-take-player");
+  player.src = `/api/output?path=${encodeURIComponent(take.path)}`;
+  player.style.display = "";
+  player.play().catch(() => {});
 }
 
 // Same prompt-based rename idiom as Play Along's Takes tab
 // (recorder.js) — reuses the same /api/recording/rename endpoint; the
-// server carries the "dry" flag over to the new filename (see
-// svc_recording_rename), so a renamed dry take doesn't drop out of this
-// list the moment it stops matching "... - dry NN".
+// server carries the "dry" flag (and any cached rating/heatmap — see
+// svc_recording_rename) over to the new filename, so a renamed dry take
+// doesn't drop out of this list or lose its rating the moment it stops
+// matching "... - dry NN".
 async function aiLabRmtRenameTake(take) {
   const base = take.filename.replace(/\.[^.]+$/, "");
   const newName = prompt("Rename take to:", base);
@@ -474,6 +504,53 @@ async function aiLabRmtRenameTake(take) {
   } catch (e) {
     alert("Rename failed: " + e.message);
   }
+}
+
+// Same confirm-then-discard idiom as Play Along's Takes tab
+// (recorder.js) — /api/recording/discard also clears that take's cached
+// rating/heatmap server-side (see svc_recording_discard), so this never
+// leaves an orphaned rating pointing at a deleted file.
+async function aiLabRmtDeleteTake(take) {
+  if (!confirm(`Delete "${take.filename}"? This can't be undone.`)) return;
+  await Api.post("/api/recording/discard", { path: take.path }).catch(() => {});
+  const player = document.getElementById("ailab-rmt-take-player");
+  if (player.src && player.src.includes(encodeURIComponent(take.path))) {
+    player.pause();
+    player.style.display = "none";
+  }
+  await aiLabRmtRefreshTakes();
+}
+
+function aiLabRmtOnTakeSelectChange() {
+  const takePath = document.getElementById("ailab-rmt-take-select").value;
+  const take = AiLabRmtTakesCache.find((t) => t.path === takePath);
+  const hintEl = document.getElementById("ailab-rmt-score-hint");
+  if (take && take.rating) {
+    aiLabRmtRenderResult(take.rating);
+    hintEl.textContent = "Showing this take's last rating — click Score to re-run.";
+  } else {
+    document.getElementById("ailab-rmt-result-card").style.display = "none";
+    hintEl.textContent = take ? "Not scored yet." : "";
+  }
+}
+
+// Shared by aiLabScoreTake (fresh result) and aiLabRmtOnTakeSelectChange
+// (cached result — see RATINGS_FILE's comment server-side) so a cached
+// rating renders identically to a freshly-scored one, not a stripped-down
+// preview.
+function aiLabRmtRenderResult(r) {
+  const resultCard = document.getElementById("ailab-rmt-result-card");
+  const overallEl = document.getElementById("ailab-rmt-overall");
+  overallEl.textContent = r.overall_pct !== null ? `Overall: ${r.overall_pct}%` : "Overall: --";
+  overallEl.className = "ailab-rmt-overall " + aiLabRmtOverallClass(r.overall_pct);
+  const breakdownEl = document.getElementById("ailab-rmt-breakdown");
+  breakdownEl.textContent = (r.overall_pitch !== null && r.overall_timing !== null)
+    ? `Pitch agreement: ${(r.overall_pitch * 100).toFixed(0)}%  ·  Timing agreement: ${(r.overall_timing * 100).toFixed(0)}%` +
+      (r.overall_raw !== null ? `  ·  raw (uncalibrated): ${r.overall_raw}` : "")
+    : "";
+  document.getElementById("ailab-rmt-heatmap-img").src =
+    `/api/output?path=${encodeURIComponent(r.heatmap_path)}&t=${Date.now()}`;
+  resultCard.style.display = "";
 }
 
 function aiLabDryEnsureBus() {
@@ -597,22 +674,12 @@ async function aiLabScoreTake() {
         : ` Offset auto-refine found ${r.refine.offset}s but match quality (${r.refine.quality}) was too low to trust — used ${offset}s as given.`;
     }
     hintEl.textContent = msg;
-
-    const overallEl = document.getElementById("ailab-rmt-overall");
-    overallEl.textContent = r.overall_pct !== null ? `Overall: ${r.overall_pct}%` : "Overall: --";
-    overallEl.className = "ailab-rmt-overall " + aiLabRmtOverallClass(r.overall_pct);
-    // Raw 0-1 pitch/timing components, not run through the 0-100
-    // calibration stretch — deliberately shown alongside the overall
-    // number so a surprising score can be traced to one side of the 60/40
-    // blend specifically, instead of guessing.
-    const breakdownEl = document.getElementById("ailab-rmt-breakdown");
-    breakdownEl.textContent = (r.overall_pitch !== null && r.overall_timing !== null)
-      ? `Pitch agreement: ${(r.overall_pitch * 100).toFixed(0)}%  ·  Timing agreement: ${(r.overall_timing * 100).toFixed(0)}%` +
-        (r.overall_raw !== null ? `  ·  raw (uncalibrated): ${r.overall_raw}` : "")
-      : "";
-    document.getElementById("ailab-rmt-heatmap-img").src =
-      `/api/output?path=${encodeURIComponent(r.heatmap_path)}&t=${Date.now()}`;
-    resultCard.style.display = "";
+    aiLabRmtRenderResult(r);
+    // The server just cached this under the take's own filename (see
+    // RATINGS_FILE) — mirror that into the in-memory list too, so
+    // switching away and back to this take shows it without a refetch.
+    const cached = AiLabRmtTakesCache.find((t) => t.path === takePath);
+    if (cached) cached.rating = r;
   } catch (e) {
     hintEl.textContent = `Scoring failed: ${e.message}`;
   }
@@ -997,6 +1064,7 @@ function wireAiLab() {
   document.getElementById("ailab-rmt-record-btn").addEventListener("click", aiLabStartDryRecording);
   document.getElementById("ailab-rmt-stop-btn").addEventListener("click", aiLabStopDryRecording);
   document.getElementById("ailab-rmt-score-btn").addEventListener("click", aiLabScoreTake);
+  document.getElementById("ailab-rmt-take-select").addEventListener("change", aiLabRmtOnTakeSelectChange);
   // The whole point of this screen's Backing Track card: find the actual
   // spot the take starts (scrub the timeline, or just play up to it) and
   // drop it straight into Offset, instead of typing seconds by eye/ear.
