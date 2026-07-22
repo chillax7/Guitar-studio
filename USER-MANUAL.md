@@ -1303,6 +1303,15 @@ reads as a jumble of run-together text, that's the model not quite
 following the formatting instruction on that particular request (worth
 trying again), not something you need to work around by hand.
 
+**Answers persist per song.** Every mode's last answer is remembered for
+the song it was run against — switching modes, closing AI Lab, or even
+reloading the app and coming back later all redisplay the same answer
+without spending another request. Only running a mode again (a fresh
+**Get phrasing ideas** / **Ask** / **Get practice tips** / info lookup)
+replaces what's cached — Practice Tips' cached tips only reappear while
+the same take that generated them is still selected, since tips for a
+different take wouldn't make sense to show.
+
 **Mode: Lick Ideas.** Sends the current song's detected key, tempo, and
 chord progression and asks for concrete lead-guitar phrasing ideas:
 target notes to land on over specific chords, call-and-response shapes,
@@ -1326,12 +1335,15 @@ My Take tab). If that take already has a Rate My Take rating, its Offset
 and last percentage carry over automatically — a hint line shows the
 carried-over score, or warns if that take's Rate My Take score was itself
 invalid ("--"), before you spend a request on it. Click **Get practice
-tips**: it re-scores the take against the reference guitar stem, finds
-its actual weakest moments (the same information the heatmap already
-shows you, as a beat-by-beat pitch/timing breakdown), and asks for
-practice exercises tied to those specific spots — not generic "practice
-more" filler. Needs at least one dry take recorded for the current song;
-the button stays disabled with an explanation until one exists.
+tips**: if the Offset still matches what Rate My Take already scored this
+take at, it reuses that scoring directly instead of re-scoring from
+scratch (the hint line says so when it happens); otherwise it scores
+fresh. Either way it finds the take's actual weakest moments (the same
+information the heatmap already shows you, as a beat-by-beat pitch/timing
+breakdown) and asks for practice exercises tied to those specific spots —
+not generic "practice more" filler. Needs at least one dry take recorded
+for the current song; the button stays disabled with an explanation until
+one exists.
 
 **Mode: This Track.** One click, no question to type — background on
 this specific song: band/release info, structure and feel, technical

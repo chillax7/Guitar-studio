@@ -582,6 +582,52 @@ buttons still toggle correctly in the new order. The formatting/verbosity
 prompt changes themselves are not yet judged against a real key — same
 "needs a real run" caveat as the previous Update.
 
+**Update — Practice Tips reuses an existing scoring, and every mode's
+answer now persists per song.** Two more real gaps from actual use:
+
+- **"Practice tips shouldn't need to rescore a take that has previously
+  been scored."** `svc_rate_score` was already computing a full per-beat
+  breakdown every time, just never keeping more than the aggregate
+  numbers in `RATINGS_FILE`. Now the per-beat `beats` array is cached
+  alongside the aggregate (stripped back out of `/api/recordings`'
+  listing response — the client-facing takes list never needed it, only
+  `svc_practice_tips` reading the sidecar directly). `svc_practice_tips`
+  now checks for a cached scoring at the exact requested offset (within
+  0.01s, offset-search off) and reuses its `beats`/`overall_pct` directly
+  instead of calling `score_take` again — a deliberately changed offset,
+  or offset-search turned on, still forces a fresh scoring, since that's
+  a real "I want to re-check this" signal. The UI says "Using this take's
+  existing Rate My Take score." when the cache was actually used.
+- **"The answers that the LLM returns... should persist for a given
+  track... without needing to run the prompt again."** Same root problem
+  as the Rate My Take ratings gap, one layer up: every mode's answer
+  vanished on switching modes or reopening AI Lab, forcing a real
+  (non-free) LLM call just to see something already asked for. Added
+  `_ai_assistant_cache.json` (same content-hash-keyed sidecar idiom as
+  `_track_info.json`), one entry per (track, mode) — `_save_ai_assistant_
+  result` called at the end of all five `svc_*` functions, a new
+  `svc_load_ai_assistant_cache`/`/api/aiassistant/cache` GET returns all
+  five modes' last results in one call. Client-side, each mode's render
+  logic was split into a small shared function (`aiLabRenderLickResult`,
+  `aiLabRenderAskAiResult`, etc.) used by both a fresh run and cache
+  restoration, so a redisplayed answer is pixel-identical to a freshly-
+  generated one — including refilling the genre/question input fields.
+  Practice Tips' cache entry also carries the `take_path` it was run
+  against, and only redisplays while that same take is still selected —
+  otherwise it'd show tips for the wrong take, which would be actively
+  misleading rather than just stale.
+
+Verified: server-side, a direct round-trip through `_save_ai_assistant_
+result`/`svc_load_ai_assistant_cache` confirmed all five modes' cached
+entries survive and return correctly; the Practice Tips reuse predicate
+was checked against matching-offset, wrong-offset, and offset-search-on
+cases (reuses only in the first). Client-side, a headless pass injecting
+a synthetic cache confirmed all five modes correctly restore their last
+answer on a mode switch (including input-field refill), a mode with no
+cached answer stays hidden rather than showing something stale, and
+switching back to an already-visited mode still shows its answer (no
+re-fetch needed) — all with no console errors.
+
 ## 5. Stretch, hard-gated: solo-skeleton generator (V5-F4 · XL, punt by default)
 
 The "build a full solo" ambition from the original conversation, scoped

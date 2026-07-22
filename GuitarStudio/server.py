@@ -1193,7 +1193,11 @@ def svc_recordings_list(track: str) -> dict:
                     # comment) — None if never scored, so the client can
                     # show a take's last rating instantly on selection
                     # instead of re-running score_take just to compare.
-                    "rating": ratings.get(f.name),
+                    # The (potentially large) per-beat "beats" array is
+                    # cached server-side for svc_practice_tips to reuse,
+                    # but stripped out here — the client-facing takes list
+                    # never needed per-beat data, just the summary.
+                    "rating": {k: v for k, v in ratings[f.name].items() if k != "beats"} if f.name in ratings else None,
                 })
     return {"takes": takes}
 
@@ -1270,10 +1274,14 @@ def svc_rate_score(source_path: str, take_path: str, model: str, stem: str,
     # score_take just to see a rating that was already computed. Re-scoring
     # the same take (e.g. after adjusting the offset) simply overwrites its
     # entry — the cache always reflects the most recent scoring, not the
-    # first one.
+    # first one. The per-beat "beats" array is cached too (not returned to
+    # this endpoint's own caller — see svc_recordings_list, which strips it
+    # back out of the listing response) specifically so svc_practice_tips
+    # can reuse an already-computed scoring instead of re-running
+    # score_take just to get the same take's weak-beat breakdown.
     rec_dir = target.parent
     ratings = _read_ratings(rec_dir)
-    ratings[target.name] = {**response, "scored_at": time.time()}
+    ratings[target.name] = {**response, "beats": result["beats"], "scored_at": time.time()}
     _write_ratings(rec_dir, ratings)
 
     return response
@@ -1750,13 +1758,16 @@ def svc_lick_suggest(source_path: str, model: str, genre: str, provider: str) ->
 
     caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
     text = caller(prompt, api_key)
-    return {
+    result = {
         "suggestion": text.strip(),
         "key": f"{key['key']} {key['mode']}",
         "bpm": round(bpm, 1),
         "progression": progression,
+        "genre": genre,
         "provider": provider,
     }
+    _save_ai_assistant_result(source_path, "lickideas", result)
+    return result
 
 
 def _load_provider_key_or_raise(provider: str) -> str:
@@ -1854,10 +1865,16 @@ def svc_practice_tips(source_path: str, take_path: str, model: str, stem: str,
     prompt in *this take's own* Rate My Take result (score_take's per-beat
     breakdown), not just the song's static key/chords/tempo, so the
     suggestions are supposed to trace back to this take's actual weak
-    spots. Re-scores the take itself (same score_take/refine_offset path
-    as /api/rate/score) rather than trusting a client-cached result — no
-    server-side state to go stale, and the offset/offset-search UI is
-    already familiar from the Rate My Take tab."""
+    spots.
+
+    Reuses a cached Rate My Take scoring (see RATINGS_FILE) when one
+    exists at the same offset, rather than re-running score_take on a take
+    that's already been scored — real user feedback: re-scoring here was
+    pointless work when Rate My Take had already done it seconds earlier
+    with the client-prefilled offset (see aiLabTipsOnTakeSelectChange).
+    Only reused when offset_search is off and the requested offset matches
+    the cached one — a deliberately changed offset (or an offset-search
+    request) means the user wants a fresh scoring, not the cached one."""
     api_key = _load_provider_key_or_raise(provider)
     input_path = resolve_source_path(source_path)
     out_dir = engine.track_stem_dir(input_path, model)
@@ -1876,21 +1893,32 @@ def svc_practice_tips(source_path: str, take_path: str, model: str, stem: str,
     if not target.exists():
         raise ApiError(404, "Take file not found")
 
-    analysis = engine.ensure_analysis(out_dir)
-    beats = analysis.get("beats")
-    if offset_search and offset_search > 0:
-        refined = engine.refine_offset(target, reference_path, offset, search_radius=offset_search)
-        if not refined["clipped"] and refined["quality"] >= engine.RATE_OFFSET_SEARCH_MIN_QUALITY:
-            offset = refined["offset"]
+    cached = _read_ratings(target.parent).get(target.name)
+    reusable = bool(
+        cached and cached.get("beats") is not None and (not offset_search or offset_search <= 0)
+        and abs(cached.get("used_offset", float("inf")) - offset) < 0.01
+    )
+    if reusable:
+        result_beats = cached["beats"]
+        overall_pct = cached["overall_pct"]
+    else:
+        analysis = engine.ensure_analysis(out_dir)
+        beats = analysis.get("beats")
+        if offset_search and offset_search > 0:
+            refined = engine.refine_offset(target, reference_path, offset, search_radius=offset_search)
+            if not refined["clipped"] and refined["quality"] >= engine.RATE_OFFSET_SEARCH_MIN_QUALITY:
+                offset = refined["offset"]
+        beats = engine.trim_beats_to_take_span(beats, offset, target)
+        fresh_result = engine.score_take(target, reference_path, beats, offset_sec=offset)
+        result_beats = fresh_result["beats"]
+        overall_pct = fresh_result["overall_pct"]
 
-    beats = engine.trim_beats_to_take_span(beats, offset, target)
-    result = engine.score_take(target, reference_path, beats, offset_sec=offset)
-    scored = [b for b in result["beats"] if b["score"] is not None]
+    scored = [b for b in result_beats if b["score"] is not None]
     if not scored:
         raise ApiError(400, f"No beats could be scored at offset {offset}s — check the offset and that "
                              f"both files have real audio in them.")
 
-    weak_regions = _summarize_weak_beats(result["beats"])
+    weak_regions = _summarize_weak_beats(result_beats)
     weak_line = (f"Weakest moments in this take (lower pitch/timing agreement vs. the reference):\n{weak_regions}\n\n"
                  if weak_regions else "")
     prompt = (
@@ -1911,15 +1939,19 @@ def svc_practice_tips(source_path: str, take_path: str, model: str, stem: str,
 
     caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
     text = caller(prompt, api_key)
-    return {
+    result = {
         "suggestion": text.strip(),
         "key": f"{key['key']} {key['mode']}",
         "bpm": round(bpm, 1),
         "progression": progression,
         "weak_regions": weak_regions,
-        "overall_pct": result["overall_pct"],
+        "overall_pct": overall_pct,
+        "reused_cached_scoring": reusable,
+        "take_path": str(target),
         "provider": provider,
     }
+    _save_ai_assistant_result(source_path, "practicetips", result)
+    return result
 
 
 def _optional_song_theory(source_path: str, model: str) -> tuple:
@@ -1980,6 +2012,41 @@ def svc_save_track_info(track: str, artist: str, title: str) -> dict:
     return all_info[key]
 
 
+# Real user feedback: every AI Assistant mode's answer disappeared the
+# moment you switched modes or closed/reopened AI Lab, forcing a re-run
+# (a real LLM call, not free) just to see something you'd already asked
+# for. Same content-hash-keyed sidecar idiom as TRACK_INFO_FILE, one entry
+# per (track, mode) holding that mode's last full result dict — overwritten
+# on every fresh run, not accumulated as history.
+AI_ASSISTANT_CACHE_FILE = PROJECTS_DIR / "_ai_assistant_cache.json"
+
+
+def _load_ai_assistant_cache_all() -> dict:
+    if not AI_ASSISTANT_CACHE_FILE.exists():
+        return {}
+    try:
+        return json.loads(AI_ASSISTANT_CACHE_FILE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_ai_assistant_result(track: str, mode: str, result: dict) -> None:
+    key = content_hash_for_track(track)
+    all_cache = _load_ai_assistant_cache_all()
+    all_cache.setdefault(key, {})[mode] = {**result, "cached_at": time.time()}
+    AI_ASSISTANT_CACHE_FILE.write_text(json.dumps(all_cache, indent=2))
+
+
+def svc_load_ai_assistant_cache(track: str) -> dict:
+    """Every mode's last cached result for this track in one call (the
+    panel needs all 5 on open, not just whichever mode happens to be
+    active first) — None per mode if it's never been run for this track."""
+    key = content_hash_for_track(track)
+    cached = _load_ai_assistant_cache_all().get(key, {})
+    return {mode: cached.get(mode) for mode in
+            ("lickideas", "askai", "practicetips", "thistrack", "thisartist")}
+
+
 # This Track/This Artist (release-v5-spec.md §4a) ask the model for
 # real-world facts about a real band/guitarist from its own training data —
 # a genuinely different trust boundary from every other mode here, which
@@ -2023,10 +2090,12 @@ def svc_this_track(source_path: str, model: str, provider: str) -> dict:
 
     caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
     text = caller(prompt, api_key)
-    return {
+    result = {
         "info": text.strip(), "artist": artist, "title": title,
         "caveat": _REAL_WORLD_KNOWLEDGE_CAVEAT, "provider": provider,
     }
+    _save_ai_assistant_result(source_path, "thistrack", result)
+    return result
 
 
 def svc_this_artist(source_path: str, model: str, provider: str) -> dict:
@@ -2052,10 +2121,12 @@ def svc_this_artist(source_path: str, model: str, provider: str) -> dict:
 
     caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
     text = caller(prompt, api_key)
-    return {
+    result = {
         "info": text.strip(), "artist": artist, "title": title,
         "caveat": _REAL_WORLD_KNOWLEDGE_CAVEAT, "provider": provider,
     }
+    _save_ai_assistant_result(source_path, "thisartist", result)
+    return result
 
 
 def svc_ask_ai(source_path: str, model: str, question: str, provider: str) -> dict:
@@ -2097,13 +2168,16 @@ def svc_ask_ai(source_path: str, model: str, question: str, provider: str) -> di
 
     caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
     text = caller(prompt, api_key)
-    return {
+    result = {
         "answer": text.strip(), "artist": artist, "title": title,
         "key": (f"{key['key']} {key['mode']}" if key else None),
         "bpm": (round(bpm, 1) if bpm else None),
         "progression": progression,
+        "question": question,
         "caveat": _REAL_WORLD_KNOWLEDGE_CAVEAT, "provider": provider,
     }
+    _save_ai_assistant_result(source_path, "askai", result)
+    return result
 
 
 # V4-F3: playlists/setlists — same shared-blob pattern as rig presets above.
@@ -2431,6 +2505,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(200, result)
             if path == "/api/trackinfo":
                 result = svc_load_track_info(query.get("track", ""))
+                return self._send_json(200, result)
+            if path == "/api/aiassistant/cache":
+                result = svc_load_ai_assistant_cache(query.get("track", ""))
                 return self._send_json(200, result)
             if path == "/api/stem":
                 stem_path = resolve_stem_file(query.get("source_path", ""),

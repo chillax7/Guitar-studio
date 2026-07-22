@@ -725,11 +725,55 @@ function aiLabLickCurrentProvider() {
   return document.getElementById("ailab-lick-provider").value;
 }
 
+// Real user feedback: every mode's answer disappeared on switching modes
+// or reopening AI Lab, forcing a re-run (a real, non-free LLM call) just to
+// see something already asked for. AiLabAssistantCache holds each mode's
+// last result (server-cached too — see AI_ASSISTANT_CACHE_FILE — so it
+// also survives a full page reload, not just a mode switch within one
+// visit) keyed by mode name; null/undefined means never run for this track.
+let AiLabAssistantCache = {};
+let AiLabAssistantCacheTrack = null;
+
+async function aiLabAssistantRefreshCache() {
+  if (!State.track) {
+    AiLabAssistantCache = {};
+    AiLabAssistantCacheTrack = null;
+    return;
+  }
+  if (AiLabAssistantCacheTrack === State.track) return; // already have this track's cache
+  try {
+    AiLabAssistantCache = await Api.get(`/api/aiassistant/cache?track=${encodeURIComponent(State.track)}`);
+    AiLabAssistantCacheTrack = State.track;
+  } catch (e) {
+    AiLabAssistantCache = {};
+  }
+}
+
+// Shows the given mode's cached result (if any) using the same render
+// function a fresh run uses — a redisplayed answer looks identical to a
+// freshly-generated one. Practice Tips' cache is only shown if it's still
+// for the currently-selected take (see its take_path check below);
+// switching to a different take without cached tips just leaves that
+// panel's result card hidden, same as never having run it.
+function aiLabAssistantRestoreMode(mode) {
+  const cached = AiLabAssistantCache[mode];
+  if (!cached) return;
+  if (mode === "lickideas") aiLabRenderLickResult(cached);
+  else if (mode === "askai") aiLabRenderAskAiResult(cached);
+  else if (mode === "practicetips") {
+    const selectedTake = document.getElementById("ailab-tips-take-select").value;
+    if (cached.take_path === selectedTake) aiLabRenderTipsResult(cached);
+  } else if (mode === "thistrack") aiLabRenderThisTrackResult(cached);
+  else if (mode === "thisartist") aiLabRenderThisArtistResult(cached);
+}
+
 async function aiLabLickOpen() {
   aiLabLickUpdateProviderHint();
   await aiLabLickRefreshKeyStatus();
   await aiLabTrackInfoOpen();
+  await aiLabAssistantRefreshCache();
   if (AiLab.amode === "practicetips") await aiLabTipsRefreshTakes();
+  aiLabAssistantRestoreMode(AiLab.amode);
 }
 
 // Mode selector for the AI Assistant panel (release-v5-spec.md §4's "one
@@ -752,7 +796,8 @@ function aiLabAssistantSetMode(mode) {
   document.getElementById("ailab-track-result-card").style.display = "none";
   document.getElementById("ailab-artist-mode-card").style.display = mode === "thisartist" ? "" : "none";
   document.getElementById("ailab-artist-result-card").style.display = "none";
-  if (mode === "practicetips") aiLabTipsRefreshTakes();
+  if (mode === "practicetips") aiLabTipsRefreshTakes().then(() => aiLabAssistantRestoreMode(mode));
+  else aiLabAssistantRestoreMode(mode);
 }
 
 // ---------------------------------------------------------------------------
@@ -829,6 +874,16 @@ async function aiLabLickSaveKey() {
   }
 }
 
+// Renders a Lick Ideas result — shared by aiLabLickSuggest (fresh) and
+// aiLabAssistantRestoreMode (cached, see AiLabAssistantCache) so a
+// redisplayed answer looks identical to a freshly-generated one.
+function aiLabRenderLickResult(r) {
+  document.getElementById("ailab-lick-context").textContent = `${r.key} · ${r.bpm} BPM · ${r.progression}`;
+  document.getElementById("ailab-lick-suggestion").textContent = r.suggestion;
+  if (r.genre) document.getElementById("ailab-lick-genre").value = r.genre;
+  document.getElementById("ailab-lick-result-card").style.display = "";
+}
+
 async function aiLabLickSuggest() {
   const hintEl = document.getElementById("ailab-lick-hint");
   const resultCard = document.getElementById("ailab-lick-result-card");
@@ -848,9 +903,8 @@ async function aiLabLickSuggest() {
       source_path: State.track, model: State.model, genre, provider,
     });
     hintEl.textContent = "";
-    document.getElementById("ailab-lick-context").textContent = `${r.key} · ${r.bpm} BPM · ${r.progression}`;
-    document.getElementById("ailab-lick-suggestion").textContent = r.suggestion;
-    resultCard.style.display = "";
+    aiLabRenderLickResult(r);
+    AiLabAssistantCache.lickideas = r; // this run just became the cached one
   } catch (e) {
     hintEl.textContent = `Couldn't get suggestions: ${e.message}`;
   } finally {
@@ -863,6 +917,17 @@ async function aiLabLickSuggest() {
 // history chat (deliberate scope cut, see §4's Update). Shares the same
 // provider/key card and prompt-plumbing as Lick Ideas.
 // ---------------------------------------------------------------------------
+
+// Shared by aiLabExplainAsk (fresh) and aiLabAssistantRestoreMode (cached).
+function aiLabRenderAskAiResult(r) {
+  const parts = [];
+  if (r.artist || r.title) parts.push(`${r.title || "?"} — ${r.artist || "?"}`);
+  if (r.key) parts.push(`${r.key} · ${r.bpm} BPM · ${r.progression}`);
+  document.getElementById("ailab-explain-context").textContent = parts.join(" · ");
+  document.getElementById("ailab-explain-answer").textContent = r.answer;
+  if (r.question) document.getElementById("ailab-explain-question").value = r.question;
+  document.getElementById("ailab-explain-result-card").style.display = "";
+}
 
 async function aiLabExplainAsk() {
   const hintEl = document.getElementById("ailab-explain-hint");
@@ -888,12 +953,8 @@ async function aiLabExplainAsk() {
       source_path: State.track, model: State.model, question, provider,
     });
     hintEl.textContent = "";
-    const parts = [];
-    if (r.artist || r.title) parts.push(`${r.title || "?"} — ${r.artist || "?"}`);
-    if (r.key) parts.push(`${r.key} · ${r.bpm} BPM · ${r.progression}`);
-    document.getElementById("ailab-explain-context").textContent = parts.join(" · ");
-    document.getElementById("ailab-explain-answer").textContent = r.answer;
-    resultCard.style.display = "";
+    aiLabRenderAskAiResult(r);
+    AiLabAssistantCache.askai = r;
   } catch (e) {
     hintEl.textContent = `Couldn't get an answer: ${e.message}`;
   } finally {
@@ -967,16 +1028,34 @@ function aiLabTipsOnTakeSelectChange() {
   const takePath = document.getElementById("ailab-tips-take-select").value;
   const take = AiLabTipsTakesCache.find((t) => t.path === takePath);
   const hintEl = document.getElementById("ailab-tips-hint");
+  // Switching takes hides any previously-shown tips (they'd be for the
+  // wrong take) — aiLabAssistantRestoreMode below re-shows them only if
+  // this specific take already has its own cached Practice Tips result.
+  document.getElementById("ailab-tips-result-card").style.display = "none";
   if (!take || !take.rating) {
     hintEl.textContent = take ? "Not yet scored in Rate My Take — using the offset below as given." : "";
-    return;
+  } else {
+    if (take.rating.used_offset !== undefined && take.rating.used_offset !== null) {
+      document.getElementById("ailab-tips-offset").value = take.rating.used_offset;
+    }
+    hintEl.textContent = take.rating.overall_pct === null
+      ? "This take's Rate My Take score was invalid (\"--\") — check the offset before asking for tips."
+      : `Rate My Take score for this take: ${take.rating.overall_pct}% (using its saved offset).`;
   }
-  if (take.rating.used_offset !== undefined && take.rating.used_offset !== null) {
-    document.getElementById("ailab-tips-offset").value = take.rating.used_offset;
-  }
-  hintEl.textContent = take.rating.overall_pct === null
-    ? "This take's Rate My Take score was invalid (\"--\") — check the offset before asking for tips."
-    : `Rate My Take score for this take: ${take.rating.overall_pct}% (using its saved offset).`;
+  aiLabAssistantRestoreMode("practicetips");
+}
+
+// Shared by aiLabTipsSuggest (fresh) and aiLabAssistantRestoreMode
+// (cached). Practice Tips' cache also carries the take_path it was run
+// against — aiLabAssistantRestoreMode only shows it when that's still the
+// currently-selected take, so switching takes doesn't show stale tips.
+function aiLabRenderTipsResult(r) {
+  const overallLine = r.overall_pct !== null ? ` · Overall: ${r.overall_pct}%` : "";
+  document.getElementById("ailab-tips-context").textContent = `${r.key} · ${r.bpm} BPM · ${r.progression}${overallLine}`;
+  document.getElementById("ailab-tips-weak-regions").textContent =
+    r.weak_regions ? `Weakest moments:\n${r.weak_regions}` : "No standout weak moments — this take scored fairly evenly.";
+  document.getElementById("ailab-tips-suggestion").textContent = r.suggestion;
+  document.getElementById("ailab-tips-result-card").style.display = "";
 }
 
 async function aiLabTipsSuggest() {
@@ -993,20 +1072,20 @@ async function aiLabTipsSuggest() {
   const provider = aiLabLickCurrentProvider();
 
   btn.disabled = true;
-  hintEl.textContent = "Scoring the take and asking for practice tips…";
+  hintEl.textContent = "Asking for practice tips…";
   resultCard.style.display = "none";
   try {
     const r = await Api.post("/api/practicetips/suggest", {
       source_path: State.track, take_path: takePath, model: State.model, stem: "guitar",
       offset, offset_search: offsetSearch, provider,
     });
-    hintEl.textContent = "";
-    const overallLine = r.overall_pct !== null ? ` · Overall: ${r.overall_pct}%` : "";
-    document.getElementById("ailab-tips-context").textContent = `${r.key} · ${r.bpm} BPM · ${r.progression}${overallLine}`;
-    document.getElementById("ailab-tips-weak-regions").textContent =
-      r.weak_regions ? `Weakest moments:\n${r.weak_regions}` : "No standout weak moments — this take scored fairly evenly.";
-    document.getElementById("ailab-tips-suggestion").textContent = r.suggestion;
-    resultCard.style.display = "";
+    // Reuses the take's existing Rate My Take scoring instead of
+    // re-running score_take when the offset matches (see svc_practice_
+    // tips's "reused_cached_scoring" — no point re-scoring a take that's
+    // already been scored, per real user feedback).
+    hintEl.textContent = r.reused_cached_scoring ? "Using this take's existing Rate My Take score." : "";
+    aiLabRenderTipsResult(r);
+    AiLabAssistantCache.practicetips = r;
   } catch (e) {
     hintEl.textContent = `Couldn't get practice tips: ${e.message}`;
   } finally {
@@ -1020,6 +1099,13 @@ async function aiLabTipsSuggest() {
 // _REAL_WORLD_KNOWLEDGE_CAVEAT server-side, shown here as a standing
 // disclaimer on the result card, not folded into the answer text).
 // ---------------------------------------------------------------------------
+
+// Shared by aiLabThisTrackInfo (fresh) and aiLabAssistantRestoreMode (cached).
+function aiLabRenderThisTrackResult(r) {
+  document.getElementById("ailab-track-caveat").textContent = r.caveat;
+  document.getElementById("ailab-track-info").textContent = r.info;
+  document.getElementById("ailab-track-result-card").style.display = "";
+}
 
 async function aiLabThisTrackInfo() {
   const hintEl = document.getElementById("ailab-track-hint");
@@ -1039,14 +1125,20 @@ async function aiLabThisTrackInfo() {
       source_path: State.track, model: State.model, provider,
     });
     hintEl.textContent = "";
-    document.getElementById("ailab-track-caveat").textContent = r.caveat;
-    document.getElementById("ailab-track-info").textContent = r.info;
-    resultCard.style.display = "";
+    aiLabRenderThisTrackResult(r);
+    AiLabAssistantCache.thistrack = r;
   } catch (e) {
     hintEl.textContent = `Couldn't get track info: ${e.message}`;
   } finally {
     btn.disabled = false;
   }
+}
+
+// Shared by aiLabThisArtistInfo (fresh) and aiLabAssistantRestoreMode (cached).
+function aiLabRenderThisArtistResult(r) {
+  document.getElementById("ailab-artist-caveat").textContent = r.caveat;
+  document.getElementById("ailab-artist-info").textContent = r.info;
+  document.getElementById("ailab-artist-result-card").style.display = "";
 }
 
 async function aiLabThisArtistInfo() {
@@ -1067,9 +1159,8 @@ async function aiLabThisArtistInfo() {
       source_path: State.track, model: State.model, provider,
     });
     hintEl.textContent = "";
-    document.getElementById("ailab-artist-caveat").textContent = r.caveat;
-    document.getElementById("ailab-artist-info").textContent = r.info;
-    resultCard.style.display = "";
+    aiLabRenderThisArtistResult(r);
+    AiLabAssistantCache.thisartist = r;
   } catch (e) {
     hintEl.textContent = `Couldn't get artist info: ${e.message}`;
   } finally {
