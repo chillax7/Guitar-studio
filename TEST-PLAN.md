@@ -344,17 +344,27 @@ recommendations. All three sub-batches shipped together; test as one pass.
 
 ### Molten Obsidian theme toggle
 
+- [ ] **Molten Obsidian is the default:** a fresh browser profile (cleared
+  localStorage) comes up in the Molten palette on first load, before any
+  toggle has ever been clicked.
 - [ ] A theme-toggle button (🔥) sits in the top banner; clicking it swaps
-  the whole app's color palette (nav, panels, chord chips, chain-icon glow,
-  quest log accents) without needing a page reload.
+  the whole app's color palette (nav, panels, chord chips, waveforms,
+  chain-icon glow, quest log accents) without needing a page reload —
+  including the stem waveforms, which are canvas-drawn and re-render on
+  toggle rather than being restyled by CSS alone.
 - [ ] The choice persists across a reload with no flash of the wrong theme
   on load (pre-paint inline script applies it before first paint).
 - [ ] Spot-check Mixer, Tone Lab, and AI Lab in the Molten theme: nav
-  buttons, engaged/open chain icons, and the AI Lab Root/Scale-tone legend
-  dot (Root shows the secondary arcane-violet accent) all reskin correctly;
-  AI Lab's own dedicated "Follow song" green is untouched by the theme.
-- [ ] Toggling back to the Studio (default) theme restores the original
-  palette exactly, with no leftover Molten-only styling anywhere.
+  buttons, stem waveforms (ember, not blue), loop-region tint,
+  engaged/open chain icons, the camera framing-guide band, and the AI Lab
+  Root/Scale-tone legend dot (Root shows the secondary arcane-violet
+  accent) all reskin correctly; AI Lab's own dedicated "Follow song" green
+  is untouched by the theme.
+- [ ] Toggling to the Studio (original) theme restores the original
+  palette exactly — waveforms back to blue included — with no leftover
+  Molten-only styling anywhere.
+- [ ] The five sidebar nav buttons (Mixer/Tone Lab/Play Along/AI Lab/Help)
+  render in bold in both themes.
 - [ ] **Range slider accent color:** any native range slider (e.g. the Noise
   Gate threshold) tints with the active theme's accent color instead of
   staying browser-default blue, in both themes.

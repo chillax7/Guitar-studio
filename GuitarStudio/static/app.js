@@ -690,7 +690,10 @@ function drawWaveform(canvas, peaks) {
   const h = canvas.height = Math.max(1, canvas.clientHeight) * dpr;
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = "#5b8cff";
+  // Canvas can't consume var() directly — resolve the themed color here so
+  // waveforms follow the active theme (wireThemeToggle re-renders lanes).
+  ctx.fillStyle = getComputedStyle(document.documentElement)
+    .getPropertyValue("--waveform").trim() || "#5b8cff";
   const mid = h / 2;
   const barW = w / peaks.length;
   for (let i = 0; i < peaks.length; i++) {
@@ -3326,13 +3329,19 @@ function wireQuestLog() {
   renderQuestLog();
 }
 
-// ui-review-v5-full.md §6: "Molten Obsidian" theme toggle — ships as a
-// data-theme attribute the whole app's CSS custom properties key off, not
-// a rebuild, so the existing look stays one click away. The actual
-// attribute is applied before first paint by a tiny inline <script> in
-// <head> (avoids a flash-of-wrong-theme on reload); this just wires the
-// button and keeps localStorage in sync going forward.
+// ui-review-v5-full.md §6: "Molten Obsidian" theme — the default look,
+// shipped as a data-theme attribute the whole app's CSS custom properties
+// key off, not a rebuild, so the original "Studio" look stays one click
+// away. The actual attribute is applied before first paint by a tiny
+// inline <script> in <head> (avoids a flash-of-wrong-theme on reload);
+// this just wires the button and keeps localStorage in sync going forward.
+// Only an explicitly-stored "studio" means Studio — absence means Molten,
+// so the default flip doesn't need a migration for existing users.
 const THEME_KEY = "gs_theme";
+
+function currentTheme() {
+  return localStorage.getItem(THEME_KEY) === "studio" ? "studio" : "molten";
+}
 
 function applyTheme(theme) {
   if (theme === "molten") document.documentElement.setAttribute("data-theme", "molten");
@@ -3342,11 +3351,14 @@ function applyTheme(theme) {
 }
 
 function wireThemeToggle() {
-  applyTheme(localStorage.getItem(THEME_KEY) === "molten" ? "molten" : "studio");
+  applyTheme(currentTheme());
   document.getElementById("theme-toggle-btn").addEventListener("click", () => {
-    const next = localStorage.getItem(THEME_KEY) === "molten" ? "studio" : "molten";
+    const next = currentTheme() === "molten" ? "studio" : "molten";
     localStorage.setItem(THEME_KEY, next);
     applyTheme(next);
+    // Waveforms are canvas-drawn from var(--waveform) at draw time — a
+    // theme swap needs a real redraw, CSS alone can't recolor them.
+    if (State.track) renderLanes();
   });
 }
 

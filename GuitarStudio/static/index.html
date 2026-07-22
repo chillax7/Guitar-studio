@@ -5,13 +5,15 @@
 <title>Guitar Studio</title>
 <link rel="icon" href="app-icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
-<!-- Applied before first paint so switching to Molten Obsidian doesn't
-     flash the default theme first on every reload — see wireThemeToggle
-     (app.js) for the persisted-toggle logic this mirrors. -->
+<!-- Applied before first paint so the theme doesn't flash on reload — see
+     wireThemeToggle (app.js) for the persisted-toggle logic this mirrors.
+     Molten Obsidian is the default; only an explicit "studio" choice
+     keeps the original look. -->
 <script>
   (function () {
-    var t = localStorage.getItem("gs_theme");
-    if (t === "molten") document.documentElement.setAttribute("data-theme", "molten");
+    if (localStorage.getItem("gs_theme") !== "studio") {
+      document.documentElement.setAttribute("data-theme", "molten");
+    }
   })();
 </script>
 </head>

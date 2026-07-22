@@ -658,11 +658,12 @@ the app name and current-screen label:
   input is enabled; pulses gently while live (this pulse respects your OS's
   reduce-motion setting); switches to a clipped state matching Tone Lab's
   own clip light. Click it to jump straight to Tone Lab.
-- **Theme toggle (🔥)** — switches the whole app between the default
-  **Studio** look and **Molten Obsidian**, an alternate dark-ember palette.
-  Purely cosmetic — nothing about how any feature behaves changes, only the
-  color scheme. Your choice is remembered across reloads with no flash of
-  the wrong theme while the page loads.
+- **Theme toggle (🔥)** — switches the whole app between **Molten
+  Obsidian** (the default dark-ember look) and **Studio**, the original
+  quieter blue-grey palette. Purely cosmetic — nothing about how any
+  feature behaves changes, only the color scheme. Your choice is
+  remembered across reloads with no flash of the wrong theme while the
+  page loads.
 - **Quest Log** — before you've loaded any track, the right-hand inspector
   panel (where the mixer's usual per-track panels normally live) shows a
   first-use checklist instead: separate a song, mix it, dial in a tone,

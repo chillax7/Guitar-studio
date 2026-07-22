@@ -574,12 +574,17 @@ function drawFramingOverlay() {
   }
 
   // Lower-diagonal band where a horizontally-held guitar neck typically
-  // falls in a seated player shot.
-  ctx.strokeStyle = "rgba(91,140,255,0.85)";
+  // falls in a seated player shot. Canvas can't consume var() — resolve
+  // the theme accent here (static overlay, redrawn on each toggle open).
+  const accent = getComputedStyle(document.documentElement)
+    .getPropertyValue("--accent").trim() || "#5b8cff";
+  ctx.globalAlpha = 0.85;
+  ctx.strokeStyle = accent;
   ctx.lineWidth = 2;
   ctx.setLineDash([6, 4]);
   ctx.strokeRect(W * 0.05, H * 0.55, W * 0.55, H * 0.3);
   ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
 }
 
 function updateFramingOverlayVisibility() {

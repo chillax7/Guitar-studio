@@ -14,6 +14,9 @@
      --accent-2 once, cheaply, without a visual change in this theme. */
   --accent-2: var(--accent);
   --accent-2-dim: var(--accent-dim);
+  /* Stem waveform bars — canvas-drawn, so drawWaveform (app.js) resolves
+     this at draw time rather than CSS applying it directly. */
+  --waveform: #5b8cff;
   --warn: #d9a441;
   --danger: #e0605a;
   --success: #4caf6a;
@@ -33,8 +36,9 @@
    properties above), plus a small, deliberate set of extra rules where a
    plain color swap wouldn't carry the mockups' intent (glow-means-signal,
    engraved-serif headings, arcane-violet analysis surfaces). Toggled via
-   [data-theme="molten"] on <html> (wireThemeToggle, app.js) — the Studio
-   theme above is unchanged and stays the default.
+   [data-theme="molten"] on <html> (wireThemeToggle, app.js) — this is the
+   DEFAULT theme; the Studio tokens above are the toggled-to alternate
+   (and the fallback values for anything Molten doesn't override).
    --------------------------------------------------------------------- */
 :root[data-theme="molten"] {
   --bg: #131014;
@@ -47,6 +51,7 @@
   --accent-dim: #4a2e1c;
   --accent-2: #8a63ff;
   --accent-2-dim: #2b2140;
+  --waveform: #ff8a4d; /* ember bars — a touch lighter than --accent for canvas contrast */
   --warn: #e8a13c;
   --danger: #e0605a;
   --success: #59b878;
@@ -896,7 +901,7 @@ button:disabled:hover { filter: none; }
 #loop-region {
   position: absolute;
   top: 0; bottom: 0;
-  background: rgba(91, 140, 255, 0.25);
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
   border-left: 2px solid var(--accent);
   border-right: 2px solid var(--accent);
   display: none;
@@ -1029,6 +1034,7 @@ button:disabled:hover { filter: none; }
   background: var(--panel-2);
   border-color: var(--border);
   color: var(--text-dim);
+  font-weight: 700;
 }
 .nav-screen-btn:hover:not(.active) { color: var(--text); border-color: var(--accent); filter: none; }
 /* Same idiom as .pa-tabs .active elsewhere: solid accent = "this is the
