@@ -14,7 +14,10 @@ roughly match the sidebar/UI areas so a targeted change only needs its own
 section re-run, not the whole file. For a first-time walkthrough in the
 order a new user would actually hit each feature (rather than grouped by
 app area), see [FIRST-SESSION-CHECKLIST.html](FIRST-SESSION-CHECKLIST.html)
-instead — open it directly in a browser, no server required.
+instead — open it directly in a browser, no server required. For a full,
+exhaustive top-to-bottom playthrough of the entire app in one sitting
+(release-candidate audits, or after a batch of changes this size), see
+[QUEST-PLAN-BOSS-EDITION.md](QUEST-PLAN-BOSS-EDITION.md) instead.
 
 ---
 
