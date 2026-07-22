@@ -236,7 +236,15 @@ two different songs.
 ### Phase 4a — Lanes, faders, and the export-affecting truth
 
 - [ ] Each stem's Mute/Solo/fader work independently; Solo silences every
-  other lane; un-soloing restores prior mute state exactly.
+  other lane. Soloing a lane that's currently muted un-mutes it (its mute
+  button turns off and it's genuinely audible while soloed, not silent);
+  un-soloing afterward leaves it unmuted rather than re-muting it.
+- [ ] **Scroll position survives Mute/Solo (real user report):** on a
+  6+-stem track, scroll the lane list down so the last stem is the only
+  one visible, then click its Mute or Solo button — the view stays
+  scrolled exactly where it was, it does not jump back to the top.
+  Switching to a different track, by contrast, SHOULD reset the scroll
+  to the top for the newly-loaded song.
 - [ ] Waveforms render for every stem and roughly track loud passages by
   ear/eye.
 - [ ] **Mute-lane painting:** click-drag paints a mute region; clicking an

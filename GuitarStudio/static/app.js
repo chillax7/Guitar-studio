@@ -1429,6 +1429,14 @@ async function selectTrack(name) {
   document.getElementById("zoom-to-loop-btn").style.display = "inline-block";
   document.getElementById("zoom-out-btn").style.display = "none";
   resetTimelineZoom(); // continuous zoom — same "leftover from last song is a trap" reasoning
+  // A leftover vertical scroll position (e.g. scrolled down to stem 6 of
+  // the last song) is the same kind of trap resetTimelineZoom already
+  // guards against for horizontal scroll — reset explicitly here, once,
+  // on track switch; renderLanes() itself now preserves whatever this is
+  // set to across a same-track re-render (mute/solo/etc.), which is the
+  // scroll-jump bug this line is paired with fixing.
+  const workspaceEl = document.getElementById("workspace");
+  if (workspaceEl) workspaceEl.scrollTop = 0;
   // "Loading…" instead of the empty-state's "select a track" message —
   // a track WAS just selected, that message briefly re-showing while
   // stems load read as if the click hadn't registered.
@@ -1569,6 +1577,21 @@ function updateStaleBanner() {
 function renderLanes() {
   updateTimelineSliderRange(); // Audio.duration is settled by the time renderLanes() runs
   const container = document.getElementById("lanes");
+  // Real user report: clicking Mute/Solo (or anything else that calls
+  // renderLanes on the SAME track) reset the scroll position back to the
+  // top, even with several stems scrolled out of view below the fold.
+  // Cause: #workspace is the actual scrolling element, and wiping #lanes'
+  // children to rebuild them below briefly collapses its scrollHeight
+  // (nothing left inside it) — the browser clamps #workspace.scrollTop
+  // down right then, and it doesn't spring back up once the lanes are
+  // re-appended, since nothing here was asking it to. Capturing/restoring
+  // across the wipe fixes that; a genuine track switch resets scrollTop
+  // to 0 explicitly in selectTrack() before this ever runs, so a fresh
+  // track still opens scrolled to the top, not wherever the last one
+  // happened to be scrolled to.
+  const workspaceEl = document.getElementById("workspace");
+  const savedScrollTop = workspaceEl ? workspaceEl.scrollTop : 0;
+  const savedScrollLeft = workspaceEl ? workspaceEl.scrollLeft : 0;
   container.innerHTML = "";
   const playheads = [];
 
@@ -1743,6 +1766,10 @@ function renderLanes() {
   cachedPlayheadEls = playheads;
   lastPlayheadPct = null;
   applyZoomWidth(); // sets each new .lane's width now that they actually exist in the DOM
+  if (workspaceEl) {
+    workspaceEl.scrollTop = savedScrollTop;
+    workspaceEl.scrollLeft = savedScrollLeft;
+  }
 }
 
 function toggleMute(name) {
@@ -1754,7 +1781,16 @@ function toggleMute(name) {
 }
 
 function toggleSolo(name) {
-  State.mix.solo = (State.mix.solo === name) ? null : name;
+  const turningOn = State.mix.solo !== name;
+  State.mix.solo = turningOn ? name : null;
+  // Soloing a muted stem used to still play silence — applyMixToGains'
+  // solo check only zeroes every OTHER stem, it never un-zeroed this one
+  // if its own mute flag had already done that first. A real user report:
+  // "hitting solo on a muted stem should unmute it so it can be heard
+  // solo" — the whole point of solo is to hear this one stem, so clear
+  // its mute the moment you solo it, same as a real mixing console fader
+  // strip's Mute/Solo interaction.
+  if (turningOn && State.mix.muted[name]) State.mix.muted[name] = false;
   applyMixToGains();
   renderLanes();
   saveProjectDebounced();

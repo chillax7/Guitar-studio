@@ -62,7 +62,8 @@ exhaustive top-to-bottom playthrough of the entire app in one sitting
 
 ## 4. Mixer
 
-- [ ] Each stem lane's Mute/Solo/fader work independently; Solo silences every other lane; un-soloing restores the prior mute state.
+- [ ] Each stem lane's Mute/Solo/fader work independently; Solo silences every other lane. **Soloing a muted lane un-mutes it** (real user report: soloing a muted stem used to still play silence, since the mute flag itself was never cleared) — the mute button turns off and the stem is actually audible while soloed; un-soloing afterward leaves it unmuted, it does not silently re-mute.
+- [ ] **Scroll position on Mute/Solo (real user report):** with 6+ stems loaded, scroll the lane list down so the last lane is the only one visible, then click that lane's Mute (or Solo) button — the scroll position stays exactly where it was, it does not jump back to the top. Switching to a different track still resets the scroll to the top for the newly-loaded song, as expected.
 - [ ] Waveforms render for every stem and match audible content roughly (peaks track loud passages).
 - [ ] Mute-lane click-drag paints a region; clicking an existing region removes it; painted regions match what actually mutes on playback.
 - [ ] A/B loop: dragging both ruler handles sets a region; Loop toggle enables/disables; playback wraps correctly at the loop boundary.

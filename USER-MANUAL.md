@@ -388,7 +388,11 @@ separation engine's quality ceiling, not a bug in your mix.
 Each stem is a lane: name (with a small **✎** to rename its display
 label — useful for a stem pack import with a long original filename;
 this only changes what's shown, never the underlying file or your saved
-gain/mute/pan settings for it), **M**(ute)/**S**(olo) buttons, a gain
+gain/mute/pan settings for it), **M**(ute)/**S**(olo) buttons (soloing a
+lane that's currently muted un-mutes it too — the point of Solo is to
+hear that one stem, so a muted one wouldn't otherwise make a sound even
+while soloed; un-soloing afterward leaves it unmuted rather than
+silently re-muting it), a gain
 fader (double-click its percentage to reset to 100%; split-guitar
 candidate stems — §3.8 — get extra headroom, up to 300% instead of 150%,
 since a panning-based split often leaves one side quiet), a **Pan**
