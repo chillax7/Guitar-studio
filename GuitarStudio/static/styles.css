@@ -8,12 +8,17 @@
   --accent: #5b8cff;
   --accent-dim: #33395a;
   /* Second accent, reserved for "analysis" surfaces (chord ribbon, key/
-     scale highlighting) — identical to --accent here by design (the
-     Studio theme doesn't split them), only actually different under
-     Molten Obsidian below. Lets those specific selectors reference
-     --accent-2 once, cheaply, without a visual change in this theme. */
-  --accent-2: var(--accent);
-  --accent-2-dim: var(--accent-dim);
+     scale highlighting) specifically — a real purple, not a tint of
+     --accent, so those surfaces read as a genuinely distinct color
+     rather than "the same blue again." (Studio's accent-2 used to just
+     equal --accent, which meant the chord ribbon here read exactly as
+     blue as everything else — a real report, "still need to fix the
+     blue colour on the chord ribbon, it's across all 3 themes now,"
+     after the other two themes' own accent-2 turned out too close to
+     blue-violet to read as clearly non-blue either — see Molten's and
+     Bright Spark's own blocks below for the same fix.) */
+  --accent-2: #a855f7;
+  --accent-2-dim: #362a52;
   /* Stem waveform bars — canvas-drawn, so drawWaveform (app.js) resolves
      this at draw time rather than CSS applying it directly. */
   --waveform: #5b8cff;
@@ -49,8 +54,12 @@
   --text-dim: #a89f9b;
   --accent: #ff7a3d;
   --accent-dim: #4a2e1c;
-  --accent-2: #8a63ff;
-  --accent-2-dim: #2b2140;
+  /* Shifted from the original #8a63ff toward magenta (hue ~292 rather
+     than ~257) — that first value was blue-violet enough to still read
+     as plain blue against this theme's near-black background, which was
+     the whole point of splitting it from --accent in the first place. */
+  --accent-2: #c026d3;
+  --accent-2-dim: #3a1a42;
   --waveform: #ff8a4d; /* ember bars — a touch lighter than --accent for canvas contrast */
   --warn: #e8a13c;
   --danger: #e0605a;
@@ -90,30 +99,17 @@
 :root[data-theme="molten"] .pa-chain-icon.pa-chain-open {
   box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent);
 }
-/* Arcane violet — chord/analysis surfaces specifically, everywhere else
-   (transport, buttons, nav) stays ember. Shared with Bright Spark below:
-   both non-Studio themes split --accent-2 from --accent, so one rule set
-   keyed on the variable covers both — each theme's own :root block picks
-   the actual violet/whatever value. AI Lab's own chord ribbon
-   (.ailab-chord-chip) shares this list too — it used to fall through to
-   plain --accent in both themes, so it silently stayed ember/spark while
-   every other analysis surface (the fretboard's root dot, the Mixer's own
-   chord lane) switched to the analysis color; a real report ("chord
-   ribbon needs to switch colours when the theme changes") was exactly
-   this mismatch on the one ribbon that hadn't been wired up. */
-:root[data-theme="molten"] .chord-chip, :root[data-theme="brightspark"] .chord-chip,
-:root[data-theme="molten"] .ailab-chord-chip, :root[data-theme="brightspark"] .ailab-chord-chip {
-  border-color: var(--accent-2); background: var(--accent-2-dim);
-}
-:root[data-theme="molten"] .chord-chip:hover, :root[data-theme="brightspark"] .chord-chip:hover,
-:root[data-theme="molten"] .ailab-chord-chip:not(.selected):hover, :root[data-theme="brightspark"] .ailab-chord-chip:not(.selected):hover {
-  background: var(--accent-2);
-}
-:root[data-theme="molten"] .ailab-chord-chip.selected, :root[data-theme="brightspark"] .ailab-chord-chip.selected {
-  background: var(--accent-2); border-color: var(--accent-2);
-}
-:root[data-theme="molten"] #ailab-legend-root, :root[data-theme="brightspark"] #ailab-legend-root { background: var(--accent-2); }
-:root[data-theme="molten"] .ailab-dot-root, :root[data-theme="brightspark"] .ailab-dot-root { fill: var(--accent-2); }
+/* Chord/analysis surfaces (chord ribbon, fretboard root dot) now get
+   --accent-2 straight from the base rules further down (.chord-chip,
+   .ailab-chord-chip, #ailab-legend-root, .ailab-dot-root) — every theme
+   defines its own real --accent-2 value above, so no per-theme override
+   is needed here anymore. That used to be Studio's --accent-2 == --accent
+   (by design, "Studio doesn't split them") plus Molten/Bright Spark
+   overrides for just this one purpose; both a real report that the
+   ribbon "still reads blue across all 3 themes" (Studio was identical to
+   its own blue accent; Molten's split color was itself too blue-violet
+   to read as distinct) and this simplification came from the same fix —
+   see each theme's --accent-2 comment above. */
 :root[data-theme="molten"] #quest-log-count, :root[data-theme="molten"] #quest-log-modal-count,
 :root[data-theme="brightspark"] #quest-log-count, :root[data-theme="brightspark"] #quest-log-modal-count { color: var(--accent); }
 :root[data-theme="molten"] .quest-row.done .quest-rune, :root[data-theme="brightspark"] .quest-row.done .quest-rune { background: var(--success); border-color: var(--success); }
@@ -137,8 +133,12 @@
   --text-dim: #6b6455;
   --accent: #e08e00;
   --accent-dim: #fce8bd;
-  --accent-2: #7c3aed;
-  --accent-2-dim: #ece3fd;
+  /* Same magenta-purple family as Molten/Studio's own accent-2 (below/
+     above), not the more blue-violet #7c3aed this started as — keeps the
+     "arcane" analysis-surface color a consistent, unambiguously-not-blue
+     identity across all three themes rather than each doing its own hue. */
+  --accent-2: #9333ea;
+  --accent-2-dim: #f3e8fd;
   --waveform: #e08e00;
   --warn: #b45309;
   --danger: #c9302c;
@@ -938,8 +938,11 @@ button:disabled:hover { filter: none; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--accent-dim);
-  border: 1px solid var(--accent);
+  /* --accent-2, not --accent: this is an "analysis" surface (see
+     --accent-2's own definition, base :root) — a distinct color from the
+     rest of the transport/buttons, in every theme. */
+  background: var(--accent-2-dim);
+  border: 1px solid var(--accent-2);
   color: var(--text);
   font-size: 10px;
   font-weight: 600;
@@ -949,7 +952,7 @@ button:disabled:hover { filter: none; }
   text-overflow: ellipsis;
   box-sizing: border-box;
 }
-.chord-chip:hover { background: var(--accent); color: #fff; }
+.chord-chip:hover { background: var(--accent-2); color: #fff; }
 /* Low-confidence/no-chord beats stay visible (a gap would read as a
    rendering bug) but dimmed, same "shown, honestly de-emphasized" idiom
    as Rate My Take's planned low-confidence heatmap zones. */
@@ -1623,11 +1626,13 @@ button:disabled:hover { filter: none; }
 .ailab-chord-ribbon { display: flex; height: 26px; gap: 2px; }
 .ailab-chord-chip {
   flex: 1 1 0; display: flex; align-items: center; justify-content: center;
-  background: var(--accent-dim); border: 1px solid var(--accent); color: var(--text);
+  /* --accent-2, same reasoning as .chord-chip above — an analysis
+     surface, distinct from the rest of the UI's --accent in every theme. */
+  background: var(--accent-2-dim); border: 1px solid var(--accent-2); color: var(--text);
   font-size: 11px; font-weight: 600; border-radius: 3px; cursor: pointer;
 }
 .ailab-chord-chip[data-bars="2"] { flex-grow: 2; }
-.ailab-chord-chip.selected { background: var(--accent); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.5); }
+.ailab-chord-chip.selected { background: var(--accent-2); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.5); }
 .ailab-chord-chip:not(.selected):hover { filter: brightness(1.2); }
 .ailab-chord-chip.unknown { opacity: .35; cursor: default; }
 
@@ -1671,7 +1676,7 @@ button:disabled:hover { filter: none; }
 
 .ailab-legend { display: flex; gap: 16px; margin: 0 0 12px; font-size: 11px; color: var(--text-dim); }
 .ailab-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: -1px; }
-#ailab-legend-root { background: var(--accent); }
+#ailab-legend-root { background: var(--accent-2); }
 #ailab-legend-scale { background: #333a52; border: 1.2px solid #5b6a8f; }
 
 .ailab-scale-stack { display: flex; flex-direction: column; gap: 16px; }
@@ -1702,7 +1707,7 @@ svg.ailab-fretboard { display: block; }
 .ailab-string-line { stroke: #4a5064; stroke-width: 1; }
 .ailab-fret-marker { fill: #4c5470; }
 .ailab-fret-num { fill: #aab1c9; font-size: 10px; font-weight: 600; }
-.ailab-dot-root { fill: var(--accent); stroke: #c8d6ff; stroke-width: 1.5; }
+.ailab-dot-root { fill: var(--accent-2); stroke: #c8d6ff; stroke-width: 1.5; }
 /* Non-root scale tones: previously #333a52 on #5b6a8f, close enough to the
    panel background that a real user report ("non-root notes don't stand
    out well") called it out — lightened well past the fretboard's own

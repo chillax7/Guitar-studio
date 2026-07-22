@@ -410,8 +410,12 @@ expected result here.
   Spot-check Bright Spark specifically for readability (dark text on
   white, nothing washed out) since it's the newest and least-exercised of
   the three. Confirm the Mixer's chord lane and AI Lab's chord ribbon
-  switch to the *same* violet analysis color as each other in both Molten
-  Obsidian and Bright Spark — a real report caught these two disagreeing.
+  switch to the *same* purple analysis color as each other in **all
+  three** themes, Studio included — two real reports caught this: first
+  the two ribbons disagreeing with each other, then (after that fix) the
+  shared color itself still reading as plain blue rather than a clear
+  purple, in every theme including Studio, which didn't have a distinct
+  analysis color at all before this.
 - [ ] **Quest Log (v5):** with no track loaded, the inspector shows the
   Quest Log instead of normal panels — re-verify every quest here in
   context (most were already ticked naturally by Bosses 1–5; confirm the

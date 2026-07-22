@@ -672,9 +672,10 @@ the app name and current-screen label:
   feature behaves changes, only the color scheme. Your choice is
   remembered across reloads with no flash of the wrong theme while the
   page loads. Every themed surface reskins together, including the chord
-  ribbon (Mixer and AI Lab's Scales tab both shift to the same violet
-  "analysis" accent in Molten Obsidian/Bright Spark) and the stem
-  waveforms.
+  ribbon (Mixer and AI Lab's Scales tab both shift to the same purple
+  "analysis" accent, distinct from the theme's main accent in all three
+  themes — Studio included, which used to just reuse its own blue) and
+  the stem waveforms.
 - **Quest Log** — before you've loaded any track, the right-hand inspector
   panel (where the mixer's usual per-track panels normally live) shows a
   first-use checklist instead: separate a song, mix it, dial in a tone,

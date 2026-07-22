@@ -365,12 +365,17 @@ recommendations. All three sub-batches shipped together; test as one pass.
   Scale-tone legend dot (Root shows the secondary violet accent) all
   reskin correctly; AI Lab's own dedicated "Follow song" green is
   untouched by either theme.
-- [ ] **Chord ribbon consistency (real user report — it silently didn't
-  used to do this):** in both Molten Obsidian and Bright Spark, the
+- [ ] **Chord ribbon consistency (real user reports, two rounds):** the
   Mixer's chord lane chips AND AI Lab's Scales-tab chord ribbon chips
   switch to the *same* secondary/analysis accent color as each other and
-  as the fretboard's root-note dot — never one of the two ribbons stuck
-  showing the primary accent while the other shows the analysis color.
+  as the fretboard's root-note dot, in **all three themes including
+  Studio** — never one ribbon stuck on the primary accent while the other
+  shows the analysis color. The analysis color itself should read as a
+  clear, unambiguous purple/magenta in every theme, not a blue-violet that
+  could still pass for plain blue at a glance (the first round of this fix
+  made the two ribbons consistent with each other; a follow-up report
+  ["still... blue... across all 3 themes"] was that the shared color
+  itself, and Studio's total lack of one, both still read as blue).
 - [ ] **Bright Spark specifically:** white/paper background, dark
   readable text throughout (not just the Mixer — check Tone Lab's
   pedalboard and AI Lab too), and the "glow" idiom Molten Obsidian uses
