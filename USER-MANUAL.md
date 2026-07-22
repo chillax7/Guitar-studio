@@ -237,6 +237,10 @@ present in Finder but hasn't actually been downloaded to this Mac yet —
 is caught before upload and reported clearly**, with a suggestion to
 right-click it in Finder and choose "Download Now" first.
 
+Songs are listed without their file extension (an import named
+`Empty Rooms - Gary Moore.mp3` reads as just "Empty Rooms - Gary Moore")
+— display only; the underlying file keeps its real name and extension.
+
 Click any song to select it. A brief **Loading…** state shows while its
 stems are being fetched; what you see once that resolves depends on the
 song's state:
@@ -327,6 +331,13 @@ Each playlist's header also carries:
   relative to whatever's currently loaded (stops at either end — a
   setlist doesn't wrap around; if the loaded song isn't in this playlist
   at all, jumps to its first song instead).
+- **⟳ (Auto-play)** — arms this playlist to play itself: when a song from
+  it finishes naturally, the next song in the playlist loads and starts
+  on its own, straight through to the end of the set (same no-wrap rule
+  as ◀/▶ — after the last song, playback stops for real). The button
+  shows green while armed; only one playlist can be armed at a time, the
+  choice survives a reload, and a song that still needs separating stops
+  the chain there (loaded, waiting for you) rather than skipping it.
 - **✎ / ✕** — rename or delete the playlist (the songs themselves are
   untouched either way).
 
@@ -893,8 +904,10 @@ library of community `.nam` captures if you want more.
 ### 4.7 Suggest a tone
 
 If the loaded song has a guitar stem, a **Suggest from this track's
-guitar stem** button appears — only in Neural (NAM) mode, just below the
-Output trim slider. It compares that isolated guitar stem against your
+guitar stem** button appears — only in Neural (NAM) mode, at the top of
+the panel above the model browser (a suggested starting point is the
+first decision; browsing the whole library by hand is the fallback
+below it). It compares that isolated guitar stem against your
 available NAM models (or, in Analog mode, nudges the tone-stack sliders)
 using a brightness heuristic and picks the closest. **This is a rough
 starting point, not a guaranteed match** — always finish by ear; an exact

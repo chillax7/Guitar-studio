@@ -39,6 +39,7 @@ const ALL_TRACKS_GROUP_KEY = "\0all-tracks"; // NUL-prefixed: can't collide with
 const State = {
   tracks: [],
   playlists: {}, // V4-F3 — {name: {tracks: [trackName, ...]}}, shared cross-song (like rig presets)
+  autoPlaylist: localStorage.getItem("gs_autoplay_playlist") || null, // ⟳ auto-play — which playlist (if any) chains songs on natural end; see maybeAutoAdvance
   expandedPlaylists: new Set([ALL_TRACKS_GROUP_KEY]), // which playlist groups are open in the Library tree — All Tracks starts open; in-memory only, resets on reload
   models: [],
   defaultModel: "htdemucs",
@@ -852,10 +853,20 @@ function renderAllTracksGroup() {
   return group;
 }
 
+// Display-only cleanup: the Library reads "Empty Rooms - Gary Moore", not
+// "Empty Rooms - Gary Moore.mp3". Only known audio extensions are stripped
+// (not any final ".xyz" — a name like "jam 2.10.24" must keep its tail),
+// and only at render time: State.track, playlists, and every API call keep
+// the real filename, which stays the app-wide track key.
+const AUDIO_EXT_RE = /\.(mp3|wav|m4a|aac|flac|ogg|opus|aiff?|wma|webm)$/i;
+function displayTrackName(name) {
+  return name.replace(AUDIO_EXT_RE, "");
+}
+
 function renderLibraryTrackRow(t) {
   const row = document.createElement("div");
   row.className = "track-row" + (t.name === State.track ? " selected" : "");
-  row.innerHTML = `<span class="track-name">${escapeHtml(t.name)}</span>`;
+  row.innerHTML = `<span class="track-name">${escapeHtml(displayTrackName(t.name))}</span>`;
   row.appendChild(renderAddToPlaylistControl(t.name));
   row.appendChild(renderTrackRenameButton(t.name));
   row.appendChild(renderTrackDeleteButton(t.name));
@@ -1252,6 +1263,7 @@ function renderPlaylistGroup(name) {
     <button class="playlist-group-prev-btn" title="Previous song in this playlist"${tracks.length ? "" : " disabled"}>◀</button>
     <button class="playlist-group-add-current-btn" title="Add the loaded song to this playlist"${(State.track && !tracks.includes(State.track)) ? "" : " disabled"}>+</button>
     <button class="playlist-group-next-btn" title="Next song in this playlist"${tracks.length ? "" : " disabled"}>▶</button>
+    <button class="playlist-group-autoplay-btn${State.autoPlaylist === name ? " on" : ""}" title="Auto-play: when a song from this playlist ends, load and play the next one"${tracks.length ? "" : " disabled"}>⟳</button>
     <button class="playlist-group-rename-btn" title="Rename playlist">✎</button>
     <button class="playlist-group-delete-btn" title="Delete playlist">✕</button>`;
   group.appendChild(header);
@@ -1271,6 +1283,10 @@ function renderPlaylistGroup(name) {
   header.querySelector(".playlist-group-next-btn").addEventListener("click", (e) => {
     e.stopPropagation();
     stepPlaylistGroup(name, 1);
+  });
+  header.querySelector(".playlist-group-autoplay-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    setAutoPlaylist(State.autoPlaylist === name ? null : name);
   });
   header.querySelector(".playlist-group-add-current-btn").addEventListener("click", async (e) => {
     e.stopPropagation();
@@ -1328,11 +1344,41 @@ function stepPlaylistGroup(name, delta) {
   selectTrack(playlist.tracks[next]);
 }
 
+// Auto-play (⟳ in a playlist's header): when a song from the armed
+// playlist ends naturally, load the playlist's next song and start it as
+// soon as its stems land — a setlist that plays itself. One playlist armed
+// at a time (arming another disarms the first), remembered across reloads.
+// Same no-wrap rule as the ◀/▶ steppers: after the last song, playback
+// stops for real instead of looping the set.
+const AUTOPLAY_PLAYLIST_KEY = "gs_autoplay_playlist";
+
+// The exact track auto-advance just selected, not a bare boolean: the next
+// song may turn out to need separation first (onStemsLoaded never runs),
+// and a stale "start playing on next load" flag firing on a track the user
+// picked by hand minutes later would be a real surprise.
+let autoPlayPendingTrack = null;
+
+function setAutoPlaylist(name) {
+  State.autoPlaylist = name;
+  if (name) localStorage.setItem(AUTOPLAY_PLAYLIST_KEY, name);
+  else localStorage.removeItem(AUTOPLAY_PLAYLIST_KEY);
+  renderTrackList();
+}
+
+function maybeAutoAdvance() {
+  const playlist = State.autoPlaylist && State.playlists[State.autoPlaylist];
+  if (!playlist) return;
+  const i = playlist.tracks.indexOf(State.track);
+  if (i === -1 || i + 1 >= playlist.tracks.length) return;
+  autoPlayPendingTrack = playlist.tracks[i + 1];
+  selectTrack(autoPlayPendingTrack);
+}
+
 function renderPlaylistMemberRow(playlistName, trackName, index, total) {
   const row = document.createElement("div");
   row.className = "track-row playlist-track-row" + (trackName === State.track ? " selected" : "");
   row.innerHTML = `
-    <span class="track-name">${escapeHtml(trackName)}</span>
+    <span class="track-name">${escapeHtml(displayTrackName(trackName))}</span>
     <button class="playlist-track-up-btn" title="Move up"${index === 0 ? " disabled" : ""}>▲</button>
     <button class="playlist-track-down-btn" title="Move down"${index === total - 1 ? " disabled" : ""}>▼</button>
     <button class="playlist-track-remove-btn" title="Remove from playlist">✕</button>`;
@@ -1385,6 +1431,11 @@ async function refreshPlaylists() {
 let selectTrackEpoch = 0;
 
 async function selectTrack(name) {
+  // A manual selection cancels any queued auto-play start (⟳): the flag
+  // may be left over from an auto-advance onto a not-yet-separated song,
+  // and firing it on a track the user picked by hand later would surprise.
+  if (name !== autoPlayPendingTrack) autoPlayPendingTrack = null;
+
   // V4-F4: flush whatever practice time accumulated against the track
   // we're about to leave, before State.track points somewhere else.
   flushPracticeLog();
@@ -1529,6 +1580,12 @@ async function onStemsLoaded(result) {
   resyncClickPointer(currentPosition());
   renderPlayhead(currentPosition());
   renderTimeDisplay(currentPosition());
+  if (autoPlayPendingTrack === State.track) {
+    autoPlayPendingTrack = null;
+    if (Audio.ctx && Audio.ctx.state === "suspended") Audio.ctx.resume();
+    startPlaybackAt(0);
+    setTransportText("play-btn", "⏸");
+  }
 }
 
 function updateStaleBanner() {
@@ -2134,6 +2191,7 @@ function tick() {
       } else if (pos >= Audio.duration && Audio.duration > 0) {
         stopPlayback(); // resets position and the play-btn icon synchronously
         pos = currentPosition();
+        maybeAutoAdvance(); // playlist ⟳ auto-play — no-op unless armed
       }
     }
     applyLiveMuteRanges(pos);

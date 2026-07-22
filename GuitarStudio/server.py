@@ -1202,6 +1202,27 @@ def svc_recordings_list(track: str) -> dict:
     return {"takes": takes}
 
 
+def _decode_take_for_scoring(target: Path) -> tuple[Path, tempfile.TemporaryDirectory | None]:
+    """Pre-decodes a compressed take (.m4a/.webm/.mp4 — anything libsndfile
+    can't open directly) to a temp WAV before it reaches the librosa-based
+    scoring code, using find_ffmpeg()'s hardened lookup. librosa's own
+    fallback for these formats is audioread, whose ffmpeg backend only
+    checks the bare PATH — a GUI-launched .app on macOS doesn't have
+    Homebrew's /opt/homebrew/bin there, so scoring an .m4a dry take worked
+    from a terminal-launched server and 500'd from the double-clicked app
+    (real user report: "Scoring failed: Internal server error" on a
+    '... - dry 01.m4a'). Decoding through our own ffmpeg lookup removes the
+    audioread dependency entirely. Returns (path_to_score, tempdir_handle);
+    the caller must keep the handle alive until scoring is done, and WAV
+    (and other libsndfile-native) takes pass straight through untouched."""
+    if target.suffix.lower() in (".wav", ".flac", ".aiff", ".aif", ".ogg"):
+        return target, None
+    tmpdir = tempfile.TemporaryDirectory(prefix="gs_rate_")
+    wav_path = Path(tmpdir.name) / (target.stem + ".wav")
+    _ffmpeg_convert_to_wav(target, wav_path)
+    return wav_path, tmpdir
+
+
 def svc_rate_score(source_path: str, take_path: str, model: str, stem: str,
                     offset: float, offset_search: float) -> dict:
     """AI Lab's Rate My Take panel — the HTTP-facing twin of cmd_rate
@@ -1229,9 +1250,11 @@ def svc_rate_score(source_path: str, take_path: str, model: str, stem: str,
     analysis = engine.ensure_analysis(out_dir)
     beats = analysis.get("beats")
 
+    scoring_target, _tmpdir = _decode_take_for_scoring(target)
+
     refine_info = None
     if offset_search and offset_search > 0:
-        refined = engine.refine_offset(target, reference_path, offset, search_radius=offset_search)
+        refined = engine.refine_offset(scoring_target, reference_path, offset, search_radius=offset_search)
         refine_info = {"offset": refined["offset"], "quality": refined["quality"], "clipped": refined["clipped"]}
         if not refined["clipped"] and refined["quality"] >= engine.RATE_OFFSET_SEARCH_MIN_QUALITY:
             offset = refined["offset"]
@@ -1239,8 +1262,8 @@ def svc_rate_score(source_path: str, take_path: str, model: str, stem: str,
         else:
             refine_info["applied"] = False
 
-    beats = engine.trim_beats_to_take_span(beats, offset, target)
-    result = engine.score_take(target, reference_path, beats, offset_sec=offset)
+    beats = engine.trim_beats_to_take_span(beats, offset, scoring_target)
+    result = engine.score_take(scoring_target, reference_path, beats, offset_sec=offset)
     scored = [b for b in result["beats"] if b["score"] is not None]
     if not scored:
         raise ApiError(400, f"No beats could be scored at offset {offset}s — check the offset and that "
@@ -1904,12 +1927,13 @@ def svc_practice_tips(source_path: str, take_path: str, model: str, stem: str,
     else:
         analysis = engine.ensure_analysis(out_dir)
         beats = analysis.get("beats")
+        scoring_target, _tmpdir = _decode_take_for_scoring(target)
         if offset_search and offset_search > 0:
-            refined = engine.refine_offset(target, reference_path, offset, search_radius=offset_search)
+            refined = engine.refine_offset(scoring_target, reference_path, offset, search_radius=offset_search)
             if not refined["clipped"] and refined["quality"] >= engine.RATE_OFFSET_SEARCH_MIN_QUALITY:
                 offset = refined["offset"]
-        beats = engine.trim_beats_to_take_span(beats, offset, target)
-        fresh_result = engine.score_take(target, reference_path, beats, offset_sec=offset)
+        beats = engine.trim_beats_to_take_span(beats, offset, scoring_target)
+        fresh_result = engine.score_take(scoring_target, reference_path, beats, offset_sec=offset)
         result_beats = fresh_result["beats"]
         overall_pct = fresh_result["overall_pct"]
 
@@ -2553,9 +2577,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._serve_static(path)
         except ApiError as exc:
             self._send_json(exc.status, {"error": exc.message})
-        except Exception:
+        except Exception as exc:
             traceback.print_exc()
-            self._send_json(500, {"error": "Internal server error"})
+            # Name the actual failure — the server's own terminal isn't
+            # visible from a double-clicked .app, so a bare "Internal
+            # server error" left real bugs (e.g. the .m4a scoring decode
+            # failure) undiagnosable from the UI side.
+            self._send_json(500, {"error": f"Internal server error: {type(exc).__name__}: {exc}"})
 
     def do_POST(self):
         path, _ = self._query()
@@ -2781,9 +2809,13 @@ class Handler(BaseHTTPRequestHandler):
             # this is the one place that must catch it, so it never
             # propagates past the request and kills the whole server.
             self._send_json(500, {"error": str(exc.code) if exc.code else "Engine error"})
-        except Exception:
+        except Exception as exc:
             traceback.print_exc()
-            self._send_json(500, {"error": "Internal server error"})
+            # Name the actual failure — the server's own terminal isn't
+            # visible from a double-clicked .app, so a bare "Internal
+            # server error" left real bugs (e.g. the .m4a scoring decode
+            # failure) undiagnosable from the UI side.
+            self._send_json(500, {"error": f"Internal server error: {type(exc).__name__}: {exc}"})
 
 
 def main() -> None:

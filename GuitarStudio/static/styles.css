@@ -278,6 +278,7 @@ body {
    Enable Input, etc.) that's actually meant to stand out. */
 .track-rename-btn, .track-delete-btn,
 .playlist-group-prev-btn, .playlist-group-add-current-btn, .playlist-group-next-btn,
+.playlist-group-autoplay-btn,
 .playlist-group-rename-btn, .playlist-group-delete-btn,
 .playlist-track-row button,
 .track-add-to-playlist-new-btn {
@@ -286,6 +287,7 @@ body {
 }
 .track-rename-btn:hover, .track-delete-btn:hover,
 .playlist-group-prev-btn:hover, .playlist-group-add-current-btn:hover, .playlist-group-next-btn:hover,
+.playlist-group-autoplay-btn:hover,
 .playlist-group-rename-btn:hover, .playlist-group-delete-btn:hover,
 .playlist-track-row button:hover,
 .track-add-to-playlist-new-btn:hover {
@@ -335,10 +337,24 @@ body {
   padding: 1px 5px;
 }
 .playlist-group-prev-btn, .playlist-group-add-current-btn, .playlist-group-next-btn,
+.playlist-group-autoplay-btn,
 .playlist-group-rename-btn, .playlist-group-delete-btn {
   flex: none;
   padding: 1px 5px;
   font-size: 10px;
+}
+/* Armed auto-play reads like the toolbar's Loop/Click active state: a
+   real "this is on" green, not the quiet outline the rest of these small
+   header buttons keep. */
+.playlist-group-autoplay-btn.on {
+  color: #fff;
+  background: var(--success);
+  border-color: var(--success);
+}
+.playlist-group-autoplay-btn.on:hover {
+  color: #fff;
+  background: var(--success);
+  filter: brightness(1.15);
 }
 .playlist-group-empty-hint { padding: 2px 12px 8px; }
 

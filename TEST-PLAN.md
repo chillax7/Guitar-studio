@@ -368,3 +368,30 @@ recommendations. All three sub-batches shipped together; test as one pass.
 - [ ] **Range slider accent color:** any native range slider (e.g. the Noise
   Gate threshold) tints with the active theme's accent color instead of
   staying browser-default blue, in both themes.
+
+## 15. Post-v5 follow-ups (library polish, playlist auto-play, scoring decode fix)
+
+- [ ] **Extension-free library names:** track rows (All Tracks and playlist
+  members alike) show names without their audio extension (`.mp3`, `.wav`,
+  `.m4a`, …); a name with a dotted tail that is NOT an audio extension
+  (e.g. "jam 2.10.24") keeps it. Rename/delete/playlists/selection all
+  still key off the real filename — renaming a track pre-fills the same
+  base name as before.
+- [ ] **Playlist auto-play (⟳):** arming a playlist's ⟳ turns it green;
+  letting a song from that playlist play to its natural end auto-loads and
+  auto-plays the playlist's next song; the chain stops (no wrap) after the
+  last song; arming a second playlist disarms the first; the armed state
+  survives a reload. A next song that isn't separated yet loads to its
+  Separate screen and the chain waits there rather than skipping. Ending a
+  song via Stop, a loop, or switching tracks manually does NOT trigger an
+  auto-advance — only a natural end-of-song does.
+- [ ] **NAM Suggest placement:** in Neural mode, "Suggest from this track's
+  guitar stem" sits at the top of the panel above the model browser, and
+  still only appears when the loaded song has a guitar stem.
+- [ ] **Rate My Take .m4a scoring (server fix):** scoring an `.m4a`/`.webm`
+  dry take works from the double-clicked Guitar Studio.app, not just a
+  terminal-launched server (takes are now pre-decoded to WAV via the app's
+  own Homebrew-aware ffmpeg lookup instead of librosa's PATH-dependent
+  audioread fallback); a WAV take still scores identically to before. Any
+  future scoring failure shows a named error (exception type + message)
+  in the UI instead of a bare "Internal server error".
