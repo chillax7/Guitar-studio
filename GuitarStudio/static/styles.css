@@ -1467,7 +1467,9 @@ svg.ailab-fretboard { display: block; }
   width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
   border-radius: 4px; padding: 5px 6px; font-size: 12px;
 }
-#ailab-lick-suggestion { white-space: pre-wrap; font-size: 13px; line-height: 1.5; }
+#ailab-lick-suggestion, #ailab-explain-answer, #ailab-tips-suggestion, #ailab-track-info, #ailab-artist-info {
+  white-space: pre-wrap; font-size: 13px; line-height: 1.5;
+}
 .ailab-rmt-take-row {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 6px 8px; border-radius: 5px; font-size: 12px; color: var(--text-dim);
@@ -1479,6 +1481,7 @@ svg.ailab-fretboard { display: block; }
 .ailab-rmt-overall.good { color: var(--success); }
 .ailab-rmt-overall.mid { color: var(--warn); }
 .ailab-rmt-overall.low { color: var(--danger); }
+.ailab-rmt-overall.invalid { color: var(--warn); font-size: 16px; }
 #ailab-rmt-heatmap-img { max-width: 100%; border-radius: 6px; border: 1px solid var(--border); display: block; }
 
 .ailab-rmt-take-row-right { display: flex; align-items: center; gap: 8px; }

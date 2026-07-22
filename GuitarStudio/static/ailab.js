@@ -525,9 +525,16 @@ function aiLabRmtOnTakeSelectChange() {
   const takePath = document.getElementById("ailab-rmt-take-select").value;
   const take = AiLabRmtTakesCache.find((t) => t.path === takePath);
   const hintEl = document.getElementById("ailab-rmt-score-hint");
+  // Remembers the offset per take (see RATINGS_FILE's used_offset field
+  // server-side) — no more re-entering it by hand every session.
+  if (take && take.rating && take.rating.used_offset !== undefined && take.rating.used_offset !== null) {
+    document.getElementById("ailab-rmt-offset").value = take.rating.used_offset;
+  }
   if (take && take.rating) {
     aiLabRmtRenderResult(take.rating);
-    hintEl.textContent = "Showing this take's last rating — click Score to re-run.";
+    hintEl.textContent = take.rating.overall_pct === null
+      ? "This take's last score was invalid — see the warning above. Try re-scoring with a different offset."
+      : "Showing this take's last rating — click Score to re-run.";
   } else {
     document.getElementById("ailab-rmt-result-card").style.display = "none";
     hintEl.textContent = take ? "Not scored yet." : "";
@@ -541,7 +548,12 @@ function aiLabRmtOnTakeSelectChange() {
 function aiLabRmtRenderResult(r) {
   const resultCard = document.getElementById("ailab-rmt-result-card");
   const overallEl = document.getElementById("ailab-rmt-overall");
-  overallEl.textContent = r.overall_pct !== null ? `Overall: ${r.overall_pct}%` : "Overall: --";
+  // overall_pct is null when every scored beat fell below the reference-
+  // confidence floor (score_take's own fallback) — almost always a wrong
+  // offset (scoring silence/a different passage against the reference)
+  // rather than a "0% take," so this reads very differently from a
+  // genuinely low score and needs to say so, not just show "--".
+  overallEl.textContent = r.overall_pct !== null ? `Overall: ${r.overall_pct}%` : "Invalid rating — check your offset?";
   overallEl.className = "ailab-rmt-overall " + aiLabRmtOverallClass(r.overall_pct);
   const breakdownEl = document.getElementById("ailab-rmt-breakdown");
   breakdownEl.textContent = (r.overall_pitch !== null && r.overall_timing !== null)
@@ -642,7 +654,7 @@ async function aiLabFinalizeDryRecording(chunks, mimeType) {
 }
 
 function aiLabRmtOverallClass(pct) {
-  if (pct === null || pct === undefined) return "";
+  if (pct === null || pct === undefined) return "invalid";
   if (pct >= 70) return "good";
   if (pct >= 40) return "mid";
   return "low";
@@ -672,6 +684,11 @@ async function aiLabScoreTake() {
       msg += r.refine.applied
         ? ` Offset auto-refined ${offset}s -> ${r.refine.offset}s (match quality ${r.refine.quality}).`
         : ` Offset auto-refine found ${r.refine.offset}s but match quality (${r.refine.quality}) was too low to trust — used ${offset}s as given.`;
+    }
+    if (r.overall_pct === null) {
+      msg += " No beat had a confident reference to compare against — this almost always means the offset is "
+        + "wrong (scoring against silence or the wrong passage), not that the take itself was bad. Double-check "
+        + "the offset and try again.";
     }
     hintEl.textContent = msg;
     aiLabRmtRenderResult(r);
@@ -892,6 +909,10 @@ async function aiLabExplainAsk() {
 // previously-displayed result.
 // ---------------------------------------------------------------------------
 
+let AiLabTipsTakesCache = []; // same idiom as AiLabRmtTakesCache — lets
+// take-select's "change" handler retrieve a take's saved Rate My Take
+// rating/offset without a round trip.
+
 async function aiLabTipsRefreshTakes() {
   const selectEl = document.getElementById("ailab-tips-take-select");
   const btn = document.getElementById("ailab-tips-suggest-btn");
@@ -900,6 +921,7 @@ async function aiLabTipsRefreshTakes() {
     selectEl.innerHTML = "";
     btn.disabled = true;
     hintEl.textContent = "No song selected.";
+    AiLabTipsTakesCache = [];
     return;
   }
   let takes = [];
@@ -912,6 +934,7 @@ async function aiLabTipsRefreshTakes() {
     hintEl.textContent = `Couldn't load takes: ${e.message}`;
     return;
   }
+  AiLabTipsTakesCache = takes;
 
   if (!takes.length) {
     selectEl.innerHTML = "";
@@ -931,7 +954,29 @@ async function aiLabTipsRefreshTakes() {
   if (takes.some((t) => t.path === prevValue)) selectEl.value = prevValue;
   else selectEl.selectedIndex = takes.length - 1;
   btn.disabled = false;
-  hintEl.textContent = "";
+  aiLabTipsOnTakeSelectChange();
+}
+
+// Retrieves a take's saved Rate My Take rating (already returned inline by
+// /api/recordings — see svc_recordings_list's "rating" field) so Practice
+// Tips doesn't need its own separate offset entry: the offset that already
+// worked in Rate My Take carries straight over, and a take that was rated
+// invalid there ("--", wrong offset) is flagged here too before spending an
+// LLM call on it.
+function aiLabTipsOnTakeSelectChange() {
+  const takePath = document.getElementById("ailab-tips-take-select").value;
+  const take = AiLabTipsTakesCache.find((t) => t.path === takePath);
+  const hintEl = document.getElementById("ailab-tips-hint");
+  if (!take || !take.rating) {
+    hintEl.textContent = take ? "Not yet scored in Rate My Take — using the offset below as given." : "";
+    return;
+  }
+  if (take.rating.used_offset !== undefined && take.rating.used_offset !== null) {
+    document.getElementById("ailab-tips-offset").value = take.rating.used_offset;
+  }
+  hintEl.textContent = take.rating.overall_pct === null
+    ? "This take's Rate My Take score was invalid (\"--\") — check the offset before asking for tips."
+    : `Rate My Take score for this take: ${take.rating.overall_pct}% (using its saved offset).`;
 }
 
 async function aiLabTipsSuggest() {
@@ -1089,6 +1134,7 @@ function wireAiLab() {
   });
   document.getElementById("ailab-explain-ask-btn").addEventListener("click", aiLabExplainAsk);
   document.getElementById("ailab-tips-suggest-btn").addEventListener("click", aiLabTipsSuggest);
+  document.getElementById("ailab-tips-take-select").addEventListener("change", aiLabTipsOnTakeSelectChange);
   document.getElementById("ailab-trackinfo-save-btn").addEventListener("click", aiLabTrackInfoSave);
   document.getElementById("ailab-track-info-btn").addEventListener("click", aiLabThisTrackInfo);
   document.getElementById("ailab-artist-info-btn").addEventListener("click", aiLabThisArtistInfo);

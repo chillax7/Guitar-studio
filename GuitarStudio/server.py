@@ -1620,7 +1620,7 @@ def _load_provider_key(provider: str) -> str:
 def _call_anthropic(prompt: str, api_key: str) -> str:
     body = json.dumps({
         "model": LICK_PROVIDERS["anthropic"]["model"],
-        "max_tokens": 400,
+        "max_tokens": 900,
         "messages": [{"role": "user", "content": prompt}],
     }).encode("utf-8")
     req = Request(
@@ -1642,7 +1642,10 @@ def _call_anthropic(prompt: str, api_key: str) -> str:
 
 def _call_google(prompt: str, api_key: str) -> str:
     model = LICK_PROVIDERS["google"]["model"]
-    body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
+    body = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"maxOutputTokens": 900},
+    }).encode("utf-8")
     req = Request(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
         data=body, method="POST",
@@ -1666,7 +1669,7 @@ def _call_groq(prompt: str, api_key: str) -> str:
     # OpenAI-compatible chat completions shape.
     body = json.dumps({
         "model": LICK_PROVIDERS["groq"]["model"],
-        "max_tokens": 400,
+        "max_tokens": 900,
         "messages": [{"role": "user", "content": prompt}],
     }).encode("utf-8")
     req = Request(
@@ -1740,8 +1743,9 @@ def svc_lick_suggest(source_path: str, model: str, genre: str, provider: str) ->
         "Give 2-4 concrete, specific phrasing ideas for a guitar solo over this progression — target notes to "
         "land on over specific chords, call-and-response shapes, or a technique to try at a particular point. "
         "Avoid generic advice (e.g. \"use the pentatonic scale\") unless it's tied to a specific moment in THIS "
-        "progression. Keep it concise — a short list, no more than ~150 words total.\n\n"
-        f"{_NO_BAR_NUMBER_INSTRUCTION}"
+        "progression. Feel free to go into real detail on each idea rather than a bare one-liner — aim for "
+        "roughly 250-400 words total.\n\n"
+        f"{_NO_BAR_NUMBER_INSTRUCTION}\n\n{_FORMATTING_INSTRUCTION}"
     )
 
     caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
@@ -1774,6 +1778,17 @@ def _song_theory_or_raise(out_dir: Path) -> tuple:
                              "(open it in the Mixer) first.")
     return key, bpm, progression
 
+
+# Real user report: plain-paragraph LLM output rendered as "a jumble of
+# wrapped text" in the UI — the app already preserves newlines the model
+# sends (see #ailab-lick-suggestion's white-space:pre-wrap CSS, now shared
+# across all five modes' output elements), so the actual fix has two
+# halves: this instruction gets the model to actually send line breaks
+# between distinct points, not just longer unbroken paragraphs.
+_FORMATTING_INSTRUCTION = (
+    "Format your answer as short paragraphs or a list, with a line break between each distinct point (not one "
+    "dense wrapped paragraph) — this is displayed in a UI that preserves your line breaks as-is."
+)
 
 _NO_BAR_NUMBER_INSTRUCTION = (
     "Important: you have no bar/measure or timing information beyond whatever timestamps are explicitly given "
@@ -1889,8 +1904,9 @@ def svc_practice_tips(source_path: str, take_path: str, model: str, stem: str,
         "e.g. slowing down a specific passage with a metronome, isolating a technique at a specific timestamp, "
         "a targeted repetition drill. If no weak moments are listed, say the take was solid throughout rather than "
         "inventing a problem. Avoid generic advice (e.g. \"practice more\") that isn't tied to a specific moment "
-        "above. Keep it concise — no more than ~150 words total.\n\n"
-        f"{_NO_BAR_NUMBER_INSTRUCTION}"
+        "above. Explain each exercise in enough detail to actually act on it, not just name it — "
+        "aim for roughly 250-400 words total.\n\n"
+        f"{_NO_BAR_NUMBER_INSTRUCTION}\n\n{_FORMATTING_INSTRUCTION}"
     )
 
     caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
@@ -2000,9 +2016,9 @@ def svc_this_track(source_path: str, model: str, provider: str) -> dict:
         "technical notes (tie these to the detected key/tempo/progression above if given); the writing process "
         "and lyrical meaning where it's actually publicly known and not disputed (do NOT quote full lyrics "
         "verbatim); one or two notable performances/recordings worth hearing; and a couple of similar songs or "
-        "solos worth checking out.\n\n"
-        "Keep it concise — a few short paragraphs or bullet points, no more than ~250 words total.\n\n"
-        f"{_REAL_WORLD_KNOWLEDGE_CAVEAT}"
+        "solos worth checking out. Go into real detail on each of these rather than a one-line mention — "
+        "aim for roughly 350-500 words total.\n\n"
+        f"{_REAL_WORLD_KNOWLEDGE_CAVEAT}\n\n{_FORMATTING_INSTRUCTION}"
     )
 
     caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
@@ -2026,12 +2042,12 @@ def svc_this_artist(source_path: str, model: str, provider: str) -> dict:
         "and gear, using the song below as context where relevant.\n\n"
         f"- Guitarist/artist: {artist}\n"
         f"- Song: {title or '(not given)'}\n\n"
-        "Cover, briefly: their general gear (amps, pedals, guitars) and how it's shaped their tone; their playing "
+        "Cover their general gear (amps, pedals, guitars) and how it's shaped their tone; their playing "
         "style and signature licks/techniques; and gear hints specific enough to point toward a NAM amp/pedal "
         "capture worth trying (e.g. \"closest to a certain amp/pedal combination\") — not a promise of exact "
-        "tone-matching, just a more informed starting point than guessing blind.\n\n"
-        "Keep it concise — a few short paragraphs or bullet points, no more than ~250 words total.\n\n"
-        f"{_REAL_WORLD_KNOWLEDGE_CAVEAT}"
+        "tone-matching, just a more informed starting point than guessing blind. Go into real detail on each of "
+        "these rather than a one-line mention — aim for roughly 350-500 words total.\n\n"
+        f"{_REAL_WORLD_KNOWLEDGE_CAVEAT}\n\n{_FORMATTING_INSTRUCTION}"
     )
 
     caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
@@ -2073,8 +2089,10 @@ def svc_ask_ai(source_path: str, model: str, question: str, provider: str) -> di
         "unrelated questions anyway.\n\n"
         f"{context}"
         f"Question: {question}\n\n"
-        "Keep the answer clear and concise — a short paragraph or a few bullet points, no more than ~150 words.\n\n"
-        f"{_NO_BAR_NUMBER_INSTRUCTION}\n\n{_REAL_WORLD_KNOWLEDGE_CAVEAT}"
+        "Give a thorough, informative answer rather than a bare minimum one — go into real detail and use "
+        "concrete examples where they help, aiming for roughly 250-400 words unless the question is genuinely "
+        "simple enough that padding it out would be artificial.\n\n"
+        f"{_NO_BAR_NUMBER_INSTRUCTION}\n\n{_REAL_WORLD_KNOWLEDGE_CAVEAT}\n\n{_FORMATTING_INSTRUCTION}"
     )
 
     caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]

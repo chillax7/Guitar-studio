@@ -1205,12 +1205,21 @@ rating and heatmap — nothing is left pointing at a file that no longer
 exists.
 
 **Ratings are saved, not just shown once.** Scoring a take caches its
-result (percentage, breakdown, heatmap) under that take's own name.
-Picking a different take from the dropdown shows its last rating
-instantly, with no re-scoring — useful when comparing two or three takes
-back and forth. Renaming a take carries its saved rating along with it;
-only clicking **Score this take** again re-runs the scoring (overwriting
-whatever was cached before, e.g. after changing the Offset).
+result (percentage, breakdown, heatmap, and the Offset that was used)
+under that take's own name. Picking a different take from the dropdown
+shows its last rating instantly, with no re-scoring, **and refills the
+Offset field with whatever value actually worked last time** — no more
+re-entering it by hand every session. Renaming a take carries its saved
+rating (and its remembered Offset) along with it; only clicking **Score
+this take** again re-runs the scoring, overwriting whatever was cached
+before.
+
+**"Invalid rating" warning.** If a take comes back with no usable
+score — shown as "Invalid rating — check your offset?" instead of a
+percentage — that almost always means the Offset is wrong (the take is
+being compared against silence or the wrong part of the song), not that
+the performance itself was bad. Double-check the Offset and try again
+before assuming the take was actually that poor.
 
 **To score a take:**
 1. Record a dry take (or pick one already recorded for this song).
@@ -1287,6 +1296,13 @@ key**. Every key is stored locally in this app's own project folder,
 never committed to source control, and never sent anywhere except
 directly to that provider's own API.
 
+**Output formatting.** Every mode's answer is asked to break at each
+distinct point rather than come back as one dense wrapped paragraph, and
+to go into real detail rather than the bare minimum — if an answer still
+reads as a jumble of run-together text, that's the model not quite
+following the formatting instruction on that particular request (worth
+trying again), not something you need to work around by hand.
+
 **Mode: Lick Ideas.** Sends the current song's detected key, tempo, and
 chord progression and asks for concrete lead-guitar phrasing ideas:
 target notes to land on over specific chords, call-and-response shapes,
@@ -1306,14 +1322,16 @@ memory of a previous one.
 
 **Mode: Practice Tips.** The one mode grounded in *your own playing*, not
 just the song: pick one of your scored dry takes (recorded in the Rate
-My Take tab), optionally adjust the offset/offset-search the same way you
-would there, and click **Get practice tips**. It re-scores that take
-against the reference guitar stem, finds its actual weakest moments (the
-same information the heatmap already shows you, as a beat-by-beat
-pitch/timing breakdown), and asks for practice exercises tied to those
-specific spots — not generic "practice more" filler. Needs at least one
-dry take recorded for the current song; the button stays disabled with an
-explanation until one exists.
+My Take tab). If that take already has a Rate My Take rating, its Offset
+and last percentage carry over automatically — a hint line shows the
+carried-over score, or warns if that take's Rate My Take score was itself
+invalid ("--"), before you spend a request on it. Click **Get practice
+tips**: it re-scores the take against the reference guitar stem, finds
+its actual weakest moments (the same information the heatmap already
+shows you, as a beat-by-beat pitch/timing breakdown), and asks for
+practice exercises tied to those specific spots — not generic "practice
+more" filler. Needs at least one dry take recorded for the current song;
+the button stays disabled with an explanation until one exists.
 
 **Mode: This Track.** One click, no question to type — background on
 this specific song: band/release info, structure and feel, technical

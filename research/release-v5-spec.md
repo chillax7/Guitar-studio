@@ -531,6 +531,57 @@ Artist's gear-hint usefulness, Ask AI's guardrail actually declining
 off-topic questions) — all three need a real run with a working key,
 same as Lick Ideas/Practice Tips already did.
 
+**Update — real-use polish pass: output formatting/verbosity, offset
+memory, invalid-rating warning, Practice Tips ↔ Rate My Take linkage,
+mode order.** Real feedback after actually using all five modes and the
+Rate My Take tab:
+
+- **"A jumble of wrapped text."** Root cause: `#ailab-lick-suggestion`
+  had `white-space: pre-wrap` CSS all along, but the four newer output
+  elements (`#ailab-explain-answer`/Ask AI, `#ailab-tips-suggestion`,
+  `#ailab-track-info`, `#ailab-artist-info`) never got it — any line
+  breaks the model actually sent were being collapsed by normal HTML
+  whitespace rules. Fixed by sharing that rule across all five. Paired
+  with a new `_FORMATTING_INSTRUCTION` (line break between each distinct
+  point, not one dense paragraph) appended to every prompt, since the CSS
+  fix only helps if the model sends breaks to begin with.
+- **More verbose answers.** Every prompt's word-count target raised
+  (Lick Ideas/Practice Tips/Ask AI ~150→250-400 words; This Track/This
+  Artist ~250→350-500 words) and `max_tokens`/`maxOutputTokens` raised
+  400→900 across all three providers (Google's request body had no
+  output-length cap set at all before this).
+- **Rate My Take: offset remembered per take.** `used_offset` was already
+  being cached alongside each rating (server-side, since the first
+  caching pass) but never read back into the UI — now selecting a take
+  refills the Offset field from its own cached value, so it doesn't need
+  re-entering by hand every session (or every time Practice Tips picks
+  that same take — see below).
+- **Rate My Take: "invalid rating" warning.** A take whose every scored
+  beat fell below the reference-confidence floor (score_take's own
+  fallback) previously just showed a bare "--", indistinguishable from a
+  loading/empty state and easy to misread as "this take scored zero."
+  Now shows "Invalid rating — check your offset?" (styled distinctly from
+  a real percentage) plus an explanatory hint — this almost always means
+  the offset is wrong (scoring against silence/the wrong passage), not
+  that the performance was actually that bad.
+- **Practice Tips retrieves Rate My Take's saved rating.** Selecting a
+  take in Practice Tips now reads that same take's cached rating (already
+  returned by `/api/recordings` — no new endpoint needed) and carries its
+  offset over automatically, with a hint showing the known percentage (or
+  warning if that take's own Rate My Take score was invalid, before
+  spending an LLM call on it).
+- **Mode order.** Reordered to Practice Tips / Lick Ideas / This Track /
+  This Artist / Ask AI per the user's own preference — purely cosmetic,
+  no behavior change.
+
+Verified: a headless browser pass against synthetic cached ratings
+(valid, invalid, and offset-bearing) confirmed the warning text/styling,
+the offset-refill on take-select, and Practice Tips' hint all behave
+correctly in both Rate My Take's and Practice Tips' take pickers; mode
+buttons still toggle correctly in the new order. The formatting/verbosity
+prompt changes themselves are not yet judged against a real key — same
+"needs a real run" caveat as the previous Update.
+
 ## 5. Stretch, hard-gated: solo-skeleton generator (V5-F4 · XL, punt by default)
 
 The "build a full solo" ambition from the original conversation, scoped
