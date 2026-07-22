@@ -1152,6 +1152,20 @@ def _write_dry_takes(rec_dir: Path, dry_takes: set) -> None:
 RATINGS_FILE = ".rate_ratings.json"
 
 
+def _json_default(o):
+    """json.dumps default= hook for numpy scalars. Scoring results carry
+    values straight out of librosa/numpy math, and while np.float64
+    happens to subclass Python float (so json accepts it silently),
+    np.float32 and the integer types do NOT — a real user hit
+    "TypeError: Object of type float32 is not JSON serializable" scoring
+    an .m4a take, from a np.float32 that survived into the response.
+    .item() converts any numpy scalar to its plain Python equivalent;
+    everything genuinely unserializable still raises as before."""
+    if hasattr(o, "item") and callable(o.item):
+        return o.item()
+    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+
+
 def _read_ratings(rec_dir: Path) -> dict:
     meta = rec_dir / RATINGS_FILE
     if not meta.exists():
@@ -1163,7 +1177,9 @@ def _read_ratings(rec_dir: Path) -> dict:
 
 
 def _write_ratings(rec_dir: Path, ratings: dict) -> None:
-    (rec_dir / RATINGS_FILE).write_text(json.dumps(ratings, indent=2))
+    # default=_json_default: the payload is score_take output — numpy
+    # scalars included (see _json_default).
+    (rec_dir / RATINGS_FILE).write_text(json.dumps(ratings, indent=2, default=_json_default))
 
 
 def svc_recordings_list(track: str) -> dict:
@@ -2384,7 +2400,9 @@ class Handler(BaseHTTPRequestHandler):
     # -- helpers --------------------------------------------------------
 
     def _send_json(self, status: int, payload: dict) -> None:
-        body = json.dumps(payload).encode("utf-8")
+        # default=_json_default: scoring/analysis responses can carry numpy
+        # scalars (np.float32 is not a float subclass — see _json_default).
+        body = json.dumps(payload, default=_json_default).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))

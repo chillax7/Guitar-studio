@@ -1248,21 +1248,17 @@ function renderPlaylistGroup(name) {
   const group = document.createElement("div");
   group.className = "playlist-group";
 
-  // Setlist stepping (◀/▶) and a one-click "add the loaded song here" (+)
-  // — the dropdown-driven single-currentPlaylist view had these as a
-  // separate #playlist-nav-bar; multi-membership (a track can be in any
-  // number of playlists at once, see the file-top comment) means "the"
-  // playlist is no longer a single global selection, so each group now
-  // carries its own copy instead of one shared bar.
+  // Header controls kept deliberately minimal (⟳ auto-play, rename,
+  // delete) — the ◀/+/▶ stepping/add-current cluster that used to live
+  // here read as too busy per real user feedback; songs are added from a
+  // track row's own + popover, and stepping through a set is what ⟳
+  // auto-play and plain clicking already cover.
   const header = document.createElement("div");
   header.className = "playlist-group-header playlist-group-header-interactive";
   header.innerHTML = `
     <button class="playlist-group-toggle" title="${expanded ? "Collapse" : "Expand"}">${expanded ? "▾" : "▸"}</button>
     <span class="playlist-group-name">${escapeHtml(name)}</span>
     <span class="playlist-group-count">${tracks.length}</span>
-    <button class="playlist-group-prev-btn" title="Previous song in this playlist"${tracks.length ? "" : " disabled"}>◀</button>
-    <button class="playlist-group-add-current-btn" title="Add the loaded song to this playlist"${(State.track && !tracks.includes(State.track)) ? "" : " disabled"}>+</button>
-    <button class="playlist-group-next-btn" title="Next song in this playlist"${tracks.length ? "" : " disabled"}>▶</button>
     <button class="playlist-group-autoplay-btn${State.autoPlaylist === name ? " on" : ""}" title="Auto-play: when a song from this playlist ends, load and play the next one"${tracks.length ? "" : " disabled"}>⟳</button>
     <button class="playlist-group-rename-btn" title="Rename playlist">✎</button>
     <button class="playlist-group-delete-btn" title="Delete playlist">✕</button>`;
@@ -1276,24 +1272,9 @@ function renderPlaylistGroup(name) {
   header.querySelector(".playlist-group-toggle").addEventListener("click", toggleGroup);
   header.querySelector(".playlist-group-name").addEventListener("click", toggleGroup);
 
-  header.querySelector(".playlist-group-prev-btn").addEventListener("click", (e) => {
-    e.stopPropagation();
-    stepPlaylistGroup(name, -1);
-  });
-  header.querySelector(".playlist-group-next-btn").addEventListener("click", (e) => {
-    e.stopPropagation();
-    stepPlaylistGroup(name, 1);
-  });
   header.querySelector(".playlist-group-autoplay-btn").addEventListener("click", (e) => {
     e.stopPropagation();
     setAutoPlaylist(State.autoPlaylist === name ? null : name);
-  });
-  header.querySelector(".playlist-group-add-current-btn").addEventListener("click", async (e) => {
-    e.stopPropagation();
-    if (!State.track || tracks.includes(State.track)) return;
-    tracks.push(State.track);
-    await persistPlaylists();
-    renderTrackList();
   });
 
   header.querySelector(".playlist-group-rename-btn").addEventListener("click", async (e) => {
@@ -1329,19 +1310,6 @@ function renderPlaylistGroup(name) {
     }
   }
   return group;
-}
-
-// Steps to the next/previous song in a given playlist relative to whatever
-// is currently loaded — same "stop at either end, don't wrap" and "not on
-// a song from this playlist, jump to its first" behavior the old
-// dropdown-driven stepPlaylist had.
-function stepPlaylistGroup(name, delta) {
-  const playlist = State.playlists[name];
-  if (!playlist || !playlist.tracks.length) return;
-  const i = playlist.tracks.indexOf(State.track);
-  const next = i === -1 ? 0 : i + delta;
-  if (next < 0 || next >= playlist.tracks.length) return;
-  selectTrack(playlist.tracks[next]);
 }
 
 // Auto-play (⟳ in a playlist's header): when a song from the armed

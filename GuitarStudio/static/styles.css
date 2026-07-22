@@ -277,7 +277,6 @@ body {
    solid-blue CTAs competing with the one action per screen (Separate,
    Enable Input, etc.) that's actually meant to stand out. */
 .track-rename-btn, .track-delete-btn,
-.playlist-group-prev-btn, .playlist-group-add-current-btn, .playlist-group-next-btn,
 .playlist-group-autoplay-btn,
 .playlist-group-rename-btn, .playlist-group-delete-btn,
 .playlist-track-row button,
@@ -286,7 +285,6 @@ body {
   background: var(--panel-2);
 }
 .track-rename-btn:hover, .track-delete-btn:hover,
-.playlist-group-prev-btn:hover, .playlist-group-add-current-btn:hover, .playlist-group-next-btn:hover,
 .playlist-group-autoplay-btn:hover,
 .playlist-group-rename-btn:hover, .playlist-group-delete-btn:hover,
 .playlist-track-row button:hover,
@@ -336,7 +334,6 @@ body {
   border-radius: 3px;
   padding: 1px 5px;
 }
-.playlist-group-prev-btn, .playlist-group-add-current-btn, .playlist-group-next-btn,
 .playlist-group-autoplay-btn,
 .playlist-group-rename-btn, .playlist-group-delete-btn {
   flex: none;

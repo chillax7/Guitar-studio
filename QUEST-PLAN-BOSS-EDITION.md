@@ -195,18 +195,20 @@ above.*
 - [ ] **Create a playlist** from a song's own **+** → **+ New
   playlist…**; it appears alphabetically below All Tracks, seeded with
   that song, and the song still shows under All Tracks too (never a move).
-- [ ] Add the same song to a second playlist, and add a different loaded
-  song to an existing playlist from the playlist's own header **+**.
-- [ ] **◀ / ▶** on a playlist header step relative to the loaded song,
-  stop at either end (no wraparound), and jump to the playlist's first
-  song if the loaded song isn't a member at all.
+- [ ] Add the same song to a second playlist from its row's **+** popover
+  (the playlist header itself carries only ⟳ Auto-play / ✎ / ✕ — no
+  add/stepping buttons).
+- [ ] **⟳ Auto-play** on a playlist header: armed (green), a song from
+  that playlist ending naturally auto-loads and plays the next one,
+  stopping for real after the last (no wraparound); arming a second
+  playlist disarms the first; the armed state survives a reload.
 - [ ] Inside an expanded playlist: **▲ / ▼** reorders a member row, **✕**
   removes it from just that playlist (song itself untouched); playlist
   **✎ / ✕** rename/delete the playlist without touching its songs.
 - [ ] Playlists survive a server restart (server-side storage, not
   per-browser).
 - [ ] **Library button styling:** every small utility control here (rename/
-  delete, playlist add/prev/next/rename/delete, reorder/remove) shares the
+  delete, playlist auto-play/rename/delete (except ⟳ while armed, which goes green on purpose), reorder/remove) shares the
   same quiet look — never solid blue, which stays reserved for real
   primary actions elsewhere.
 - [ ] **Practice log accumulation:** play any song for over a minute (Mixer

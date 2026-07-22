@@ -320,24 +320,18 @@ screen. Create one from any song's own row: click the **+**, then **+ New
 playlist…**, give it a name, and it appears alphabetically below All
 Tracks with that song already in it. **A song can belong to any number of
 playlists at once, and always still shows under All Tracks too** — adding
-it to a playlist is never a move, only an extra listing. Add an already-
-loaded song to more playlists the same way (click its **+**, tick
-whichever playlist(s) you want — the popover closes as soon as you tick
-one) or from the playlist's own header (a **+** there adds whatever song
-is currently loaded).
+it to a playlist is never a move, only an extra listing. Add a song to
+more playlists the same way: click its **+**, tick whichever playlist(s)
+you want — the popover closes as soon as you tick one.
 
-Each playlist's header also carries:
-- **◀ / ▶** — step to the previous/next song *in that playlist*
-  relative to whatever's currently loaded (stops at either end — a
-  setlist doesn't wrap around; if the loaded song isn't in this playlist
-  at all, jumps to its first song instead).
+Each playlist's header carries a deliberately small set of controls:
 - **⟳ (Auto-play)** — arms this playlist to play itself: when a song from
   it finishes naturally, the next song in the playlist loads and starts
-  on its own, straight through to the end of the set (same no-wrap rule
-  as ◀/▶ — after the last song, playback stops for real). The button
-  shows green while armed; only one playlist can be armed at a time, the
-  choice survives a reload, and a song that still needs separating stops
-  the chain there (loaded, waiting for you) rather than skipping it.
+  on its own, straight through to the end of the set (no wraparound —
+  after the last song, playback stops for real). The button shows green
+  while armed; only one playlist can be armed at a time, the choice
+  survives a reload, and a song that still needs separating stops the
+  chain there (loaded, waiting for you) rather than skipping it.
 - **✎ / ✕** — rename or delete the playlist (the songs themselves are
   untouched either way).
 
@@ -347,7 +341,7 @@ Clicking any song, in any group, loads it exactly the same way — a
 playlist is only ever an ordering, never a copy of a song's mix/rig
 settings.
 
-![A playlist group header (◀ Prev, + Add current song, ▶ Next, ✎ Rename, ✕ Delete) expanded to show its two songs with their ▲▼✕ reorder/remove controls.](docs/screenshots/playlist-group-controls.jpg)
+![A playlist group expanded to show its songs with their ▲▼✕ reorder/remove controls. (Screenshot predates the simplified header — it now carries just ⟳ Auto-play, ✎ Rename, ✕ Delete.)](docs/screenshots/playlist-group-controls.jpg)
 
 ### 3.5 Separating into stems
 
