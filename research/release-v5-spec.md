@@ -395,6 +395,90 @@ comparison gate still hasn't been run for Lick Ideas itself, so neither
 new mode has cleared it either. That real-use judgment call is still the
 next real gate, same as it's been since Lick Ideas first shipped.
 
+## 4a. Real-world context modes: This Track, This Artist, and Ask AI absorbing Explain This (new)
+
+**A genuinely different trust boundary from every other AI Assistant mode
+so far.** Lick Ideas, Explain This, and Practice Tips only ever ground
+their prompt in *locally-derived* data (this song's own detected key/
+chords/take scores) — the model is reasoning over facts the app itself
+already computed, so a bad answer reads as a bad musical judgment call,
+something the user's own ear/eye can immediately weigh. This Track and
+This Artist ask something categorically different: real-world facts about
+a real band, a real guitarist, real gear, real lyrics — pulled from the
+model's own training data, not anything this app computed. That's genuine
+hallucination risk on claims the user generally *can't* verify locally at
+all (a fabricated "notable performance," a guitarist's gear misattributed,
+a made-up detail about the writing process) — a different failure mode
+than "this phrasing suggestion is kind of generic," and it deserves a
+correspondingly more explicit caveat than this doc's existing "judge it
+honestly" framing, which assumes the user *can* judge. Both modes carry a
+standing, visible disclaimer along the lines of "treat specifics here
+(dates, quotes, gear, credits) as a starting point to verify, not a
+citation" — not the same "generic vs. specific" honesty question the
+other three modes ask.
+
+**Metadata gap.** Neither mode can work off a guess at "what song is
+this" — the app has no artist/title metadata today, only the raw
+filename, and real filenames in this project have been messy
+(`Empty_Rooms__Gary_Moore.mp3__dry_03.m4a`). Cheapest real fix: a
+one-time **Artist / Title** field, stored per-song (same project-file
+idiom as everything else per-song), pre-filled with a best-effort guess
+parsed from the filename but always user-editable — not silently trusted.
+This field is what actually gets sent, not the filename itself.
+
+**This Track.** One button, no free-text input (same "click and get info"
+idiom as Lick Ideas/Practice Tips) — asks about this specific song: band/
+release background, structure and feel from a listener's perspective,
+technical notes, the writing process and lyrical meaning *where it's
+actually publicly known and not disputed* (explicit instruction against
+reproducing full lyrics verbatim — copyright, not just style — commentary
+and short-fragment quoting only), notable performances/recordings worth
+hearing, and recommendations for similar songs/solos. Grounds the prompt
+in the Artist/Title field plus whatever locally-detected key/tempo/chords
+already exist (same context Lick Ideas already sends) so the "technical
+notes" part can stay tied to what's actually in the audio, not just
+generic trivia.
+
+**This Artist.** Same one-button idiom, scoped to the guitarist rather
+than the song: general gear and style, signature sound and licks, and —
+the genuinely useful tie-in — gear hints specific enough to point toward a
+NAM capture search (e.g. "arguably closest to a certain amp/pedal
+combination" rather than a vague "warm overdriven tone"). Explicitly not a
+promise of exact tone-matching (that's TONE3000's territory, §5's sibling
+idea, already blocked on API terms) — just pointing a real practice
+decision (which capture to actually try) in a more informed direction than
+guessing blind.
+
+**Ask AI, absorbing Explain This.** The user's own framing for this mode's
+system prompt — "a world-leading music theorist, historian, and virtuoso
+guitar player, answering questions about the music, this track, and this
+artist, not general subjects" — is a strict superset of Explain This's
+original scope (song theory only). Rather than ship a fourth/fifth
+near-duplicate chat box, **Ask AI replaces Explain This** (same free-text
+box, same example-prompt idiom, same single-shot no-history posture — see
+§4's original Update for why that scope cut was deliberate) with a
+broadened, explicitly-scoped system instruction: answer questions about
+this song/artist/music theory in general, and *decline* off-topic
+questions rather than answer them anyway — a real guardrail, not just a
+persona flavor, worth testing directly (ask it something obviously
+unrelated and confirm it actually declines rather than politely answering
+anyway).
+
+**Mode count, revisited.** Lick Ideas + Ask AI + Practice Tips + This
+Track + This Artist is five modes sharing one toggle row — worth watching
+once built for whether the row still reads cleanly (wraps to a second line
+acceptably) or needs a dropdown instead of a button row; not a blocking
+concern, just flagged before it's built rather than discovered after.
+
+**Gate:** same standing bar as every other mode here, but framed for what
+these two actually risk — not "is this a genuinely useful suggestion" but
+"are the specific, checkable claims (dates, names, gear, quotes) actually
+accurate," judged against whatever the user happens to already know about
+the artist, plus a couple of spot-checks against an outside source for
+anything that mattered. A mode that's engaging but frequently wrong on
+checkable facts is worse than one that's honestly generic — accuracy on
+real claims is the bar here, not novelty.
+
 ## 5. Stretch, hard-gated: solo-skeleton generator (V5-F4 · XL, punt by default)
 
 The "build a full solo" ambition from the original conversation, scoped
@@ -459,6 +543,15 @@ everything else in this codebase.
     certainly, but it keeps the "everything can be fully local" promise
     intact for whoever cares. Worth a spike alongside §3's research spike,
     not necessarily worth building both paths on day one.
+  - **§4a's exception, stated plainly:** This Track/This Artist also send
+    only text (an Artist/Title string, plus whatever's already
+    locally-derived) — the "never raw audio" privacy claim above still
+    holds fully. What's different is the *answer's* provenance: these two
+    modes exist specifically to pull the model's own general knowledge
+    about a real band/guitarist, not just have it reason over data this
+    app computed. That's not a privacy compromise, but it is a reliability
+    one worth naming separately from the rest of this list — see §4a's own
+    gate for the distinction.
 
 ---
 
