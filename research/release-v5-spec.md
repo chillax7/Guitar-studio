@@ -479,6 +479,58 @@ anything that mattered. A mode that's engaging but frequently wrong on
 checkable facts is worse than one that's honestly generic — accuracy on
 real claims is the bar here, not novelty.
 
+**Update — built.** Same "M2 shipped ahead of M0" / "M3 shipped ahead of
+its gate" precedent this release keeps setting: user's call to build
+straight after scoping rather than wait. Delivered as scoped:
+
+- A new **This song** card (Artist/Title, above the mode toggle) — filled
+  from `svc_load_track_info`/`svc_save_track_info`, stored in a new
+  `_track_info.json` keyed by the same content-hash `project_path_for`
+  already uses (so a renamed file still finds its saved info, same as
+  every other per-song state in this app). The Title field prefills from
+  `_guess_title_from_filename` — deliberately crude (strips this
+  project's own real messy suffixes like `__dry_03.m4a`, then just
+  cleans up underscores) rather than attempting a real artist/title
+  split, since a wrong confident guess is worse than an honest rough one
+  the user has to fix anyway.
+- `svc_this_track`/`svc_this_artist` — both use `_optional_song_theory`
+  (a non-raising twin of `_song_theory_or_raise`) so locally-derived
+  context is bonus grounding, not a hard requirement the way Lick Ideas'
+  stems-must-exist check is; This Track/This Artist only strictly need
+  the Artist/Title field, since real-world background doesn't need any
+  audio analysis at all.
+- `svc_ask_ai` **replaces** `svc_explain_ask` outright (not additive) —
+  same single-shot/no-history posture, broadened with the user's own
+  verbatim guardrail persona ("world-leading music theorist, historian,
+  and virtuoso guitar player... not general subjects"), and now also
+  takes Artist/Title as optional context alongside key/tempo/chords.
+- Route renamed `/api/explain/ask` → `/api/ask/ai`; new
+  `/api/thistrack/info`, `/api/thisartist/info`, and `/api/trackinfo`
+  (GET to load, POST to save). Mode toggle grew from 3 to 5 buttons
+  (Lick Ideas / Ask AI / Practice Tips / This Track / This Artist) — the
+  "watch for row-wrapping" flag above turned out to be exactly the right
+  instinct to raise before building, not after.
+- `_REAL_WORLD_KNOWLEDGE_CAVEAT` sent to the model (including the
+  no-verbatim-lyrics instruction) *and* returned to the client, rendered
+  as its own standing disclaimer line above the answer — not folded
+  silently into the answer text, so it can't be scrolled past unnoticed.
+
+Verified with a headless browser pass (all 5 modes toggle their cards
+correctly, no console errors) and real HTTP round-trips against this
+sandbox's own server: `_guess_title_from_filename` correctly cleaned up
+this project's actual messy real filenames (confirmed against
+`Empty_Rooms__Gary_Moore.mp3__dry_03.m4a` specifically); a real
+save/reload of Artist/Title round-tripped correctly; and a real call to
+`/api/ask/ai` with this sandbox's own (now-invalid) saved Anthropic key
+reached Anthropic's actual API and cleanly surfaced their real 401
+response — confirming the whole request path works end to end, even
+though the key itself couldn't be used to judge answer quality. **Not
+yet judged:** actual answer quality/accuracy for any of the three new
+real-key-dependent behaviors (This Track's factual accuracy, This
+Artist's gear-hint usefulness, Ask AI's guardrail actually declining
+off-topic questions) — all three need a real run with a working key,
+same as Lick Ideas/Practice Tips already did.
+
 ## 5. Stretch, hard-gated: solo-skeleton generator (V5-F4 · XL, punt by default)
 
 The "build a full solo" ambition from the original conversation, scoped

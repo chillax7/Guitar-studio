@@ -644,13 +644,15 @@ function aiLabLickCurrentProvider() {
 async function aiLabLickOpen() {
   aiLabLickUpdateProviderHint();
   await aiLabLickRefreshKeyStatus();
+  await aiLabTrackInfoOpen();
   if (AiLab.amode === "practicetips") await aiLabTipsRefreshTakes();
 }
 
 // Mode selector for the AI Assistant panel (release-v5-spec.md §4's "one
-// panel, not two more tabs" — Lick Ideas / Explain This / Practice Tips
-// share the provider/API-key card above, only the mode-specific card and
-// its own result card toggle visibility).
+// panel, not two more tabs" — Lick Ideas / Ask AI / Practice Tips / This
+// Track / This Artist share the provider/API-key card (and, for the last
+// three, the Artist/Title card) above; only the mode-specific card and its
+// own result card toggle visibility).
 function aiLabAssistantSetMode(mode) {
   AiLab.amode = mode;
   document.getElementById("ailab-assistant-mode-toggle").querySelectorAll("button").forEach((b) => {
@@ -658,11 +660,58 @@ function aiLabAssistantSetMode(mode) {
   });
   document.getElementById("ailab-lick-mode-card").style.display = mode === "lickideas" ? "" : "none";
   document.getElementById("ailab-lick-result-card").style.display = "none";
-  document.getElementById("ailab-explain-mode-card").style.display = mode === "explain" ? "" : "none";
+  document.getElementById("ailab-explain-mode-card").style.display = mode === "askai" ? "" : "none";
   document.getElementById("ailab-explain-result-card").style.display = "none";
   document.getElementById("ailab-tips-mode-card").style.display = mode === "practicetips" ? "" : "none";
   document.getElementById("ailab-tips-result-card").style.display = "none";
+  document.getElementById("ailab-track-mode-card").style.display = mode === "thistrack" ? "" : "none";
+  document.getElementById("ailab-track-result-card").style.display = "none";
+  document.getElementById("ailab-artist-mode-card").style.display = mode === "thisartist" ? "" : "none";
+  document.getElementById("ailab-artist-result-card").style.display = "none";
   if (mode === "practicetips") aiLabTipsRefreshTakes();
+}
+
+// ---------------------------------------------------------------------------
+// This song's Artist/Title (release-v5-spec.md §4a) — shared by This Track,
+// This Artist, and Ask AI's context, since none of them have any other way
+// to know what song this actually is (no ID3/filename parsing trusted
+// blindly — see _guess_title_from_filename's docstring server-side).
+// ---------------------------------------------------------------------------
+
+async function aiLabTrackInfoOpen() {
+  const artistEl = document.getElementById("ailab-trackinfo-artist");
+  const titleEl = document.getElementById("ailab-trackinfo-title");
+  const statusEl = document.getElementById("ailab-trackinfo-status");
+  if (!State.track) {
+    artistEl.value = ""; titleEl.value = "";
+    statusEl.textContent = "No song selected.";
+    return;
+  }
+  try {
+    const r = await Api.get(`/api/trackinfo?track=${encodeURIComponent(State.track)}`);
+    artistEl.value = r.artist || "";
+    titleEl.value = r.title || (r.guessed_title || "");
+    statusEl.textContent = r.artist || r.title
+      ? "" : `Guessed title "${r.guessed_title}" from the filename — check/edit before saving.`;
+  } catch (e) {
+    statusEl.textContent = `Couldn't load song info: ${e.message}`;
+  }
+}
+
+async function aiLabTrackInfoSave() {
+  const statusEl = document.getElementById("ailab-trackinfo-status");
+  if (!State.track) {
+    statusEl.textContent = "No song selected.";
+    return;
+  }
+  const artist = document.getElementById("ailab-trackinfo-artist").value;
+  const title = document.getElementById("ailab-trackinfo-title").value;
+  try {
+    await Api.post("/api/trackinfo", { track: State.track, artist, title });
+    statusEl.textContent = "Saved.";
+  } catch (e) {
+    statusEl.textContent = `Couldn't save: ${e.message}`;
+  }
 }
 
 function aiLabLickUpdateProviderHint() {
@@ -751,11 +800,14 @@ async function aiLabExplainAsk() {
   hintEl.textContent = "Thinking…";
   resultCard.style.display = "none";
   try {
-    const r = await Api.post("/api/explain/ask", {
+    const r = await Api.post("/api/ask/ai", {
       source_path: State.track, model: State.model, question, provider,
     });
     hintEl.textContent = "";
-    document.getElementById("ailab-explain-context").textContent = `${r.key} · ${r.bpm} BPM · ${r.progression}`;
+    const parts = [];
+    if (r.artist || r.title) parts.push(`${r.title || "?"} — ${r.artist || "?"}`);
+    if (r.key) parts.push(`${r.key} · ${r.bpm} BPM · ${r.progression}`);
+    document.getElementById("ailab-explain-context").textContent = parts.join(" · ");
     document.getElementById("ailab-explain-answer").textContent = r.answer;
     resultCard.style.display = "";
   } catch (e) {
@@ -850,6 +902,69 @@ async function aiLabTipsSuggest() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// This Track / This Artist (release-v5-spec.md §4a) — real-world knowledge,
+// not locally-derived data (a different trust boundary — see
+// _REAL_WORLD_KNOWLEDGE_CAVEAT server-side, shown here as a standing
+// disclaimer on the result card, not folded into the answer text).
+// ---------------------------------------------------------------------------
+
+async function aiLabThisTrackInfo() {
+  const hintEl = document.getElementById("ailab-track-hint");
+  const resultCard = document.getElementById("ailab-track-result-card");
+  const btn = document.getElementById("ailab-track-info-btn");
+  if (!State.track) {
+    hintEl.textContent = "No song selected.";
+    return;
+  }
+  const provider = aiLabLickCurrentProvider();
+
+  btn.disabled = true;
+  hintEl.textContent = "Looking up track info…";
+  resultCard.style.display = "none";
+  try {
+    const r = await Api.post("/api/thistrack/info", {
+      source_path: State.track, model: State.model, provider,
+    });
+    hintEl.textContent = "";
+    document.getElementById("ailab-track-caveat").textContent = r.caveat;
+    document.getElementById("ailab-track-info").textContent = r.info;
+    resultCard.style.display = "";
+  } catch (e) {
+    hintEl.textContent = `Couldn't get track info: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function aiLabThisArtistInfo() {
+  const hintEl = document.getElementById("ailab-artist-hint");
+  const resultCard = document.getElementById("ailab-artist-result-card");
+  const btn = document.getElementById("ailab-artist-info-btn");
+  if (!State.track) {
+    hintEl.textContent = "No song selected.";
+    return;
+  }
+  const provider = aiLabLickCurrentProvider();
+
+  btn.disabled = true;
+  hintEl.textContent = "Looking up artist info…";
+  resultCard.style.display = "none";
+  try {
+    const r = await Api.post("/api/thisartist/info", {
+      source_path: State.track, model: State.model, provider,
+    });
+    hintEl.textContent = "";
+    document.getElementById("ailab-artist-caveat").textContent = r.caveat;
+    document.getElementById("ailab-artist-info").textContent = r.info;
+    resultCard.style.display = "";
+  } catch (e) {
+    hintEl.textContent = `Couldn't get artist info: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function wireAiLab() {
   document.getElementById("ailab-open-btn").addEventListener("click", openAiLab);
   document.getElementById("ailab-close-btn").addEventListener("click", closeAiLab);
@@ -906,6 +1021,9 @@ function wireAiLab() {
   });
   document.getElementById("ailab-explain-ask-btn").addEventListener("click", aiLabExplainAsk);
   document.getElementById("ailab-tips-suggest-btn").addEventListener("click", aiLabTipsSuggest);
+  document.getElementById("ailab-trackinfo-save-btn").addEventListener("click", aiLabTrackInfoSave);
+  document.getElementById("ailab-track-info-btn").addEventListener("click", aiLabThisTrackInfo);
+  document.getElementById("ailab-artist-info-btn").addEventListener("click", aiLabThisArtistInfo);
 }
 
 wireAiLab();

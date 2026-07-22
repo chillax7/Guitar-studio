@@ -978,11 +978,31 @@
             <p class="hint" id="ailab-lick-key-status"></p>
           </section>
 
+          <!-- §4a: This Track/This Artist need an Artist/Title the app has
+               no other way to know — filename parsing is too unreliable to
+               trust blindly (real filenames this project has seen are
+               messy), so this is a small one-time-per-song field instead,
+               pre-filled with a best-effort filename guess but always
+               user-edited/confirmed. Shared by This Track, This Artist, and
+               Ask AI (for context), not just one mode. -->
+          <section class="pa-card">
+            <h3>This song</h3>
+            <p class="hint">Needed by This Track/This Artist below (and used as context by Ask AI) — the app has no other way to know what song this actually is. A guess is prefilled from the filename; always check/edit it.</p>
+            <label>Artist</label>
+            <input type="text" id="ailab-trackinfo-artist" placeholder="e.g. Gary Moore">
+            <label>Title</label>
+            <input type="text" id="ailab-trackinfo-title" placeholder="e.g. Empty Rooms">
+            <button id="ailab-trackinfo-save-btn">Save</button>
+            <p class="hint" id="ailab-trackinfo-status"></p>
+          </section>
+
           <div class="ailab-mode-row">
             <div class="ailab-mode-toggle" id="ailab-assistant-mode-toggle">
               <button data-amode="lickideas" class="on">Lick Ideas</button>
-              <button data-amode="explain">Explain This</button>
+              <button data-amode="askai">Ask AI</button>
               <button data-amode="practicetips">Practice Tips</button>
+              <button data-amode="thistrack">This Track</button>
+              <button data-amode="thisartist">This Artist</button>
             </div>
           </div>
 
@@ -1002,15 +1022,15 @@
           </section>
 
           <section class="pa-card" id="ailab-explain-mode-card" style="display:none;">
-            <h3>Explain This</h3>
-            <p class="hint">Ask anything about this song's theory — grounded in its detected key, tempo, and chord progression where relevant. Single question in, single answer back (not a running conversation).</p>
+            <h3>Ask AI</h3>
+            <p class="hint">Ask anything about this song's theory, this track, or this artist — grounded in the song info above and any detected key/tempo/chords, where relevant. Guarded to music/this-track/this-artist questions only; off-topic questions get politely declined, not answered anyway. Single question in, single answer back (not a running conversation).</p>
             <div class="ailab-explain-examples" id="ailab-explain-examples">
               <button class="ailab-explain-example-btn" data-q="Why does this scale work over this progression?">Why does this scale work here?</button>
               <button class="ailab-explain-example-btn" data-q="What's a ii-V-I and does this song have one?">What's a ii-V-I?</button>
               <button class="ailab-explain-example-btn" data-q="What's the difference between this key's major and minor pentatonic?">Major vs. minor pentatonic here?</button>
             </div>
             <label>Your question</label>
-            <input type="text" id="ailab-explain-question" placeholder="Ask about this song's key, chords, or theory in general">
+            <input type="text" id="ailab-explain-question" placeholder="Ask about this song, this artist, or music theory in general">
             <button id="ailab-explain-ask-btn" class="primary">Ask</button>
             <p class="hint" id="ailab-explain-hint"></p>
           </section>
@@ -1041,6 +1061,36 @@
             <p class="hint" id="ailab-tips-context"></p>
             <p class="hint" id="ailab-tips-weak-regions" style="white-space:pre-line;"></p>
             <div id="ailab-tips-suggestion"></div>
+          </section>
+
+          <!-- §4a: real-world knowledge, not locally-derived data — a
+               different trust boundary from every other mode here (see
+               _REAL_WORLD_KNOWLEDGE_CAVEAT server-side), so both result
+               cards below show a standing disclaimer, not just the answer. -->
+          <section class="pa-card" id="ailab-track-mode-card" style="display:none;">
+            <h3>This Track</h3>
+            <p class="hint">Background on this specific song — band/release info, structure and feel, technical notes, the writing process and lyrical meaning where publicly known, notable performances, and similar songs/solos worth checking out. Needs the Artist/Title above filled in first.</p>
+            <button id="ailab-track-info-btn" class="primary">Get track info</button>
+            <p class="hint" id="ailab-track-hint"></p>
+          </section>
+
+          <section class="pa-card" id="ailab-track-result-card" style="display:none;">
+            <h3>This Track</h3>
+            <p class="hint" id="ailab-track-caveat"></p>
+            <div id="ailab-track-info"></div>
+          </section>
+
+          <section class="pa-card" id="ailab-artist-mode-card" style="display:none;">
+            <h3>This Artist</h3>
+            <p class="hint">Background on this song's guitarist — general gear and style, signature sound and licks, and gear hints specific enough to point toward a NAM capture worth trying. Not a promise of exact tone-matching. Needs the Artist above filled in first.</p>
+            <button id="ailab-artist-info-btn" class="primary">Get artist info</button>
+            <p class="hint" id="ailab-artist-hint"></p>
+          </section>
+
+          <section class="pa-card" id="ailab-artist-result-card" style="display:none;">
+            <h3>This Artist</h3>
+            <p class="hint" id="ailab-artist-caveat"></p>
+            <div id="ailab-artist-info"></div>
           </section>
 
         </div>

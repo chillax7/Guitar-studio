@@ -135,25 +135,33 @@ instead — open it directly in a browser, no server required.
 - [ ] **Pitch/timing breakdown:** the Result card shows "Pitch agreement: X% · Timing agreement: Y%" under the overall score — a surprising overall number should be explainable by looking at which of the two is dragging it down, rather than being a mystery.
 - [ ] **Discrimination check:** a genuinely bad take (wrong notes and/or erratic timing, not just ordinary human variation) should score clearly low — if a take you know is bad still comes back around 50% or higher, that's the scoring being too lenient again, not a one-off; note which of Pitch/Timing agreement is the inflated one.
 
-## 6c. AI Lab — AI Assistant (V5-R1 research spike: Lick Ideas / Explain This / Practice Tips)
+## 6c. AI Lab — AI Assistant (V5-R1 research spike: Lick Ideas / Ask AI / Practice Tips / This Track / This Artist)
 
 - [ ] **API key save/status:** pasting a key and clicking **Save key** clears the input and updates the status line to "Key saved."; reopening AI Lab (or the tab) later still shows "Key saved." (persisted, not just in-memory) without ever re-displaying the actual key value. Saving an empty field clears a previously-saved key ("Key cleared.").
-- [ ] **Provider picker:** the dropdown offers Claude (Anthropic), Google AI Studio (Gemini), and Groq (Llama); switching it updates the placeholder, the "where to get a key" hint, and the key-status line to that provider specifically — shared across all three modes below, not per-mode. Saving a key under one provider must not affect another's saved status — switch through all three and confirm each shows its own independent state (verified in a headless test: saving a Google key left Anthropic's real saved key and Groq's empty state both untouched).
-- [ ] **Mode toggle:** the Lick Ideas / Explain This / Practice Tips row switches which mode's card (and its own result card) is visible; switching modes never touches the provider/key card above; the previously-shown result card hides when switching away and doesn't reappear stale when switching back (verified in a headless test: switching lickideas → explain → practicetips shows/hides the right cards at each step, no console errors).
+- [ ] **Provider picker:** the dropdown offers Claude (Anthropic), Google AI Studio (Gemini), and Groq (Llama); switching it updates the placeholder, the "where to get a key" hint, and the key-status line to that provider specifically — shared across all five modes below, not per-mode. Saving a key under one provider must not affect another's saved status — switch through all three and confirm each shows its own independent state (verified in a headless test: saving a Google key left Anthropic's real saved key and Groq's empty state both untouched).
+- [ ] **Mode toggle:** the Lick Ideas / Ask AI / Practice Tips / This Track / This Artist row switches which mode's card (and its own result card) is visible; switching modes never touches the provider/key or Artist/Title cards above; the previously-shown result card hides when switching away and doesn't reappear stale when switching back (verified in a headless test: cycling through all 5 modes shows/hides the right cards at each step, no console errors).
 - [ ] **No key yet (any mode):** with no key saved for the selected provider, that mode's action button should fail with a clear, specific error naming the provider (not a silent no-op or a raw stack trace).
+
+### This song (Artist/Title card)
+- [ ] **Filename guess prefill:** opening the tab for a song with no saved Artist/Title prefills the Title field with a cleaned-up filename guess (verified server-side: `_guess_title_from_filename` correctly strips this project's real messy suffixes, e.g. "Empty_Rooms__Gary_Moore.mp3__dry_03.m4a" → "Empty Rooms Gary Moore") and shows a hint to check/edit it — never silently trusted as fact.
+- [ ] **Save/reload:** entering a real Artist/Title and clicking Save persists it (verified via a direct API round-trip: save then re-fetch returns exactly what was saved); reopening the tab (or reselecting the song) later shows the saved values, not the filename guess again.
+- [ ] **Per-song, not global:** saving Artist/Title for one song doesn't affect another song's saved (or guessed) values.
+- [ ] **No song selected:** the card shows "No song selected" rather than a stale previous song's values or a crash.
 
 ### Lick Ideas mode
 - [ ] **Get phrasing ideas (needs a real key):** with a key saved for the selected provider and a song selected that has a detected key/tempo/chord progression, clicking the button shows a loading state, then the suggestion text plus a context line showing exactly what was sent (key, BPM, chord progression) — cross-check that context line against what the Mixer's own chord lane/key hint show for the same song, they should agree. Try this with at least two different providers if you have keys for both — same prompt, different model, worth comparing.
 - [ ] **The actual gate (release-v5-spec.md §3):** across 3 real songs of different styles, judge honestly — do the suggestions read as genuinely useful, specific-to-this-song phrasing ideas, or generic "try the pentatonic scale" filler? This is a human judgment call, same spirit as Rate My Take's own §6 gate — nothing here can make it for you. **Still outstanding** — only one real song tested so far (direct API call, not through this UI).
-  - **First real API call found and fixed a real bug** (see release-v5-spec.md's Update): the model was confidently citing fabricated bar/measure numbers ("bar 7", "bars 9-14") that don't exist anywhere in the data it was given — it silently assumed one chord entry equals one bar. Fixed by telling the prompt explicitly there's no bar/timing data and to reference moments by chord name instead. Re-check any bar/measure-sounding claims in a fresh suggestion for the same failure mode recurring in a different form — this anti-hallucination instruction is now shared (`_NO_BAR_NUMBER_INSTRUCTION`) across all three modes, so re-check it for Explain This and Practice Tips too, not just Lick Ideas.
+  - **First real API call found and fixed a real bug** (see release-v5-spec.md's Update): the model was confidently citing fabricated bar/measure numbers ("bar 7", "bars 9-14") that don't exist anywhere in the data it was given — it silently assumed one chord entry equals one bar. Fixed by telling the prompt explicitly there's no bar/timing data and to reference moments by chord name instead. Re-check any bar/measure-sounding claims in a fresh suggestion for the same failure mode recurring in a different form — this anti-hallucination instruction is now shared (`_NO_BAR_NUMBER_INSTRUCTION`) across Lick Ideas/Ask AI/Practice Tips, so re-check it for those two too, not just Lick Ideas.
 - [ ] A song with no chord/key/tempo analysis yet shows a clear error ("run analysis first"), not a crash or an empty request to the API.
 
-### Explain This mode
+### Ask AI mode
 - [ ] **Example prompts:** clicking one of the three example-prompt pills fills the question box with that exact text (doesn't submit); editing it afterward and asking still works normally.
 - [ ] **Empty question:** clicking Ask with an empty question box shows a clear hint ("Ask a question first") instead of sending an empty request.
-- [ ] **Ask (needs a real key):** with a key saved and a song with detected key/tempo/chords selected, asking a real question ("why does this scale work here") returns a concise grounded answer plus the same key/BPM/progression context line as Lick Ideas.
+- [ ] **Ask (needs a real key), with analysis:** with a key saved and a song with detected key/tempo/chords selected, asking a real question ("why does this scale work here") returns a concise grounded answer plus a context line showing artist/title (if saved) and key/BPM/progression (if analyzed).
+- [ ] **Ask without any analysis or Artist/Title saved:** should still work for a general theory question (e.g. "what's a ii-V-I") rather than requiring stems/analysis like Lick Ideas does — this mode's context is optional bonus grounding, not a hard requirement (verify `_optional_song_theory` degrades gracefully rather than raising).
+- [ ] **Guardrail actually declines off-topic questions:** ask something clearly unrelated to music (e.g. "what's a good pasta recipe") and confirm it politely declines rather than answering anyway — this is the point of the persona instruction, not just flavor text; if it answers off-topic questions anyway, the guardrail isn't working.
 - [ ] **No conversation memory:** asking a second, unrelated question doesn't reference the first one and doesn't error from any missing "conversation" state — each Ask is verified independent, by design (not a bug to fix later).
-- [ ] **Gate:** same §3 blind-comparison bar as Lick Ideas, judged separately — a genuinely useful grounded answer vs. a generic textbook answer that ignores the song context entirely. Not yet run.
+- [ ] **Gate:** same §3 blind-comparison bar as Lick Ideas, judged separately — a genuinely useful grounded answer vs. a generic textbook answer that ignores the song/artist context entirely. Not yet run.
 
 ### Practice Tips mode
 - [ ] **No dry takes yet:** with a song selected that has no dry takes recorded, the take dropdown is empty, the button is disabled, and the hint explains why ("record one in the Rate My Take tab first") — not a disabled button with no explanation.
@@ -163,7 +171,19 @@ instead — open it directly in a browser, no server required.
 - [ ] **Wrong offset:** an offset that doesn't actually line up with the take should fail the same way Rate My Take's own scoring does (clear error, not a nonsense weak-beat summary built from garbage alignment).
 - [ ] **Gate:** the suggestions have to demonstrably trace back to this take's actual weak beats (per §4's extra bar on top of the standard gate) — not just generic technique advice that happens to be true of most solos. Not yet run.
 
-- [ ] No other screen or feature makes a network call — this should be the only place a request ever leaves the machine, for any of the three modes, and only when that mode's own action button is actually clicked (not proactively, not on AI Lab open, not on mode-switch).
+### This Track mode
+- [ ] **No Artist/Title saved:** clicking **Get track info** with nothing saved in the Artist/Title card shows a clear error ("Add this song's Artist/Title above first") rather than sending a request with nothing to look up.
+- [ ] **Get track info (needs a real key + Artist/Title saved):** with Artist/Title saved for a real song, returns background info plus the standing real-world-knowledge disclaimer (`_REAL_WORLD_KNOWLEDGE_CAVEAT`) displayed above the answer, not folded silently into it.
+- [ ] **No lyrics reproduced verbatim:** check any lyric-discussion in a real response for full-verse/full-song quoting — should be commentary/short-fragment only, per the prompt's explicit instruction.
+- [ ] **Gate (§4a, narrower than the standard one):** are the specific, checkable claims (dates, names, notable recordings) actually accurate against what you already know or a quick outside check — not "is this generic," but "is this true." Not yet run.
+
+### This Artist mode
+- [ ] **No Artist saved:** clicking **Get artist info** with no Artist saved shows a clear error ("Add this song's Artist above first").
+- [ ] **Get artist info (needs a real key + Artist saved):** returns gear/style background plus the same standing disclaimer as This Track.
+- [ ] **NAM-relevant gear hints:** the response should include gear specific enough to actually inform a NAM capture search (a named amp/pedal type), not just vague tone adjectives — and should read as a starting point, not a promise of exact tone-matching (per its own hint text).
+- [ ] **Gate:** same accuracy bar as This Track — checkable gear/style claims, judged for accuracy not genericness. Not yet run.
+
+- [ ] No other screen or feature makes a network call — this should be the only place a request ever leaves the machine, for any of the five modes, and only when that mode's own action button is actually clicked (not proactively, not on AI Lab open, not on mode-switch).
 
 ## 7. Play Along — top strip
 

@@ -1835,43 +1835,185 @@ def svc_practice_tips(source_path: str, take_path: str, model: str, stem: str,
     }
 
 
-def svc_explain_ask(source_path: str, model: str, question: str, provider: str) -> dict:
-    """AI Assistant's Explain This mode (release-v5-spec.md §4) — a
-    single-shot Q&A grounded in the current song's key/chords/tempo, not a
-    multi-turn chat with retained history (that's a deliberate scope cut —
-    see §4's Update — not an oversight)."""
-    question = (question or "").strip()
-    if not question:
-        raise ApiError(400, "Ask a question first.")
+def _optional_song_theory(source_path: str, model: str) -> tuple:
+    """Same data as _song_theory_or_raise, but never raises — This Track/
+    This Artist/Ask AI (release-v5-spec.md §4a) are useful even for a song
+    that's never been separated/analyzed (real-world background doesn't
+    need any local audio analysis at all), so locally-derived context is
+    optional bonus grounding here, not a hard requirement like it is for
+    Lick Ideas/Practice Tips."""
+    try:
+        input_path = resolve_source_path(source_path)
+        out_dir = engine.track_stem_dir(input_path, model)
+        if not engine.has_cached_stems(out_dir):
+            return None, None, None
+        return _song_theory_or_raise(out_dir)
+    except ApiError:
+        return None, None, None
 
+
+TRACK_INFO_FILE = PROJECTS_DIR / "_track_info.json"
+
+
+def _guess_title_from_filename(track: str) -> str:
+    """Best-effort only, never trusted blindly — real filenames in this
+    project have been messy (e.g. "Empty_Rooms__Gary_Moore.mp3__dry_03.m4a"),
+    so this just strips a trailing take/stem-style suffix and underscores
+    rather than attempting a real artist/title split. The user always
+    confirms/edits the actual Artist/Title fields; this is only a prefill
+    hint for the title field."""
+    name = re.sub(r"\.\w+__(dry|Good|Bad)(_\d+)?(\.\w+)?$", "", Path(track).name)
+    stem = Path(name).stem
+    return re.sub(r"[_\s]+", " ", stem).strip()
+
+
+def _load_track_info_all() -> dict:
+    if not TRACK_INFO_FILE.exists():
+        return {}
+    try:
+        return json.loads(TRACK_INFO_FILE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def svc_load_track_info(track: str) -> dict:
+    info = _load_track_info_all().get(content_hash_for_track(track), {})
+    return {
+        "artist": info.get("artist", ""),
+        "title": info.get("title", ""),
+        "guessed_title": _guess_title_from_filename(track),
+    }
+
+
+def svc_save_track_info(track: str, artist: str, title: str) -> dict:
+    key = content_hash_for_track(track)
+    all_info = _load_track_info_all()
+    all_info[key] = {"artist": (artist or "").strip(), "title": (title or "").strip()}
+    TRACK_INFO_FILE.write_text(json.dumps(all_info, indent=2))
+    return all_info[key]
+
+
+# This Track/This Artist (release-v5-spec.md §4a) ask the model for
+# real-world facts about a real band/guitarist from its own training data —
+# a genuinely different trust boundary from every other mode here, which
+# only ever reasons over data this app itself computed. This caveat is
+# both sent to the model (as an explicit instruction, including the
+# no-verbatim-lyrics rule) and returned to the client for display as a
+# standing disclaimer, not folded silently into the answer text.
+_REAL_WORLD_KNOWLEDGE_CAVEAT = (
+    "This draws on general knowledge about real artists/songs, not anything computed from local audio — treat "
+    "specific claims (dates, quotes, gear, credits, chart/performance details) as a starting point to verify, not "
+    "a citation. Do not reproduce full song lyrics verbatim — commentary and short-fragment quoting only. If "
+    "you're not confident about a specific claim, say so rather than stating it as fact."
+)
+
+
+def svc_this_track(source_path: str, model: str, provider: str) -> dict:
+    """AI Assistant's This Track mode (release-v5-spec.md §4a)."""
     api_key = _load_provider_key_or_raise(provider)
-    input_path = resolve_source_path(source_path)
-    out_dir = engine.track_stem_dir(input_path, model)
-    if not engine.has_cached_stems(out_dir):
-        raise ApiError(400, f"No stems found for {input_path.name} with model '{model}'. Separate it first.")
-    key, bpm, progression = _song_theory_or_raise(out_dir)
+    info = svc_load_track_info(source_path)
+    artist, title = info["artist"], info["title"]
+    if not artist and not title:
+        raise ApiError(400, "Add this song's Artist/Title above first — needed to look anything up.")
 
+    key, bpm, progression = _optional_song_theory(source_path, model)
+    known_line = f"- Song: {title or '(title not given)'} by {artist or '(artist not given)'}\n"
+    analysis_line = (
+        f"- Detected key: {key['key']} {key['mode']}, tempo {bpm:.0f} BPM, chord progression: {progression}\n"
+        if key else ""
+    )
     prompt = (
-        "You are an experienced, friendly guitar teacher. Answer the student's question below, using the song "
-        "info as grounding context where it's actually relevant to the question — don't force a connection to "
-        "this specific song if the question is more general music theory.\n\n"
-        "Song info:\n"
-        f"- Key: {key['key']} {key['mode']}\n"
-        f"- Tempo: {bpm:.0f} BPM\n"
-        f"- Chord progression (in order): {progression}\n\n"
-        f"Student's question: {question}\n\n"
-        "Keep the answer clear and concise — a short paragraph or a few bullet points, no more than ~150 words.\n\n"
-        f"{_NO_BAR_NUMBER_INSTRUCTION}"
+        "You are a knowledgeable music historian and guitar teacher. Give background on this specific song.\n\n"
+        f"{known_line}{analysis_line}\n"
+        "Cover, briefly: band/release background; the song's structure and feel from a listener's perspective; "
+        "technical notes (tie these to the detected key/tempo/progression above if given); the writing process "
+        "and lyrical meaning where it's actually publicly known and not disputed (do NOT quote full lyrics "
+        "verbatim); one or two notable performances/recordings worth hearing; and a couple of similar songs or "
+        "solos worth checking out.\n\n"
+        "Keep it concise — a few short paragraphs or bullet points, no more than ~250 words total.\n\n"
+        f"{_REAL_WORLD_KNOWLEDGE_CAVEAT}"
     )
 
     caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
     text = caller(prompt, api_key)
     return {
-        "answer": text.strip(),
-        "key": f"{key['key']} {key['mode']}",
-        "bpm": round(bpm, 1),
+        "info": text.strip(), "artist": artist, "title": title,
+        "caveat": _REAL_WORLD_KNOWLEDGE_CAVEAT, "provider": provider,
+    }
+
+
+def svc_this_artist(source_path: str, model: str, provider: str) -> dict:
+    """AI Assistant's This Artist mode (release-v5-spec.md §4a)."""
+    api_key = _load_provider_key_or_raise(provider)
+    info = svc_load_track_info(source_path)
+    artist, title = info["artist"], info["title"]
+    if not artist:
+        raise ApiError(400, "Add this song's Artist above first — needed to look anything up.")
+
+    prompt = (
+        "You are a knowledgeable guitar historian and gear expert. Give background on this guitarist's playing "
+        "and gear, using the song below as context where relevant.\n\n"
+        f"- Guitarist/artist: {artist}\n"
+        f"- Song: {title or '(not given)'}\n\n"
+        "Cover, briefly: their general gear (amps, pedals, guitars) and how it's shaped their tone; their playing "
+        "style and signature licks/techniques; and gear hints specific enough to point toward a NAM amp/pedal "
+        "capture worth trying (e.g. \"closest to a certain amp/pedal combination\") — not a promise of exact "
+        "tone-matching, just a more informed starting point than guessing blind.\n\n"
+        "Keep it concise — a few short paragraphs or bullet points, no more than ~250 words total.\n\n"
+        f"{_REAL_WORLD_KNOWLEDGE_CAVEAT}"
+    )
+
+    caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
+    text = caller(prompt, api_key)
+    return {
+        "info": text.strip(), "artist": artist, "title": title,
+        "caveat": _REAL_WORLD_KNOWLEDGE_CAVEAT, "provider": provider,
+    }
+
+
+def svc_ask_ai(source_path: str, model: str, question: str, provider: str) -> dict:
+    """AI Assistant's Ask AI mode (release-v5-spec.md §4a) — absorbs the
+    original Explain This (single-shot Q&A, no retained history — still a
+    deliberate scope cut, not an oversight), broadened with the user's own
+    guardrail persona: answer questions about this music/track/artist or
+    music theory in general, and actually decline anything else rather
+    than answer it anyway."""
+    question = (question or "").strip()
+    if not question:
+        raise ApiError(400, "Ask a question first.")
+
+    api_key = _load_provider_key_or_raise(provider)
+    info = svc_load_track_info(source_path)
+    artist, title = info["artist"], info["title"]
+    key, bpm, progression = _optional_song_theory(source_path, model)
+
+    context_lines = []
+    if artist or title:
+        context_lines.append(f"- Song: {title or '(title not given)'} by {artist or '(artist not given)'}")
+    if key:
+        context_lines.append(f"- Detected key: {key['key']} {key['mode']}, tempo {bpm:.0f} BPM, "
+                              f"chord progression: {progression}")
+    context = ("\n".join(context_lines) + "\n\n") if context_lines else ""
+
+    prompt = (
+        "You are a world-leading music theorist, historian, and virtuoso guitar player. Answer questions about "
+        "music theory, this specific track, or this artist. If a question is unrelated to music, this track, or "
+        "this artist, politely decline and say you're scoped to music-related questions only — do not answer "
+        "unrelated questions anyway.\n\n"
+        f"{context}"
+        f"Question: {question}\n\n"
+        "Keep the answer clear and concise — a short paragraph or a few bullet points, no more than ~150 words.\n\n"
+        f"{_NO_BAR_NUMBER_INSTRUCTION}\n\n{_REAL_WORLD_KNOWLEDGE_CAVEAT}"
+    )
+
+    caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
+    text = caller(prompt, api_key)
+    return {
+        "answer": text.strip(), "artist": artist, "title": title,
+        "key": (f"{key['key']} {key['mode']}" if key else None),
+        "bpm": (round(bpm, 1) if bpm else None),
         "progression": progression,
-        "provider": provider,
+        "caveat": _REAL_WORLD_KNOWLEDGE_CAVEAT, "provider": provider,
     }
 
 
@@ -2198,6 +2340,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/project":
                 result = svc_load_project(query.get("track", ""))
                 return self._send_json(200, result)
+            if path == "/api/trackinfo":
+                result = svc_load_track_info(query.get("track", ""))
+                return self._send_json(200, result)
             if path == "/api/stem":
                 stem_path = resolve_stem_file(query.get("source_path", ""),
                                                query.get("model", engine.DEFAULT_MODEL),
@@ -2405,11 +2550,32 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return self._send_json(200, result)
 
-            if path == "/api/explain/ask":
+            if path == "/api/ask/ai":
                 body = self._read_json_body()
-                result = svc_explain_ask(
+                result = svc_ask_ai(
                     body.get("source_path", ""), body.get("model", engine.DEFAULT_MODEL),
                     body.get("question", ""), body.get("provider", "anthropic"),
+                )
+                return self._send_json(200, result)
+
+            if path == "/api/trackinfo":
+                body = self._read_json_body()
+                result = svc_save_track_info(body.get("track", ""), body.get("artist", ""), body.get("title", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/thistrack/info":
+                body = self._read_json_body()
+                result = svc_this_track(
+                    body.get("source_path", ""), body.get("model", engine.DEFAULT_MODEL),
+                    body.get("provider", "anthropic"),
+                )
+                return self._send_json(200, result)
+
+            if path == "/api/thisartist/info":
+                body = self._read_json_body()
+                result = svc_this_artist(
+                    body.get("source_path", ""), body.get("model", engine.DEFAULT_MODEL),
+                    body.get("provider", "anthropic"),
                 )
                 return self._send_json(200, result)
 
