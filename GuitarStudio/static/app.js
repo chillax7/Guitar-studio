@@ -3355,31 +3355,39 @@ function wireQuestLog() {
   renderQuestLog();
 }
 
-// ui-review-v5-full.md §6: "Molten Obsidian" theme — the default look,
-// shipped as a data-theme attribute the whole app's CSS custom properties
-// key off, not a rebuild, so the original "Studio" look stays one click
-// away. The actual attribute is applied before first paint by a tiny
-// inline <script> in <head> (avoids a flash-of-wrong-theme on reload);
-// this just wires the button and keeps localStorage in sync going forward.
-// Only an explicitly-stored "studio" means Studio — absence means Molten,
-// so the default flip doesn't need a migration for existing users.
+// ui-review-v5-full.md §6: "Molten Obsidian" theme (dark, default) and its
+// "Bright Spark" light counterpart — both a data-theme attribute the whole
+// app's CSS custom properties key off, not a rebuild, so the original
+// "Studio" look stays one click away too. The actual attribute is applied
+// before first paint by a tiny inline <script> in <head> (avoids a
+// flash-of-wrong-theme on reload); this just wires the button and keeps
+// localStorage in sync going forward. Only an explicitly-stored value
+// among THEME_ORDER counts — anything else (absence, an old build's
+// literal "molten") falls back to the default, so the default flip never
+// needed a migration for existing users.
 const THEME_KEY = "gs_theme";
+const THEME_ORDER = ["molten", "brightspark", "studio"];
+const THEME_ICONS = { molten: "🔥", brightspark: "☀️", studio: "🌙" };
+const THEME_LABELS = { molten: "Molten Obsidian", brightspark: "Bright Spark", studio: "Studio" };
 
 function currentTheme() {
-  return localStorage.getItem(THEME_KEY) === "studio" ? "studio" : "molten";
+  const stored = localStorage.getItem(THEME_KEY);
+  return THEME_ORDER.includes(stored) ? stored : "molten";
 }
 
 function applyTheme(theme) {
-  if (theme === "molten") document.documentElement.setAttribute("data-theme", "molten");
-  else document.documentElement.removeAttribute("data-theme");
-  document.getElementById("theme-toggle-btn").title =
-    theme === "molten" ? "Switch to the Studio theme" : "Switch to the Molten Obsidian theme";
+  if (theme === "studio") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", theme);
+  const btn = document.getElementById("theme-toggle-btn");
+  const next = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length];
+  btn.textContent = THEME_ICONS[theme];
+  btn.title = `${THEME_LABELS[theme]} theme — click to switch to ${THEME_LABELS[next]}`;
 }
 
 function wireThemeToggle() {
   applyTheme(currentTheme());
   document.getElementById("theme-toggle-btn").addEventListener("click", () => {
-    const next = currentTheme() === "molten" ? "studio" : "molten";
+    const next = THEME_ORDER[(THEME_ORDER.indexOf(currentTheme()) + 1) % THEME_ORDER.length];
     localStorage.setItem(THEME_KEY, next);
     applyTheme(next);
     // Waveforms are canvas-drawn from var(--waveform) at draw time — a

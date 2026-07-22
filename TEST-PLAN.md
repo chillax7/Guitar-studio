@@ -342,32 +342,49 @@ recommendations. All three sub-batches shipped together; test as one pass.
 - [ ] Loading a track hides the Quest Log panel and shows the normal
   inspector panels again.
 
-### Molten Obsidian theme toggle
+### Theme toggle: Molten Obsidian / Bright Spark / Studio
 
 - [ ] **Molten Obsidian is the default:** a fresh browser profile (cleared
   localStorage) comes up in the Molten palette on first load, before any
   toggle has ever been clicked.
-- [ ] A theme-toggle button (🔥) sits in the top banner; clicking it swaps
-  the whole app's color palette (nav, panels, chord chips, waveforms,
-  chain-icon glow, quest log accents) without needing a page reload —
-  including the stem waveforms, which are canvas-drawn and re-render on
-  toggle rather than being restyled by CSS alone.
+- [ ] The theme-toggle button in the top banner **cycles three themes**
+  (Molten Obsidian 🔥 → Bright Spark ☀️ → Studio 🌙 → back to Molten),
+  and its own icon always shows whichever theme is currently active (not
+  a fixed glyph). Each click swaps the whole app's color palette (nav,
+  panels, chord chips, waveforms, chain-icon glow, quest log accents)
+  without needing a page reload — including the stem waveforms, which are
+  canvas-drawn and re-render on toggle rather than being restyled by CSS
+  alone.
 - [ ] The choice persists across a reload with no flash of the wrong theme
-  on load (pre-paint inline script applies it before first paint).
-- [ ] Spot-check Mixer, Tone Lab, and AI Lab in the Molten theme: nav
-  buttons, stem waveforms (ember, not blue), loop-region tint,
-  engaged/open chain icons, the camera framing-guide band, and the AI Lab
-  Root/Scale-tone legend dot (Root shows the secondary arcane-violet
-  accent) all reskin correctly; AI Lab's own dedicated "Follow song" green
-  is untouched by the theme.
-- [ ] Toggling to the Studio (original) theme restores the original
-  palette exactly — waveforms back to blue included — with no leftover
-  Molten-only styling anywhere.
+  on load (pre-paint inline script applies it before first paint), for
+  all three themes, not just Molten/Studio.
+- [ ] Spot-check Mixer, Tone Lab, and AI Lab in **both** Molten Obsidian
+  and Bright Spark: nav buttons, stem waveforms (ember in Molten, gold in
+  Bright Spark — never the Studio blue), loop-region tint, engaged/open
+  chain icons, the camera framing-guide band, and the AI Lab Root/
+  Scale-tone legend dot (Root shows the secondary violet accent) all
+  reskin correctly; AI Lab's own dedicated "Follow song" green is
+  untouched by either theme.
+- [ ] **Chord ribbon consistency (real user report — it silently didn't
+  used to do this):** in both Molten Obsidian and Bright Spark, the
+  Mixer's chord lane chips AND AI Lab's Scales-tab chord ribbon chips
+  switch to the *same* secondary/analysis accent color as each other and
+  as the fretboard's root-note dot — never one of the two ribbons stuck
+  showing the primary accent while the other shows the analysis color.
+- [ ] **Bright Spark specifically:** white/paper background, dark
+  readable text throughout (not just the Mixer — check Tone Lab's
+  pedalboard and AI Lab too), and the "glow" idiom Molten Obsidian uses
+  (white-inset neon shadow on active buttons/chain icons) is NOT just
+  pasted onto the light theme unreadably — active states should still be
+  clearly distinguishable against a white panel.
+- [ ] Toggling to the Studio (original) theme restores the original dark
+  blue-grey palette exactly — waveforms back to blue included — with no
+  leftover Molten/Bright-Spark-only styling anywhere.
 - [ ] The five sidebar nav buttons (Mixer/Tone Lab/Play Along/AI Lab/Help)
-  render in bold in both themes.
+  render in bold in all three themes.
 - [ ] **Range slider accent color:** any native range slider (e.g. the Noise
   Gate threshold) tints with the active theme's accent color instead of
-  staying browser-default blue, in both themes.
+  staying browser-default blue, in all three themes.
 
 ## 15. Post-v5 follow-ups (library polish, playlist auto-play, scoring decode fix)
 
@@ -401,3 +418,38 @@ recommendations. All three sub-batches shipped together; test as one pass.
   audioread fallback); a WAV take still scores identically to before. Any
   future scoring failure shows a named error (exception type + message)
   in the UI instead of a bare "Internal server error".
+- [ ] **Rate My Take scoring — numpy JSON crash (server fix):** score a
+  real take end to end (not just via the CLI) — a scoring result that
+  happens to carry a `numpy.float32` (rather than `float64`) used to crash
+  with "Object of type float32 is not JSON serializable"; scoring now
+  succeeds and the rating is cached and redisplays normally.
+- [ ] **AI Lab Scales fretboard contrast:** fret numbers, the position
+  markers (frets 3/5/7/9/12/15/17/19/21/24), and non-root scale-tone dots
+  are all clearly legible against the fretboard background in every
+  theme — not just the root dot. A real user report called out all three
+  as "small and dim" / "don't stand out."
+
+### Rate My Take / AI Assistant: per-song result persistence
+
+Both of these are the same class of real user report: switching to a
+different song left the PREVIOUS song's result sitting on screen, because
+the per-track cache itself refreshed correctly but the on-screen display
+never got an explicit "nothing cached for this song" reset — it just kept
+showing whatever was already rendered.
+
+- [ ] **Rate My Take:** view a scored take's rating for one song (result
+  card visible, Offset field populated, hint text present). Switch to a
+  song with **zero dry takes** — the result card hides, the Offset field
+  resets to 0, and the hint clears. Same for switching to a track-less
+  state and for a failed takes-list fetch. Switch to a song that **does**
+  have dry takes but none scored yet — result card hides (already worked
+  before this fix; confirm it's still correct). Switch back to the
+  original song — its rating reappears exactly as it was.
+- [ ] **AI Assistant (all five modes):** get a real answer in one mode
+  (e.g. Lick Ideas) for song A. Switch to song B with no cached answer for
+  that mode — the result card hides instead of continuing to show song
+  A's answer. Switch back to song A — its answer reappears with no new
+  request spent. Repeat for at least one more mode (Ask AI or This Track)
+  to confirm it's not just Lick Ideas that was fixed. Practice Tips
+  specifically: switching to a different take with no cached tips for it
+  hides the card (not just switching songs).

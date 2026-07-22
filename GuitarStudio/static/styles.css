@@ -91,14 +91,92 @@
   box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 /* Arcane violet — chord/analysis surfaces specifically, everywhere else
-   (transport, buttons, nav) stays ember. */
-:root[data-theme="molten"] .chord-chip { border-color: var(--accent-2); background: var(--accent-2-dim); }
-:root[data-theme="molten"] .chord-chip:hover { background: var(--accent-2); }
-:root[data-theme="molten"] #ailab-legend-root { background: var(--accent-2); }
-:root[data-theme="molten"] .ailab-dot-root { fill: var(--accent-2); }
-:root[data-theme="molten"] #quest-log-count, :root[data-theme="molten"] #quest-log-modal-count { color: var(--accent); }
-:root[data-theme="molten"] .quest-row.done .quest-rune { background: var(--success); border-color: var(--success); }
-:root[data-theme="molten"] #theme-toggle-btn { filter: saturate(1.3); }
+   (transport, buttons, nav) stays ember. Shared with Bright Spark below:
+   both non-Studio themes split --accent-2 from --accent, so one rule set
+   keyed on the variable covers both — each theme's own :root block picks
+   the actual violet/whatever value. AI Lab's own chord ribbon
+   (.ailab-chord-chip) shares this list too — it used to fall through to
+   plain --accent in both themes, so it silently stayed ember/spark while
+   every other analysis surface (the fretboard's root dot, the Mixer's own
+   chord lane) switched to the analysis color; a real report ("chord
+   ribbon needs to switch colours when the theme changes") was exactly
+   this mismatch on the one ribbon that hadn't been wired up. */
+:root[data-theme="molten"] .chord-chip, :root[data-theme="brightspark"] .chord-chip,
+:root[data-theme="molten"] .ailab-chord-chip, :root[data-theme="brightspark"] .ailab-chord-chip {
+  border-color: var(--accent-2); background: var(--accent-2-dim);
+}
+:root[data-theme="molten"] .chord-chip:hover, :root[data-theme="brightspark"] .chord-chip:hover,
+:root[data-theme="molten"] .ailab-chord-chip:not(.selected):hover, :root[data-theme="brightspark"] .ailab-chord-chip:not(.selected):hover {
+  background: var(--accent-2);
+}
+:root[data-theme="molten"] .ailab-chord-chip.selected, :root[data-theme="brightspark"] .ailab-chord-chip.selected {
+  background: var(--accent-2); border-color: var(--accent-2);
+}
+:root[data-theme="molten"] #ailab-legend-root, :root[data-theme="brightspark"] #ailab-legend-root { background: var(--accent-2); }
+:root[data-theme="molten"] .ailab-dot-root, :root[data-theme="brightspark"] .ailab-dot-root { fill: var(--accent-2); }
+:root[data-theme="molten"] #quest-log-count, :root[data-theme="molten"] #quest-log-modal-count,
+:root[data-theme="brightspark"] #quest-log-count, :root[data-theme="brightspark"] #quest-log-modal-count { color: var(--accent); }
+:root[data-theme="molten"] .quest-row.done .quest-rune, :root[data-theme="brightspark"] .quest-row.done .quest-rune { background: var(--success); border-color: var(--success); }
+:root[data-theme="molten"] #theme-toggle-btn, :root[data-theme="brightspark"] #theme-toggle-btn { filter: saturate(1.3); }
+
+/* ---------------------------------------------------------------------
+   "Bright Spark" — the light-mode counterpart to Molten Obsidian: same
+   token-level approach, white/paper background with dark text, its own
+   spark-gold accent and violet accent-2 (chord/analysis surfaces, shared
+   with Molten via the combined selectors above). Glow-as-signal doesn't
+   read the same on a light background, so active/live states here use a
+   plain solid-color emphasis instead of Molten's white-inset neon glow —
+   still "this is on," just not a dark-mode effect pasted onto white.
+   --------------------------------------------------------------------- */
+:root[data-theme="brightspark"] {
+  --bg: #faf8f4;
+  --panel: #ffffff;
+  --panel-2: #f1eee6;
+  --border: #ddd7c8;
+  --text: #201d16;
+  --text-dim: #6b6455;
+  --accent: #e08e00;
+  --accent-dim: #fce8bd;
+  --accent-2: #7c3aed;
+  --accent-2-dim: #ece3fd;
+  --waveform: #e08e00;
+  --warn: #b45309;
+  --danger: #c9302c;
+  --success: #157a3d;
+  --mute: #9aa0ad;
+  --solo: #a3790a;
+  --heading-font: inherit;
+  --heading-transform: none;
+  --heading-tracking: normal;
+}
+:root[data-theme="brightspark"] body {
+  background:
+    radial-gradient(1200px 600px at 70% -10%, #fff6e0 0%, transparent 60%),
+    radial-gradient(900px 500px at 10% 110%, #f4eefb 0%, transparent 55%),
+    var(--bg);
+}
+:root[data-theme="brightspark"] h2, :root[data-theme="brightspark"] h3,
+:root[data-theme="brightspark"] #app-title, :root[data-theme="brightspark"] #top-banner-screen-label,
+:root[data-theme="brightspark"] .nav-screen-btn {
+  font-family: var(--heading-font);
+  letter-spacing: var(--heading-tracking);
+}
+:root[data-theme="brightspark"] .nav-screen-btn.active,
+:root[data-theme="brightspark"] .ailab-tab-btn.on,
+:root[data-theme="brightspark"] .ailab-mode-toggle button.on,
+:root[data-theme="brightspark"] button.primary {
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
+}
+:root[data-theme="brightspark"] #rig-status-pill.live #rig-status-led,
+:root[data-theme="brightspark"] #rig-status-pill.clipped #rig-status-led {
+  box-shadow: 0 0 6px currentColor;
+}
+:root[data-theme="brightspark"] .pa-chain-icon.pa-chain-on {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root[data-theme="brightspark"] .pa-chain-icon.pa-chain-open {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 85%, transparent);
+}
 
 /* Real gap the theme work surfaced: sliders never set accent-color, so
    they stayed native browser blue even under Molten Obsidian. Safe in the

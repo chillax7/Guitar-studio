@@ -663,12 +663,18 @@ the app name and current-screen label:
   input is enabled; pulses gently while live (this pulse respects your OS's
   reduce-motion setting); switches to a clipped state matching Tone Lab's
   own clip light. Click it to jump straight to Tone Lab.
-- **Theme toggle (🔥)** — switches the whole app between **Molten
-  Obsidian** (the default dark-ember look) and **Studio**, the original
-  quieter blue-grey palette. Purely cosmetic — nothing about how any
+- **Theme toggle** — cycles through three looks: **Molten Obsidian** 🔥
+  (the default dark-ember palette), **Bright Spark** ☀️ (its light-mode
+  counterpart — a white/paper background with dark text, same spark-gold
+  accent identity), and **Studio** 🌙 (the original quieter blue-grey
+  palette). The button's icon always shows the *current* theme; click it
+  to advance to the next one. Purely cosmetic — nothing about how any
   feature behaves changes, only the color scheme. Your choice is
   remembered across reloads with no flash of the wrong theme while the
-  page loads.
+  page loads. Every themed surface reskins together, including the chord
+  ribbon (Mixer and AI Lab's Scales tab both shift to the same violet
+  "analysis" accent in Molten Obsidian/Bright Spark) and the stem
+  waveforms.
 - **Quest Log** — before you've loaded any track, the right-hand inspector
   panel (where the mixer's usual per-track panels normally live) shows a
   first-use checklist instead: separate a song, mix it, dial in a tone,
@@ -1272,7 +1278,10 @@ Offset field with whatever value actually worked last time** — no more
 re-entering it by hand every session. Renaming a take carries its saved
 rating (and its remembered Offset) along with it; only clicking **Score
 this take** again re-runs the scoring, overwriting whatever was cached
-before.
+before. **Switching to a different song clears this card** — a fresh
+song with no dry takes yet (or none scored) shows a blank result and an
+Offset back at 0, never a rating left over from whatever you were just
+looking at.
 
 **"Invalid rating" warning.** If a take comes back with no usable
 score — shown as "Invalid rating — check your offset?" instead of a
@@ -1379,7 +1388,11 @@ without spending another request. Only running a mode again (a fresh
 **Get phrasing ideas** / **Ask** / **Get practice tips** / info lookup)
 replaces what's cached — Practice Tips' cached tips only reappear while
 the same take that generated them is still selected, since tips for a
-different take wouldn't make sense to show.
+different take wouldn't make sense to show. This is genuinely per-song,
+not just "whatever's on screen": switch to a song with no answer yet for
+the current mode and its card clears; switch back to a song you'd
+already asked something and its answer reappears exactly as it was —
+never a different song's answer left showing after a switch.
 
 **Mode: Lick Ideas.** Sends the current song's detected key, tempo, and
 chord progression and asks for concrete lead-guitar phrasing ideas:

@@ -412,6 +412,19 @@ async function aiLabRmtOpen() {
   await aiLabRmtRefreshTakes();
 }
 
+// Every early-return path below (no track, fetch failed, no dry takes)
+// used to leave the result card exactly as it was — including a previous
+// song's rated take, shown with zero indication it belongs to a track
+// that isn't even loaded anymore. Real user report: switch from a rated
+// "Empty Rooms" take to a song with no takes yet, and its "good" result
+// (and offset) just kept sitting there. Centralized so every early return
+// clears the same way, instead of three copies that could drift.
+function aiLabRmtResetResultDisplay() {
+  document.getElementById("ailab-rmt-result-card").style.display = "none";
+  document.getElementById("ailab-rmt-offset").value = 0;
+  document.getElementById("ailab-rmt-score-hint").textContent = "";
+}
+
 async function aiLabRmtRefreshTakes() {
   const listEl = document.getElementById("ailab-rmt-takes-list");
   const selectEl = document.getElementById("ailab-rmt-take-select");
@@ -421,6 +434,7 @@ async function aiLabRmtRefreshTakes() {
     selectEl.innerHTML = "";
     playerEl.style.display = "none";
     AiLabRmtTakesCache = [];
+    aiLabRmtResetResultDisplay();
     return;
   }
   let takes = [];
@@ -429,6 +443,7 @@ async function aiLabRmtRefreshTakes() {
     takes = (r.takes || []).filter((t) => t.dry);
   } catch (e) {
     listEl.innerHTML = `<p class="hint">Couldn't load takes: ${e.message}</p>`;
+    aiLabRmtResetResultDisplay();
     return;
   }
   AiLabRmtTakesCache = takes;
@@ -437,6 +452,7 @@ async function aiLabRmtRefreshTakes() {
     listEl.innerHTML = "<p class=\"hint\">No dry takes yet for this song — record one below.</p>";
     selectEl.innerHTML = "";
     playerEl.style.display = "none";
+    aiLabRmtResetResultDisplay();
     return;
   }
 
@@ -751,20 +767,41 @@ async function aiLabAssistantRefreshCache() {
   }
 }
 
+const AILAB_MODE_RESULT_CARD_ID = {
+  lickideas: "ailab-lick-result-card",
+  askai: "ailab-explain-result-card",
+  practicetips: "ailab-tips-result-card",
+  thistrack: "ailab-track-result-card",
+  thisartist: "ailab-artist-result-card",
+};
+
 // Shows the given mode's cached result (if any) using the same render
 // function a fresh run uses — a redisplayed answer looks identical to a
 // freshly-generated one. Practice Tips' cache is only shown if it's still
 // for the currently-selected take (see its take_path check below);
 // switching to a different take without cached tips just leaves that
 // panel's result card hidden, same as never having run it.
+//
+// Real user report, same root cause as Rate My Take's stale result: this
+// used to just return on no cached entry, leaving whichever OTHER song's
+// answer happened to still be rendered in the DOM on screen — asked for
+// per-track persistence ("cleared when switching song, reshown when
+// switching back"), which the cache itself already did correctly
+// (AiLabAssistantCache is refetched per State.track); only the display
+// side never cleared itself for a track with nothing cached yet.
 function aiLabAssistantRestoreMode(mode) {
   const cached = AiLabAssistantCache[mode];
-  if (!cached) return;
+  const cardId = AILAB_MODE_RESULT_CARD_ID[mode];
+  if (!cached) {
+    if (cardId) document.getElementById(cardId).style.display = "none";
+    return;
+  }
   if (mode === "lickideas") aiLabRenderLickResult(cached);
   else if (mode === "askai") aiLabRenderAskAiResult(cached);
   else if (mode === "practicetips") {
     const selectedTake = document.getElementById("ailab-tips-take-select").value;
     if (cached.take_path === selectedTake) aiLabRenderTipsResult(cached);
+    else document.getElementById(cardId).style.display = "none";
   } else if (mode === "thistrack") aiLabRenderThisTrackResult(cached);
   else if (mode === "thisartist") aiLabRenderThisArtistResult(cached);
 }

@@ -400,11 +400,18 @@ expected result here.
   pulse stops with `prefers-reduced-motion` set at the OS level); switches
   to a clipped state matching Tone Lab's own clip light; clicking it opens
   Tone Lab from anywhere.
-- [ ] **Theme toggle (🔥, v5):** click it on any screen — the whole palette
-  swaps to Molten Obsidian instantly, no reload needed; reload the page
-  and confirm the theme persisted with no flash of the wrong theme before
-  paint; toggle back to Studio and confirm every screen's palette is
-  exactly back to default, nothing left over.
+- [ ] **Theme toggle (v5):** click it on any screen — it cycles Molten
+  Obsidian 🔥 → Bright Spark ☀️ → Studio 🌙 → Molten again, the palette
+  swapping instantly (no reload needed) and the button's own icon always
+  showing whichever theme is now active; reload the page at each of the
+  three and confirm each persists with no flash of the wrong theme before
+  paint; cycle back to Studio and confirm every screen's palette is
+  exactly back to default, nothing left over from either other theme.
+  Spot-check Bright Spark specifically for readability (dark text on
+  white, nothing washed out) since it's the newest and least-exercised of
+  the three. Confirm the Mixer's chord lane and AI Lab's chord ribbon
+  switch to the *same* violet analysis color as each other in both Molten
+  Obsidian and Bright Spark — a real report caught these two disagreeing.
 - [ ] **Quest Log (v5):** with no track loaded, the inspector shows the
   Quest Log instead of normal panels — re-verify every quest here in
   context (most were already ticked naturally by Bosses 1–5; confirm the
@@ -488,6 +495,11 @@ playback and Tune transposition, not just a static screenshot's worth.
   cached percentage/breakdown/heatmap/Offset all reappear instantly with
   no re-scoring; only clicking Score again re-runs it. Rename a scored
   take and confirm its rating and Offset both carry over with the name.
+- [ ] **Result blanks on song switch (real user report):** with a rated
+  take's result showing, switch to a different song with zero dry takes —
+  confirm the result card actually clears (hidden) and the Offset field
+  resets to 0, rather than the previous song's rating just sitting there.
+  Switch back — the original song's rating reappears correctly.
 - [ ] **Invalid rating:** deliberately score with a badly wrong Offset —
   confirm it reports "Invalid rating — check your offset?" rather than a
   misleadingly low percentage, and that fixing the Offset resolves it.
@@ -545,6 +557,12 @@ disclaimers that come with it.*
   with no new request spent. Only re-running a mode replaces its cached
   answer (Practice Tips specifically: its cached tips should only
   reappear while the *same* take that generated them is still selected).
+- [ ] **Result clears on song switch (real user report):** with an answer
+  showing in any mode, switch to a different song with nothing cached for
+  that mode — the result card actually hides rather than continuing to
+  show the previous song's answer. Switch back to the original song —
+  its answer reappears, no new request spent. Check at least two modes,
+  not just one.
 - [ ] Judge honestly, per the manual's own framing: for Lick Ideas/Ask AI/
   Practice Tips, does the output feel genuinely specific to this song, or
   like generic advice any lookup table could produce? Write down the
@@ -868,12 +886,19 @@ been exercised for real.*
   honestly, and that a fresh incognito/cleared-storage session shows the
   two live-state quests (summon, awaken) correctly reflecting whether
   *that* session, not this one, has done them.
-- [ ] **Molten Obsidian theme:** with the whole app now full of real
-  content (multiple songs, a built rig, takes, ratings, cached AI
-  answers), toggle the theme on and off one more time and skim every
-  screen — nothing should look broken, mismatched, or stuck in the wrong
-  palette anywhere, now that there's real data everywhere instead of an
-  empty state.
+- [ ] **All three themes:** with the whole app now full of real content
+  (multiple songs, a built rig, takes, ratings, cached AI answers), cycle
+  through Molten Obsidian, Bright Spark, and Studio one more time and skim
+  every screen in each — nothing should look broken, mismatched, or stuck
+  in the wrong palette anywhere, now that there's real data everywhere
+  instead of an empty state. Bright Spark gets the closest look since it's
+  the newest.
+- [ ] **Rate My Take / AI Assistant result persistence:** with a rated
+  take showing in Rate My Take and an answer showing in at least one AI
+  Assistant mode, switch to a song with neither — both results should
+  clear, not carry the previous song's content over. Switch back — both
+  reappear correctly. (Real user reports on both; fixed together since
+  they were the same underlying gap.)
 
 **Loot:** proof that the newest, least-battle-tested code in the app
 survives contact with a session's worth of real, accumulated state — not

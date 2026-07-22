@@ -6,14 +6,14 @@
 <link rel="icon" href="app-icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
 <!-- Applied before first paint so the theme doesn't flash on reload — see
-     wireThemeToggle (app.js) for the persisted-toggle logic this mirrors.
-     Molten Obsidian is the default; only an explicit "studio" choice
-     keeps the original look. -->
+     wireThemeToggle (app.js, THEME_ORDER) for the persisted-cycle logic
+     this mirrors. Molten Obsidian is the default; "brightspark" or
+     "studio" keep their own look. -->
 <script>
   (function () {
-    if (localStorage.getItem("gs_theme") !== "studio") {
-      document.documentElement.setAttribute("data-theme", "molten");
-    }
+    var t = localStorage.getItem("gs_theme");
+    if (t === "studio") return;
+    document.documentElement.setAttribute("data-theme", t === "brightspark" ? "brightspark" : "molten");
   })();
 </script>
 </head>
