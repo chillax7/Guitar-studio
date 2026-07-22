@@ -897,11 +897,15 @@ library of community `.nam` captures if you want more.
 
 ### 4.7 Suggest a tone
 
-If the loaded song has a guitar stem, a **Suggest from this track's
-guitar stem** button appears — only in Neural (NAM) mode, at the top of
-the panel above the model browser (a suggested starting point is the
-first decision; browsing the whole library by hand is the fallback
-below it). It compares that isolated guitar stem against your
+In Neural (NAM) mode, a **Suggest from this track's guitar stem** button
+sits at the top of the panel, above the model browser (a suggested
+starting point is the first decision; browsing the whole library by
+hand is the fallback below it). It only appears if the loaded song has a
+real, model-produced `guitar` stem — separated with `bs_roformer_sw` or
+`htdemucs_6s` (§3.5); a song separated with a 4-stem model (`htdemucs`,
+`htdemucs_ft`, `mdx`, `mdx_extra`) has nothing to compare against, and an
+explanatory line says so in its place rather than the button just
+silently not being there. It compares that isolated guitar stem against your
 available NAM models (or, in Analog mode, nudges the tone-stack sliders)
 using a brightness heuristic and picks the closest. **This is a rough
 starting point, not a guaranteed match** — always finish by ear; an exact

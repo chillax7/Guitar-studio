@@ -387,7 +387,13 @@ recommendations. All three sub-batches shipped together; test as one pass.
   auto-advance — only a natural end-of-song does.
 - [ ] **NAM Suggest placement:** in Neural mode, "Suggest from this track's
   guitar stem" sits at the top of the panel above the model browser, and
-  still only appears when the loaded song has a guitar stem.
+  still only appears when the loaded song has a real guitar stem
+  (separated with `bs_roformer_sw` or `htdemucs_6s`). On a song separated
+  with a 4-stem model (no guitar stem), the button is replaced by an
+  explanatory hint ("Needs a guitar stem... re-separate with…") instead of
+  just silently not being there — real user report: "I can't see the
+  suggest button at all," which turned out to be exactly this, not a
+  placement bug.
 - [ ] **Rate My Take .m4a scoring (server fix):** scoring an `.m4a`/`.webm`
   dry take works from the double-clicked Guitar Studio.app, not just a
   terminal-launched server (takes are now pre-decoded to WAV via the app's

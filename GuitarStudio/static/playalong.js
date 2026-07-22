@@ -1652,7 +1652,12 @@ async function paSuggestAnalogMatch() {
 
 function paUpdateSuggestVisibility() {
   const hasGuitar = typeof State !== "undefined" && State.stems && State.stems.some((s) => s.name === "guitar");
+  // The button used to just vanish with no guitar stem — silent enough
+  // that a real user report ("I can't see the suggest button at all")
+  // turned out to be exactly this, not a bug: their song was separated
+  // with a 4-stem model. An always-visible reason beats a mystery gap.
   document.getElementById("pa-suggest-btn").style.display = hasGuitar ? "block" : "none";
+  document.getElementById("pa-suggest-unavailable-hint").style.display = hasGuitar ? "none" : "block";
 }
 
 // ---------------------------------------------------------------------------
