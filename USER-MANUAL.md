@@ -199,6 +199,9 @@ a browser — no server needed.
 - [ ] Set an A/B loop on a section you want to practice, turn on **Loop**
   (§3.6).
 - [ ] Turn on **Click** and confirm it's audible and in time (§3.5).
+- [ ] Notice the **Quest Log** in the right-hand panel before you've loaded a
+  track — it's a running checklist of the moves above, ticking off on its
+  own as you actually do them (§3.10).
 - [ ] Export a mix (§3.9) and use **Reveal in Finder** to confirm the
   file is really there.
 - [ ] Open **🎛 Tone Lab**, enable your input device (§4.1), pick an amp
@@ -221,13 +224,14 @@ the default width. It's remembered across reloads.
 
 The left sidebar lists your songs. **All Tracks** is its own collapsible
 group (click the ▸/▾ arrow, or its name) and always shows every imported
-song, regardless of playlist membership. Drag an audio file onto the
-**Drop an audio file here** box (dropping anywhere in the sidebar works,
-not just the small box itself — both drop zones highlight blue while
-you're dragging over the sidebar, since the browser can't tell which one
-a file is headed for until you actually let go), or click it to pick a
-file. Large files may take a moment to upload; the drop box shows
-"Importing…" while that's in progress. **A file that reads back with
+song, regardless of playlist membership. Drag an audio file **or a stem-pack
+`.zip`** (§3.3) onto the single **Drop an audio file or stem pack here** box
+(dropping anywhere in the sidebar works, not just the box itself — it
+highlights blue while you're dragging over the sidebar), or click it to pick
+a file; the app routes by file extension automatically, so there's no
+separate zip drop zone to find. Large files may take a moment to upload; the
+drop box shows "Importing…" while that's in progress. **A file that reads
+back with
 fewer bytes than expected — most often a OneDrive/iCloud file that looks
 present in Finder but hasn't actually been downloaded to this Mac yet —
 is caught before upload and reported clearly**, with a suggestion to
@@ -259,7 +263,10 @@ that referenced it.
 
 Don't have the file at all — just something playing in a browser tab,
 another app, anywhere on your Mac? The **Rip system audio** card in the
-sidebar captures it straight into your Library as a new song. This needs
+sidebar — collapsed by default behind a disclosure triangle, since it's
+the one Library card that needs one-time setup before it's useful; expand
+it once and it stays expanded on later visits — captures it straight into
+your Library as a new song. This needs
 the one-time BlackHole setup in §1.7. Once that's done: pick your
 BlackHole/Multi-Output device in the dropdown, click **● Start Rip**, and
 the elapsed time counts up while it records; click **■ Stop Rip**, give
@@ -637,6 +644,37 @@ export you get a **Reveal in Finder** shortcut straight to it — and the
 file also shows up immediately in Play Along's **Exported Tracks** card
 (§5.9) if that screen is open.
 
+### 3.10 Top banner: rig status, theme, and the Quest Log
+
+The top banner is the same on every screen and carries three things beyond
+the app name and current-screen label:
+
+- **Rig status pill** — a small, always-visible indicator of whether Tone
+  Lab's input is enabled, actively receiving signal, or clipping, plus a
+  latency figure (same "browser-reported, output-side only, not a true
+  round-trip measurement" honesty as §4.8's own latency note — this pill
+  doesn't measure anything the app couldn't already tell you, it just
+  surfaces it without having to open Tone Lab first). Gray/neutral before
+  input is enabled; pulses gently while live (this pulse respects your OS's
+  reduce-motion setting); switches to a clipped state matching Tone Lab's
+  own clip light. Click it to jump straight to Tone Lab.
+- **Theme toggle (🔥)** — switches the whole app between the default
+  **Studio** look and **Molten Obsidian**, an alternate dark-ember palette.
+  Purely cosmetic — nothing about how any feature behaves changes, only the
+  color scheme. Your choice is remembered across reloads with no flash of
+  the wrong theme while the page loads.
+- **Quest Log** — before you've loaded any track, the right-hand inspector
+  panel (where the mixer's usual per-track panels normally live) shows a
+  first-use checklist instead: separate a song, mix it, dial in a tone,
+  capture a take, judge it with Rate My Take, ask the AI Assistant
+  something. Each row shows done/not-done and a button that jumps straight
+  to wherever that quest happens; it updates the moment you actually do the
+  thing (not just when you visit the right screen), and is remembered
+  across sessions. It's also reachable any time as a popup from the
+  **❓ Help** panel, in case you want to check your progress without
+  clearing your current track. Loading any track swaps the panel back to
+  the normal per-track inspector views.
+
 ---
 
 ## 4. Tone Lab
@@ -949,6 +987,11 @@ record yourself playing along — the exact audio mix you're hearing
    Audio-only takes save as `.m4a` (or `.webm`, browser-dependent); video
    takes as `.mp4`/`.webm`.
 
+A link on this card jumps to AI Lab's Rate My Take screen and its own dry-
+take recorder (§6.2 has the same link back here) — for going back and forth
+between a normal take here and a dry take for scoring, without hunting for
+the right screen each time.
+
 Takes are saved to `output/<song name>/recordings/` (or
 `output/_untracked/recordings/` if no song was loaded), numbered
 automatically. **Camera never records audio** — it's opened video-only
@@ -1176,6 +1219,11 @@ per-beat pitch and timing agreement, an overall closeness percentage, and
 a heatmap you can judge by eye (rate-my-take-spec.md's research spike,
 now with a real screen instead of only a command line).
 
+A link on this card jumps straight to Play Along's own Record card and
+back again (§5.2 has the same link in reverse) — useful for going back and
+forth between recording a dry take here and a normal performance take
+there without hunting for the right screen each time.
+
 **Important: this needs a "dry" recording, not a regular take.** A
 regular Play Along take (Record tab) deliberately mixes the backing track
 in with your guitar, so it's watchable/listenable as a normal performance
@@ -1275,6 +1323,15 @@ way to know — no ID3 tags read, and filenames are too unreliable to trust
 blindly. A small card above the mode toggle prefills a best-effort guess
 from the filename; always check and edit it, then click **Save**. Stored
 per-song, same as everything else about a song.
+
+**This song and Choosing a provider both collapse once set up.** Both cards
+start expanded, then fold down to a one-line summary the first time you
+open this tab with a provider key already saved / an Artist-Title already
+filled in — so returning to this tab later doesn't greet you with the same
+setup cards every time. This only happens at that "just opened" moment;
+switching providers or re-saving a key while a card is already open never
+yanks it shut on you mid-task. Click the summary line to expand it back
+open any time.
 
 **Choosing a provider.** A dropdown at the top of the tab picks which LLM
 answers, shared across all five modes below:

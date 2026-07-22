@@ -368,6 +368,15 @@ race, §5), moving Enable Input to Play Along (§2.5), renaming AI Lab
 (§2.7), any layout restructuring of the Mixer (§2.4 — it remains the
 app's best screen).
 
+## Update — built
+
+Every item in §8's ranked list has shipped (three commits, same session):
+the five cheap/safe fixes, the global rig status pill, the Quest Log
+first-use checklist, and the Molten Obsidian theme toggle. See
+USER-MANUAL.md §3.10/§6.3/§6.2 and TEST-PLAN.md §14 for the shipped
+behavior and its regression checklist. The "explicitly not recommended"
+list is unchanged and still out of scope.
+
 ## Sources (competitor scan)
 
 - [Moises — improvements & releases, Oct 2025](https://moises.ai/blog/moises-news/improvements-latest-releases/)

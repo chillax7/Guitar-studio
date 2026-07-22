@@ -277,3 +277,81 @@ the scores and heatmap match what your ears say happened?
 - [ ] Keyboard shortcuts legend (**?**) lists every current shortcut accurately, including Alt for the fine nudge; none of the shortcuts fire while a text field has focus.
 - [ ] AudioContext survives being backgrounded/idled (no full-silence lockup requiring a page reload).
 - [ ] Stems and NAM/IR files load fast on repeat selection (server-side caching) rather than re-downloading in full every time; a video take seeks correctly (Range support).
+
+## 14. v5 UI refresh — cheap fixes, rig status pill, Quest Log, Molten Obsidian theme
+
+Covers the batch built from `research/ui-review-v5-full.md`'s ranked
+recommendations. All three sub-batches shipped together; test as one pass.
+
+### Cheap fixes (batch 1)
+
+- [ ] **Merged import drop zone:** the sidebar shows one drop zone/input for
+  both audio files and stem-pack `.zip`s (no separate "or import a stem
+  pack" box); dropping or picking an audio file imports normally, a `.zip`
+  routes to stem-pack import — both paths from §1/§3 of this file still work
+  unchanged.
+- [ ] **Nav button styling:** the four screen buttons (Mixer/Tone Lab/Play
+  Along/AI Lab) default to a quiet look and only the current screen's button
+  is solid/highlighted — confirm Mixer shows correctly highlighted on first
+  load (a real pre-existing bug: Mixer was never marked active on load,
+  invisible until this contrast fix made all-buttons-solid-blue apparent).
+- [ ] **Rip disclosure:** the Rip system audio card is collapsed by default
+  behind a `<details>`/summary; expanding/collapsing it persists across a
+  reload.
+- [ ] **Cross-links:** Play Along's Record card has a link to Rate My Take's
+  dry-take recorder and vice versa — each jumps to AI Lab / Play Along and
+  opens the right tab.
+- [ ] **AI Assistant setup auto-collapse:** the Lick Ideas provider/key card
+  and the Track Info (Artist/Title) card each collapse to a one-line summary
+  once configured, but only at the moment you first open that tab — switching
+  providers or re-saving a key while the card is already open must NOT yank
+  it shut on you mid-task.
+
+### Global rig status pill
+
+- [ ] A status pill sits in the top banner on every screen, showing at a
+  glance whether input is enabled, live, or clipped, plus latency — reusing
+  the existing "browser-reported, output-side only, not a round-trip"
+  wording, never overclaiming a real measurement.
+- [ ] The pill updates live: gray/neutral before input is enabled, a pulsing
+  "live" state during active input (respects `prefers-reduced-motion` — no
+  pulse animation with that OS setting on), and a distinct "clipped" state
+  matching Tone Lab's own clip light.
+- [ ] Clicking the pill opens Tone Lab.
+
+### Quest Log (first-use checklist)
+
+- [ ] With no track loaded (empty state), the Quest Log panel shows instead
+  of the normal inspector panels, listing each core workflow quest
+  (separate a song, mix, tone, capture, judge, ask) with a done/not-done
+  state and a jump-to button for each.
+- [ ] A fresh browser profile (cleared localStorage) shows the two
+  "cheaply-knowable" quests (library has a track; a remembered input device)
+  as already-done if that's genuinely true of current state — not falsely
+  empty for a returning user.
+- [ ] Completing each real action (separating a song, muting/painting a
+  mute region, saving a rig preset, recording a dry take, scoring a take
+  with Rate My Take, running any AI Assistant mode) marks its quest done
+  and persists across a reload.
+- [ ] The Quest Log is also reachable as a modal from the Help panel at any
+  time (not just the empty state); clicking a quest's jump button in the
+  modal navigates to the right screen and closes the modal.
+- [ ] Loading a track hides the Quest Log panel and shows the normal
+  inspector panels again.
+
+### Molten Obsidian theme toggle
+
+- [ ] A theme-toggle button (🔥) sits in the top banner; clicking it swaps
+  the whole app's color palette (nav, panels, chord chips, chain-icon glow,
+  quest log accents) without needing a page reload.
+- [ ] The choice persists across a reload with no flash of the wrong theme
+  on load (pre-paint inline script applies it before first paint).
+- [ ] Spot-check Mixer, Tone Lab, and AI Lab in the Molten theme: nav
+  buttons, engaged/open chain icons, and the AI Lab Root/Scale-tone legend
+  dot (Root shows the secondary arcane-violet accent) all reskin correctly;
+  AI Lab's own dedicated "Follow song" green is untouched by the theme.
+- [ ] Toggling back to the Studio (default) theme restores the original
+  palette exactly, with no leftover Molten-only styling anywhere.
+- [ ] **Range slider accent color:** any native range slider (e.g. the Noise
+  Gate threshold) tints with the active theme's accent color instead of
+  staying browser-default blue, in both themes.
