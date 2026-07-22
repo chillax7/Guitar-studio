@@ -377,6 +377,15 @@ USER-MANUAL.md §3.10/§6.3/§6.2 and TEST-PLAN.md §14 for the shipped
 behavior and its regression checklist. The "explicitly not recommended"
 list is unchanged and still out of scope.
 
+**Later update:** a "Bright Spark" light theme shipped alongside Molten
+Obsidian and the original Studio look (three themes total, one cycling
+toggle). §6's "engraved-serif headings" (Palatino) — one of the small
+deliberate departures from a pure token swap — was reverted per direct
+feedback: all three themes now share Studio's plain sans-serif for
+readability. The --heading-font token stays wired through, so a
+theme-specific font remains a one-line change if it comes back later,
+just not the default anymore.
+
 ## Sources (competitor scan)
 
 - [Moises — improvements & releases, Oct 2025](https://moises.ai/blog/moises-news/improvements-latest-releases/)

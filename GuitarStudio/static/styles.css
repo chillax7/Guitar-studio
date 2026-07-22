@@ -66,9 +66,14 @@
   --success: #59b878;
   --mute: #55596a;
   --solo: #e0c34a;
-  --heading-font: Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  /* Was the engraved-serif Palatino stack — reverted to match Studio/
+     Bright Spark's plain `inherit` per direct feedback (readability over
+     the theme flourish, for now). The token stays wired through h2/h3/
+     nav-btn/etc. below so a future theme-specific font is still just a
+     one-line change here, not new plumbing. */
+  --heading-font: inherit;
   --heading-transform: none;
-  --heading-tracking: 0.05em;
+  --heading-tracking: normal;
 }
 :root[data-theme="molten"] body {
   background:
