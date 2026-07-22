@@ -1035,6 +1035,15 @@ unchanged, this just sequences it against §9)
   (V5-B2, timeboxed).**
 - **Stretch, time-permitting, not committed:** basic-pitch transcription
   spike (§8's M5 / V5-F5).
+- **New (near-feature-complete checkpoint): full UI/UX review delivered
+  as its own doc — see research/ui-review-v5-full.md** (screen audit,
+  grouping verdicts incl. Enable Input staying in Tone Lab + a global
+  rig status pill, the "Quest Log" first-use checklist, competitor UI
+  scan, and three "Molten Obsidian" themed mockups in
+  research/mockups/). Its §8 ranks the work: five cheap fixes (the
+  stale-help-overlay rewrite already shipped alongside the review),
+  then three milestone-sized projects (status pill, Quest Log, theme
+  pass) awaiting a pick — none auto-committed into this plan.
 
 Each milestone still ends the §8 way: docs updated, honest commit
 messages, push, user run-through before the next one starts.

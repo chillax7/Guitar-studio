@@ -1,0 +1,199 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mockup 1 — First run: Quest Log (Molten Obsidian)</title>
+<style>
+/* ===== Molten Obsidian design tokens (shared across all 3 mockups) ===== */
+:root {
+  --bg: #131014;
+  --panel: #1d181c;
+  --panel-2: #26202a;
+  --border: #3a3038;
+  --border-lit: #55414a;
+  --text: #ece7e1;
+  --dim: #a89f9b;
+  --ember-a: #ff7a3d;   /* molten orange */
+  --ember-b: #e8a13c;   /* forge gold   */
+  --arcane: #8a63ff;    /* AI/analysis violet — used ONLY for "the magic parts" */
+  --success: #59b878;
+  --danger: #e0605a;
+  font-size: 14px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; height: 100vh; overflow: hidden;
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(1200px 600px at 70% -10%, #241a20 0%, transparent 60%),
+    radial-gradient(900px 500px at 10% 110%, #1c1420 0%, transparent 55%),
+    var(--bg);
+}
+h1,h2,h3, .display {
+  font-family: Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-variant: small-caps; letter-spacing: 0.08em; font-weight: 600;
+}
+#app { display: grid; grid-template-columns: 240px 1fr 300px; grid-template-rows: 48px 1fr; height: 100vh; }
+
+/* ===== Top banner with the global rig status pill ===== */
+#banner {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 14px;
+  background: linear-gradient(180deg, #1a1519, #15111500), var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+#logo { width: 26px; height: 26px; border-radius: 6px;
+  background: radial-gradient(circle at 35% 30%, var(--ember-a), #7a2d12 70%);
+  box-shadow: 0 0 14px #ff7a3d55; position: relative; }
+#logo::after { content: "♆"; position: absolute; inset: 0; display: grid; place-items: center;
+  color: #2a130a; font-size: 15px; font-weight: 700; }
+#title { font-family: Palatino, Georgia, serif; font-variant: small-caps; letter-spacing: 0.14em; font-size: 16px; }
+#title b { background: linear-gradient(90deg, var(--ember-a), var(--ember-b));
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+#ver { color: var(--dim); font-size: 11px; border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; }
+#screen-label { position: absolute; left: 50%; transform: translateX(-50%); color: var(--dim);
+  font-variant: small-caps; letter-spacing: 0.2em; font-family: Palatino, Georgia, serif; }
+.spacer { flex: 1; }
+/* THE STATUS PILL — visible on every screen; click = jump to Tone Lab input */
+#rig-pill {
+  display: flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--border); cursor: pointer; font-size: 12px;
+}
+#rig-pill .led { width: 8px; height: 8px; border-radius: 50%; background: #4a4046; }
+#rig-pill:hover { border-color: var(--border-lit); }
+#rig-pill .lbl { color: var(--dim); }
+
+/* ===== Sidebar ===== */
+#sidebar { background: var(--panel); border-right: 1px solid var(--border); padding: 12px; overflow-y: auto; }
+.nav { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+.nav button {
+  padding: 9px 6px; border-radius: 8px; cursor: pointer; font-size: 12.5px; color: var(--dim);
+  background: var(--panel-2); border: 1px solid var(--border);
+  font-family: Palatino, Georgia, serif; font-variant: small-caps; letter-spacing: 0.06em;
+}
+.nav button.active {
+  color: #21130b; border-color: transparent;
+  background: linear-gradient(135deg, var(--ember-a), var(--ember-b));
+  box-shadow: 0 0 16px #ff7a3d44; font-weight: 700;
+}
+.nav button:hover:not(.active) { color: var(--text); border-color: var(--border-lit); }
+.nav .help { grid-column: 1 / -1; opacity: 0.75; }
+h2.side { font-size: 12px; color: var(--dim); letter-spacing: 0.18em; margin: 18px 0 8px; }
+/* Lyre-string divider motif */
+.strings { height: 10px; margin: 14px 0 4px; background:
+  repeating-linear-gradient(90deg, transparent 0 26px, #3a303877 26px 27px);
+  mask-image: linear-gradient(90deg, transparent, #000 20%, #000 80%, transparent); }
+#empty-lib { color: var(--dim); font-size: 12.5px; line-height: 1.5; }
+/* ONE smart drop zone (merged) */
+#drop {
+  margin-top: 10px; padding: 22px 12px; text-align: center; border-radius: 10px; cursor: pointer;
+  border: 1.5px dashed var(--border-lit); color: var(--dim); font-size: 12.5px; line-height: 1.5;
+  background: linear-gradient(180deg, #221b20aa, transparent);
+}
+#drop b { color: var(--ember-b); font-variant: small-caps; letter-spacing: 0.06em; }
+#drop:hover { border-color: var(--ember-a); color: var(--text); box-shadow: inset 0 0 30px #ff7a3d11; }
+/* Rip collapsed behind a disclosure */
+details.rip { margin-top: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
+details.rip summary { padding: 8px 10px; cursor: pointer; color: var(--dim); font-size: 12.5px; list-style: none; }
+details.rip summary::before { content: "▸ "; }
+details.rip[open] summary::before { content: "▾ "; }
+details.rip .body { padding: 0 10px 10px; color: var(--dim); font-size: 12px; }
+
+/* ===== Canvas: welcome ===== */
+#canvas { display: grid; place-items: center; position: relative; }
+#welcome { text-align: center; max-width: 460px; padding: 20px; }
+#welcome .sigil { font-size: 54px; filter: drop-shadow(0 0 18px #ff7a3d66); }
+#welcome h1 { font-size: 24px; margin: 10px 0 6px; }
+#welcome h1 span { background: linear-gradient(90deg, var(--ember-a), var(--ember-b));
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+#welcome p { color: var(--dim); line-height: 1.6; font-size: 13.5px; }
+#welcome .arrow { color: var(--ember-b); font-size: 13px; margin-top: 16px; }
+
+/* ===== Inspector: THE QUEST LOG (replaces dead Speed Trainer/Export on cold start) ===== */
+#inspector { background: var(--panel); border-left: 1px solid var(--border); padding: 14px; overflow-y: auto; }
+#quest-head { display: flex; align-items: baseline; gap: 8px; }
+#quest-head h2 { font-size: 16px; margin: 0; }
+#quest-head .count { color: var(--dim); font-size: 12px; }
+#quest-sub { color: var(--dim); font-size: 12px; line-height: 1.5; margin: 6px 0 12px; }
+.quest { display: flex; gap: 10px; padding: 9px 8px; border-radius: 8px; align-items: flex-start; }
+.quest:hover { background: var(--panel-2); }
+.quest .rune {
+  flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 5px;
+  border: 1.5px solid var(--border-lit); display: grid; place-items: center; font-size: 11px;
+}
+.quest.done .rune { border-color: transparent; color: #21130b; font-weight: 800;
+  background: linear-gradient(135deg, var(--ember-a), var(--ember-b)); box-shadow: 0 0 10px #ff7a3d55; }
+.quest.done .name { color: var(--dim); text-decoration: line-through 1px #a89f9b66; }
+.quest .name { font-size: 13px; font-weight: 600; }
+.quest .desc { font-size: 11.5px; color: var(--dim); line-height: 1.45; margin-top: 2px; }
+.quest .go { margin-left: auto; flex: none; align-self: center; font-size: 11px; color: var(--ember-b);
+  border: 1px solid #55414a; border-radius: 999px; padding: 2px 9px; cursor: pointer; white-space: nowrap; }
+.quest .go:hover { border-color: var(--ember-a); box-shadow: 0 0 8px #ff7a3d33; }
+.quest.optional .name::after { content: " · optional"; color: var(--arcane); font-size: 10.5px; font-weight: 400; }
+.mock-note { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); font-size: 11px;
+  color: #6d6360; letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="banner">
+    <div id="logo"></div>
+    <span id="title"><b>Orpheus</b> Guitar Studio</span>
+    <span id="ver">v5</span>
+    <span id="screen-label">Mixer</span>
+    <span class="spacer"></span>
+    <!-- Global rig status pill: input OFF state. Click jumps to Tone Lab · Input -->
+    <div id="rig-pill" title="Your rig is silent — click to enable input (Tone Lab)">
+      <span class="led"></span><span class="lbl">Rig silent — click to awaken</span>
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <div class="nav">
+      <button class="active">Mixer</button>
+      <button>Tone Lab</button>
+      <button>Play Along</button>
+      <button>AI Lab</button>
+      <button class="help">Help &amp; Quests</button>
+    </div>
+    <div class="strings"></div>
+    <h2 class="side">LIBRARY</h2>
+    <div id="empty-lib">The hall stands empty.<br>Summon your first song below.</div>
+    <!-- ONE merged drop zone: extension decides audio vs stem-pack path -->
+    <div id="drop"><b>Drop a song here</b><br>audio file or stem-pack .zip<br><span style="font-size:11px">or click to browse</span></div>
+    <!-- Rip collapsed until wanted -->
+    <details class="rip">
+      <summary>Rip system audio…</summary>
+      <div class="body">Capture whatever's playing on this Mac (needs the BlackHole device — see manual).</div>
+    </details>
+  </div>
+
+  <div id="canvas">
+    <div id="welcome">
+      <div class="sigil">🎸</div>
+      <h1>Enter the <span>Studio</span></h1>
+      <p>Bring in any song, split it into stems, silence the original guitar,
+         and take its place — through your own rig, scored against the master.</p>
+      <p class="arrow">Your quest log awaits →</p>
+    </div>
+  </div>
+
+  <div id="inspector">
+    <div id="quest-head"><h2>Quest Log</h2><span class="count">0 / 10</span></div>
+    <p id="quest-sub">Each quest checks itself off as you complete it. This log lives here until a song is loaded, and is always one click away under <b>Help &amp; Quests</b>.</p>
+
+    <div class="quest"><div class="rune"></div><div><div class="name">Summon a song</div><div class="desc">Drop an audio file or stem pack — or rip one straight off the system audio.</div></div><span class="go">go</span></div>
+    <div class="quest"><div class="rune"></div><div><div class="name">Forge the stems</div><div class="desc">Pick a model, hit Separate. Drums, bass, vocals, guitar — cleaved apart.</div></div><span class="go">go</span></div>
+    <div class="quest"><div class="rune"></div><div><div class="name">Carve the mix</div><div class="desc">Mute or fade the original guitar. That space is yours now.</div></div><span class="go">go</span></div>
+    <div class="quest"><div class="rune"></div><div><div class="name">Mark your battleground</div><div class="desc">Loop the riff or solo you're here to conquer.</div></div><span class="go">go</span></div>
+    <div class="quest"><div class="rune"></div><div><div class="name">Awaken the rig</div><div class="desc">Tone Lab: enable your guitar input, choose an amp — Pass&nbsp;Through, Analog, or a real captured amp (Neural).</div></div><span class="go">go</span></div>
+    <div class="quest"><div class="rune"></div><div><div class="name">Forge your tone</div><div class="desc">Shape the chain, then seal it as a Rig Preset.</div></div><span class="go">go</span></div>
+    <div class="quest"><div class="rune"></div><div><div class="name">Enter the arena</div><div class="desc">Play Along: tune up, play the song end to end.</div></div><span class="go">go</span></div>
+    <div class="quest"><div class="rune"></div><div><div class="name">Capture a take</div><div class="desc">Record a performance — camera optional, glory mandatory.</div></div><span class="go">go</span></div>
+    <div class="quest"><div class="rune"></div><div><div class="name">Face the judge</div><div class="desc">Rate My Take: a dry take, scored note-by-note against the master.</div></div><span class="go">go</span></div>
+    <div class="quest optional"><div class="rune"></div><div><div class="name">Seek counsel</div><div class="desc">The AI Assistant: lick ideas, practice tips, the lore of the song. Needs a free API key.</div></div><span class="go">go</span></div>
+  </div>
+</div>
+<div class="mock-note">MOCKUP 1 · first run · Molten Obsidian theme · not functional</div>
+</body>
+</html>
