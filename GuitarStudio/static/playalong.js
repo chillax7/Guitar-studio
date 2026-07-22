@@ -2811,6 +2811,7 @@ function wireRigPresets() {
     document.getElementById("pa-preset-select").value = name;
     paSyncPresetQuickpick();
     statusEl.textContent = `Saved rig preset "${name}".`;
+    if (typeof questMarkDone === "function") questMarkDone("tone");
   });
 
   document.getElementById("pa-preset-delete-btn").addEventListener("click", async () => {

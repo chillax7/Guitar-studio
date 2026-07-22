@@ -285,6 +285,7 @@ async function finalizeAndUpload(sourceRecorder, chunks, mimeType, audioOnly) {
     const finalizeJson = await finalizeResp.json();
     showTakeResult(saveJson, finalizeJson);
     refreshTakesList();
+    if (typeof questMarkDone === "function") questMarkDone("capture");
   } catch (e) {
     // Rescue: the blob is still in memory even though the upload failed —
     // offer a direct browser download instead of losing the take.

@@ -781,6 +781,13 @@ function showState(name) {
   }
   document.getElementById("transport").classList.toggle("show", name === "workspace");
   document.getElementById("toolbar-tools").classList.toggle("show", name === "workspace");
+  // ui-review-v5-full.md §2.2/§4: Quest Log takes over the inspector's
+  // no-track space (Speed Trainer/Export are dead controls until a track
+  // exists) — swapped back the moment a track starts loading.
+  const noTrack = name === "empty-state";
+  document.getElementById("quest-log-panel").classList.toggle("show", noTrack);
+  document.getElementById("inspector-normal-panels").classList.toggle("show", !noTrack);
+  if (noTrack && typeof renderQuestLog === "function") renderQuestLog();
 }
 
 function updateModelBadge() {
@@ -1038,6 +1045,7 @@ function flushPracticeLog() {
   practiceLogAccumTrack = null;
   Api.post("/api/practice_log", { track, seconds, continuous }).then((r) => {
     practiceLogLastFlushedTrack = track;
+    questMarkDone("arena");
     const t = State.tracks.find((x) => x.name === track);
     if (t) {
       t.practice_seconds = r.seconds;
@@ -1486,6 +1494,7 @@ async function onStemsLoaded(result) {
   State.stems = result.stems;
   State.analysis = result.analysis || {};
   State.stale = result.stale;
+  if (result.stems && result.stems.length) questMarkDone("forge");
   // Octave errors (detecting half or double the real tempo) are a known,
   // essentially unfixable-in-general failure mode of automatic tempo
   // estimation — the ×2/½ buttons next to the BPM readout are the escape
@@ -1713,6 +1722,7 @@ function toggleMute(name) {
   applyMixToGains();
   renderLanes();
   saveProjectDebounced();
+  if (State.mix.muted[name]) questMarkDone("carve");
 }
 
 function toggleSolo(name) {
@@ -1850,6 +1860,7 @@ function wireMuteLane(el, stemName) {
       ranges.splice(idx, 1);
     } else {
       ranges.push([s, en]);
+      questMarkDone("carve");
     }
     State.mix.muteRanges[stemName] = ranges;
     renderLanes();
@@ -1894,7 +1905,7 @@ function initRuler() {
         if (key === "start") State.ui.loop.start = Math.min(t, State.ui.loop.end - 0.1);
         else State.ui.loop.end = Math.max(t, State.ui.loop.start + 0.1);
         updateLoopVisual();
-      }, () => saveProjectDebounced());
+      }, () => { saveProjectDebounced(); questMarkDone("battleground"); });
     });
   }
   wireHandle(document.getElementById("loop-handle-a"), "start");
@@ -1983,6 +1994,7 @@ function addMarkerAtPlayhead() {
   State.markers = [...(State.markers || []), { time: currentPosition(), label: label.trim() || "Marker" }];
   renderMarkers();
   saveProjectDebounced();
+  questMarkDone("battleground");
 }
 
 // ---------------------------------------------------------------------------
@@ -3197,6 +3209,123 @@ function toggleShortcutsLegend() {
   document.getElementById("shortcuts-overlay").classList.toggle("show");
 }
 
+// ---------------------------------------------------------------------------
+// Quest Log (ui-review-v5-full.md §4) — first-use checklist v2. Ten steps,
+// each auto-checking as real state changes, replacing the old one-shot
+// help-overlay prose. Lives in the inspector while no track is loaded
+// (where Speed Trainer/Export used to sit fully interactive but
+// meaningless — see §2.2), and is re-openable any time as a modal from
+// Help, even with a track loaded.
+//
+// "summon" and "awaken" are read live from state the app already has
+// (library length, a remembered input device) so a returning user who did
+// all this before the Quest Log existed sees accurate progress on day
+// one, not a falsely-empty log. The rest are flagged the moment the real
+// action succeeds (questMarkDone, called from onStemsLoaded/toggleMute/
+// addMarkerAtPlayhead/practice-log-flush/recording-save/rig-preset-save/
+// Rate My Take scoring/AI Assistant cache-write) — there's no cheap "ever,
+// across every song" query for these without scanning every project file,
+// and a flag costs nothing to maintain going forward.
+// ---------------------------------------------------------------------------
+const QUEST_FLAGS_KEY = "gs_quest_flags";
+const QUEST_DEFS = [
+  { key: "summon", name: "Summon a song",
+    desc: "Drop an audio file or stem pack — or rip one straight off the system audio." },
+  { key: "forge", name: "Forge the stems",
+    desc: "Pick a model, hit Separate. Drums, bass, vocals, guitar — cleaved apart." },
+  { key: "carve", name: "Carve the mix",
+    desc: "Mute or fade the original guitar. That space is yours now." },
+  { key: "battleground", name: "Mark your battleground",
+    desc: "Loop the riff or solo you're here to conquer." },
+  { key: "awaken", name: "Awaken the rig", screen: "tonelab-open-btn",
+    desc: "Tone Lab: enable your guitar input, choose an amp." },
+  { key: "tone", name: "Forge your tone", screen: "tonelab-open-btn",
+    desc: "Shape the chain, then seal it as a Rig Preset." },
+  { key: "arena", name: "Enter the arena", screen: "playalong-open-btn",
+    desc: "Play Along: tune up, play the song end to end." },
+  { key: "capture", name: "Capture a take", screen: "playalong-open-btn",
+    desc: "Record a performance — camera optional, glory mandatory." },
+  { key: "judge", name: "Face the judge", screen: "ailab-open-btn", tab: "ailab-tab-ratemytake",
+    desc: "Rate My Take: a dry take, scored note-by-note against the master." },
+  { key: "counsel", name: "Seek counsel", screen: "ailab-open-btn", tab: "ailab-tab-lickideas", optional: true,
+    desc: "The AI Assistant: lick ideas, practice tips, the lore of the song. Needs a free API key." },
+];
+
+function questGetFlags() {
+  try { return JSON.parse(localStorage.getItem(QUEST_FLAGS_KEY)) || {}; }
+  catch (e) { return {}; }
+}
+
+function questMarkDone(key) {
+  const flags = questGetFlags();
+  if (flags[key]) return; // already known — skip the write+re-render
+  flags[key] = true;
+  localStorage.setItem(QUEST_FLAGS_KEY, JSON.stringify(flags));
+  renderQuestLog();
+}
+
+function questIsDone(key, flags) {
+  if (key === "summon") return (State.tracks || []).length > 0;
+  // Deliberately the literal string, not playalong.js's PA_INPUT_DEVICE_KEY
+  // constant — app.js's own init() runs synchronously as soon as this file
+  // parses, before playalong.js's <script> tag has even loaded (it's later
+  // in index.html), so referencing that constant here throws a
+  // ReferenceError on first render. Keep this string in sync with
+  // PA_INPUT_DEVICE_KEY if that ever changes.
+  if (key === "awaken") return !!localStorage.getItem("gs_pa_input_device");
+  return !!flags[key];
+}
+
+function questJump(def) {
+  if (def.screen) document.getElementById(def.screen).click();
+  if (def.tab) document.getElementById(def.tab).click();
+  document.getElementById("quest-log-overlay").classList.remove("show");
+}
+
+// Renders into whichever surface is currently relevant — the inspector
+// (no track loaded) and/or the Help-triggered modal — never both being
+// built from scratch twice; same row markup either way.
+function renderQuestLog() {
+  const flags = questGetFlags();
+  const done = QUEST_DEFS.map((d) => questIsDone(d.key, flags));
+  const doneCount = done.filter(Boolean).length;
+  const countText = `${doneCount} / ${QUEST_DEFS.length}`;
+
+  const rowsHtml = QUEST_DEFS.map((d, i) => `
+    <div class="quest-row${done[i] ? " done" : ""}${d.optional ? " optional" : ""}">
+      <span class="quest-rune">${done[i] ? "✓" : ""}</span>
+      <div class="quest-body">
+        <div class="quest-name">${escapeHtml(d.name)}${d.optional ? " <em>optional</em>" : ""}</div>
+        <div class="quest-desc">${escapeHtml(d.desc)}</div>
+      </div>
+      <button class="quest-go" data-quest-idx="${i}">go</button>
+    </div>
+  `).join("");
+
+  for (const [listId, countId] of [["quest-log-list", "quest-log-count"], ["quest-log-modal-list", "quest-log-modal-count"]]) {
+    const listEl = document.getElementById(listId);
+    const countEl = document.getElementById(countId);
+    if (!listEl) continue;
+    listEl.innerHTML = rowsHtml;
+    countEl.textContent = countText;
+    listEl.querySelectorAll(".quest-go").forEach((btn) => {
+      btn.addEventListener("click", () => questJump(QUEST_DEFS[parseInt(btn.dataset.questIdx, 10)]));
+    });
+  }
+}
+
+function wireQuestLog() {
+  document.getElementById("help-quest-log-btn").addEventListener("click", () => {
+    document.getElementById("help-overlay").classList.remove("show");
+    renderQuestLog();
+    document.getElementById("quest-log-overlay").classList.add("show");
+  });
+  document.getElementById("quest-log-modal-close-btn").addEventListener("click", () => {
+    document.getElementById("quest-log-overlay").classList.remove("show");
+  });
+  renderQuestLog();
+}
+
 // XC-04: in-app onboarding/help — auto-shown once on first launch (nobody
 // reads USER-MANUAL.md before diving in), reachable any time after via the
 // sidebar's ❓ Help button.
@@ -3369,6 +3498,8 @@ async function init() {
   wireKeyboardShortcuts();
   wireHelp();
   wireSidebarResize();
+  wireQuestLog();
+  showState("empty-state"); // syncs Quest Log vs. normal-panels visibility on first load
 
   const modelsResp = await Api.get("/api/models");
   State.models = modelsResp.models;

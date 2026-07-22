@@ -849,6 +849,52 @@ button:disabled:hover { filter: none; }
   font-size: 12px;
 }
 #inspector h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin: 0 0 8px; }
+
+/* ui-review-v5-full.md §2.2/§4: Quest Log replaces the dead Speed Trainer/
+   Export controls while no track is loaded — toggled by showState() in
+   app.js. Not an overlay (no dim backdrop) — it's inspector content, same
+   as what it replaces. */
+#quest-log-panel, #inspector-normal-panels { display: none; }
+#quest-log-panel.show, #inspector-normal-panels.show { display: block; }
+#quest-log-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+#quest-log-head h3 { margin: 0; }
+#quest-log-count, #quest-log-modal-count { font-size: 11px; color: var(--accent); font-weight: 600; }
+.quest-row {
+  display: flex; align-items: flex-start; gap: 10px; padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.quest-row:last-child { border-bottom: none; }
+.quest-rune {
+  flex: none; width: 16px; height: 16px; margin-top: 2px; border-radius: 4px;
+  border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--text-dim);
+}
+.quest-row.done .quest-rune { background: var(--success); border-color: var(--success); color: #fff; }
+.quest-row.done .quest-name { color: var(--text-dim); text-decoration: line-through 1px var(--text-dim); }
+.quest-body { flex: 1; min-width: 0; }
+.quest-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.quest-name em { color: var(--text-dim); font-style: normal; font-weight: 400; font-size: 10.5px; }
+.quest-desc { font-size: 11px; color: var(--text-dim); line-height: 1.4; margin-top: 2px; }
+.quest-go {
+  flex: none; align-self: center; font-size: 10.5px; padding: 3px 10px; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim);
+}
+.quest-go:hover { color: #fff; border-color: var(--accent); background: var(--accent); }
+
+/* Quest Log modal (reopenable from Help) — same overlay idiom as
+   #help-overlay/#shortcuts-overlay. */
+#quest-log-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  align-items: center; justify-content: center; z-index: 200;
+}
+#quest-log-overlay.show { display: flex; }
+#quest-log-modal {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 20px 24px; max-width: 560px; width: 90%; max-height: 80vh; overflow-y: auto;
+}
+#quest-log-modal-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+#quest-log-modal-head h2 { margin: 0; font-size: 16px; }
+#quest-log-modal-close-btn { margin-top: 14px; width: 100%; }
 #inspector section { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
 #inspector .hint { color: var(--text-dim); font-size: 11px; line-height: 1.5; margin: 4px 0; }
 #inspector label { display: block; margin: 8px 0 2px; color: var(--text-dim); }

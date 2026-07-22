@@ -644,6 +644,7 @@ async function aiLabFinalizeDryRecording(chunks, mimeType) {
     const r = await Api.postRaw(
       `/api/recording/save?track=${encodeURIComponent(State.track || "")}&ext=${ext}&prefix=dry`, blob);
     hintEl.textContent = `Saved as ${r.filename}.`;
+    if (typeof questMarkDone === "function") questMarkDone("capture");
     await aiLabRmtRefreshTakes();
   } catch (e) {
     hintEl.textContent = `Save failed: ${e.message}`;
@@ -679,6 +680,7 @@ async function aiLabScoreTake() {
       model: State.model, stem: "guitar",
       offset, offset_search: offsetSearch,
     });
+    if (typeof questMarkDone === "function") questMarkDone("judge");
     let msg = `Scored ${r.scored_count}/${r.total_count} beats.`;
     if (r.refine) {
       msg += r.refine.applied
@@ -927,6 +929,7 @@ async function aiLabLickSuggest() {
     hintEl.textContent = "";
     aiLabRenderLickResult(r);
     AiLabAssistantCache.lickideas = r; // this run just became the cached one
+    if (typeof questMarkDone === "function") questMarkDone("counsel");
   } catch (e) {
     hintEl.textContent = `Couldn't get suggestions: ${e.message}`;
   } finally {
@@ -977,6 +980,7 @@ async function aiLabExplainAsk() {
     hintEl.textContent = "";
     aiLabRenderAskAiResult(r);
     AiLabAssistantCache.askai = r;
+    if (typeof questMarkDone === "function") questMarkDone("counsel");
   } catch (e) {
     hintEl.textContent = `Couldn't get an answer: ${e.message}`;
   } finally {
@@ -1108,6 +1112,7 @@ async function aiLabTipsSuggest() {
     hintEl.textContent = r.reused_cached_scoring ? "Using this take's existing Rate My Take score." : "";
     aiLabRenderTipsResult(r);
     AiLabAssistantCache.practicetips = r;
+    if (typeof questMarkDone === "function") questMarkDone("counsel");
   } catch (e) {
     hintEl.textContent = `Couldn't get practice tips: ${e.message}`;
   } finally {
@@ -1149,6 +1154,7 @@ async function aiLabThisTrackInfo() {
     hintEl.textContent = "";
     aiLabRenderThisTrackResult(r);
     AiLabAssistantCache.thistrack = r;
+    if (typeof questMarkDone === "function") questMarkDone("counsel");
   } catch (e) {
     hintEl.textContent = `Couldn't get track info: ${e.message}`;
   } finally {
@@ -1183,6 +1189,7 @@ async function aiLabThisArtistInfo() {
     hintEl.textContent = "";
     aiLabRenderThisArtistResult(r);
     AiLabAssistantCache.thisartist = r;
+    if (typeof questMarkDone === "function") questMarkDone("counsel");
   } catch (e) {
     hintEl.textContent = `Couldn't get artist info: ${e.message}`;
   } finally {

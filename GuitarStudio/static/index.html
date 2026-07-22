@@ -220,6 +220,19 @@
   </div>
 
   <div id="inspector">
+    <!-- ui-review-v5-full.md §2.2/§4: with no track loaded, every panel
+         below is a fully-interactive but meaningless control (Speed
+         Trainer, Export) — this is where a new user actually needs
+         guidance instead. Quest Log replaces them entirely until a track
+         exists; #inspector-normal-panels (wrapping the pre-existing
+         panels below) and #quest-log-panel are toggled opposite each
+         other by showState() in app.js. -->
+    <div id="quest-log-panel" class="show">
+      <div id="quest-log-head"><h3>Quest Log</h3><span class="hint" id="quest-log-count"></span></div>
+      <p class="hint">Each quest checks itself off as you complete it — reopen this any time from <b>Help</b>, even once a song is loaded.</p>
+      <div id="quest-log-list"></div>
+    </div>
+    <div id="inspector-normal-panels">
     <section id="analysis-panel">
       <h3>Track</h3>
       <p class="hint" id="pitch-hint"></p>
@@ -288,6 +301,7 @@
       <button id="run-export-btn" class="primary">Export</button>
       <div id="export-result"></div>
     </section>
+    </div>
   </div>
 
   <div id="playalong-overlay" class="screen-overlay">
@@ -1182,7 +1196,20 @@
         app folder for the full picture, including the honesty notes on
         exactly where each one's limits are.</p>
       <p class="hint">Press <kbd>?</kbd> any time for keyboard shortcuts.</p>
+      <button id="help-quest-log-btn">View Quest Log</button>
       <button id="help-close-btn" class="primary">Got it</button>
+    </div>
+  </div>
+
+  <!-- ui-review-v5-full.md §4: the Quest Log's home is the inspector on
+       first run (no track loaded), but it's re-openable any time from
+       Help — same renderQuestLog() output, just targeting this modal's
+       elements instead of the inspector's when open. -->
+  <div id="quest-log-overlay">
+    <div id="quest-log-modal">
+      <div id="quest-log-modal-head"><h2>Quest Log</h2><span class="hint" id="quest-log-modal-count"></span></div>
+      <div id="quest-log-modal-list"></div>
+      <button id="quest-log-modal-close-btn" class="primary">Close</button>
     </div>
   </div>
 
