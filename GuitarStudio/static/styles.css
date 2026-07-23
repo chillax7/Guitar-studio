@@ -602,7 +602,7 @@ button:disabled:hover { filter: none; }
 }
 #stale-banner.show { display: flex; }
 
-#empty-state, #loading-state, #no-stems-state, #separating-state {
+#empty-state, #loading-state, #no-stems-state, #stems-error-state, #separating-state {
   display: none;
   flex: 1;
   flex-direction: column;
@@ -611,9 +611,9 @@ button:disabled:hover { filter: none; }
   gap: 14px;
   color: var(--text-dim);
 }
-#empty-state.show, #loading-state.show, #no-stems-state.show, #separating-state.show { display: flex; }
+#empty-state.show, #loading-state.show, #no-stems-state.show, #stems-error-state.show, #separating-state.show { display: flex; }
 
-#no-stems-state .hint { font-size: 12px; max-width: 320px; text-align: center; }
+#no-stems-state .hint, #stems-error-state .hint { font-size: 12px; max-width: 320px; text-align: center; }
 
 .spinner {
   width: 28px; height: 28px;

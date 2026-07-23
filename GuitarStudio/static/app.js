@@ -5,8 +5,20 @@
 // ---------------------------------------------------------------------------
 
 const Api = {
+  // Real user report: "stems failed to fetch" — happening on the first
+  // track picked right after starting the app, even though the stems
+  // genuinely exist and load fine on a retry. fetch() itself throws a
+  // bare TypeError ("Failed to fetch"/"NetworkError...") with no HTTP
+  // response at all when the connection can't be made yet — a brief
+  // cold-start race between the page finishing its own load and the
+  // backend actually being ready to accept a request, not a real error
+  // about the data. GET is idempotent, so retrying a handful of times
+  // with a short backoff absorbs that race for free in the vast majority
+  // of cases; a genuine HTTP error (404, 500 — response.status IS set)
+  // is a real answer and must never be retried, only a fetch that threw
+  // before reaching a response at all.
   async get(path) {
-    return Api._handle(await fetch(path));
+    return Api._withRetry(() => fetch(path));
   },
   async post(path, body) {
     return Api._handle(await fetch(path, {
@@ -17,6 +29,16 @@ const Api = {
   },
   async postRaw(path, data) {
     return Api._handle(await fetch(path, { method: "POST", body: data }));
+  },
+  async _withRetry(doFetch, attempts = 3, delayMs = 400) {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await Api._handle(await doFetch());
+      } catch (e) {
+        if (e.status !== undefined || i === attempts - 1) throw e;
+        await new Promise((resolve) => setTimeout(resolve, delayMs * (i + 1)));
+      }
+    }
   },
   async _handle(response) {
     let json = {};
@@ -816,7 +838,7 @@ function saveProjectDebounced() {
 // ---------------------------------------------------------------------------
 
 function showState(name) {
-  for (const s of ["empty-state", "loading-state", "no-stems-state", "separating-state", "workspace"]) {
+  for (const s of ["empty-state", "loading-state", "no-stems-state", "stems-error-state", "separating-state", "workspace"]) {
     document.getElementById(s).classList.toggle("show", s === name);
   }
   document.getElementById("transport").classList.toggle("show", name === "workspace");
@@ -1551,7 +1573,20 @@ async function refreshStemsForCurrentModelAndTrack() {
     if (e.status === 404) {
       showNoStemsState();
     } else {
-      alert("Error loading stems: " + e.message);
+      // Api.get already retries a bare network failure a few times (see
+      // its own comment) — reaching here means either a real HTTP error
+      // (e.status set) or every retry was exhausted. A blocking alert()
+      // used to run here instead: real user report was that on the rare
+      // case this still fires (usually the very first track picked right
+      // after starting the app), no "loading" spinner was ever visible —
+      // alert() is synchronous and steals the next paint, so the
+      // loading-state's own render never got a chance to show before the
+      // dialog appeared. This state is a normal (non-blocking) part of
+      // #canvas instead, with its own Retry button, same idiom as
+      // no-stems-state above.
+      document.getElementById("stems-error-hint").textContent =
+        "Couldn't load this track's stems: " + e.message;
+      showState("stems-error-state");
     }
   }
 }
@@ -3013,6 +3048,13 @@ function wireSeparateButton() {
   document.getElementById("separate-btn").addEventListener("click", () => runSeparate(true));
 }
 
+function wireStemsRetryButton() {
+  document.getElementById("stems-retry-btn").addEventListener("click", () => {
+    showState("loading-state");
+    refreshStemsForCurrentModelAndTrack();
+  });
+}
+
 function wireStaleBanner() {
   document.getElementById("reseparate-btn").addEventListener("click", () => runSeparate(true));
   document.getElementById("dismiss-stale-btn").addEventListener("click", () => {
@@ -3727,6 +3769,7 @@ async function init() {
   wireSplitPanel();
   wireExportPanel();
   wireSeparateButton();
+  wireStemsRetryButton();
   wireStaleBanner();
   wireImport();
   wireCustomStemDrop();

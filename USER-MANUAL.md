@@ -1535,6 +1535,7 @@ current song has attached.
 | Symptom | Likely cause |
 |---|---|
 | "Separation failed" | Check the server's terminal/log for the actual error — usually a corrupt input file or a model download that got interrupted (needs network the first time a model is used). A "failed to fetch" message specifically may be a dropped connection on a long job, not a real failure — see §3.5. |
+| "Couldn't load this track's stems" right after picking the first track after starting the app | A brief cold-start race between the page and the backend — the app now retries automatically a few times before showing this, so it should be rare; click **Retry** (the stems genuinely do exist) — if it keeps failing, check the server's terminal for a real error. |
 | An imported file does nothing and shows no error | Fixed in this build — a file that can't actually be read (e.g. a cloud-storage placeholder that isn't downloaded yet) is now reported clearly instead of silently doing nothing. If you still see this, please report it. |
 | MP3 export fails | `ffmpeg` isn't installed — `brew install ffmpeg`. |
 | No sound in Play Along | Check the input device is actually enabled (not just selected), and that the gate threshold isn't cutting off a quiet signal. |

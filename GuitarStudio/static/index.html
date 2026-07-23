@@ -172,6 +172,17 @@
       <p class="hint">No stems yet for this model. Click Separate above to run it.</p>
     </div>
 
+    <!-- Real user report: on the first track picked right after starting
+         the app, "stems failed to fetch" — a bare network-level failure
+         (Api.get already retries a few times before giving up here), even
+         though the stems genuinely exist. Non-blocking (unlike the alert()
+         this replaced) with its own Retry button, same idiom as
+         no-stems-state above. -->
+    <div id="stems-error-state">
+      <p class="hint" id="stems-error-hint"></p>
+      <button id="stems-retry-btn" class="primary">Retry</button>
+    </div>
+
     <div id="separating-state">
       <div class="spinner"></div>
       <p>Separating — this can take a minute or two depending on song length.</p>

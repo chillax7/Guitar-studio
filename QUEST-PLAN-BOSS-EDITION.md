@@ -102,6 +102,15 @@ machine that tears it into stems.*
   fetch" on a long job checks real job status before reporting failure —
   a job that actually finished server-side loads its stems with no error
   shown at all.
+- [ ] **Cold-start stems fetch (real user report — usually the first track
+  picked right after starting the app, stems failed to fetch even though
+  they genuinely exist):** a bare network-level failure (not a real 404/
+  500) is retried automatically a couple of times before giving up — most
+  of the time this now resolves silently, no error visible at all. If it
+  still fails, a non-blocking **"Couldn't load this track's stems"**
+  message with a **Retry** button appears in the workspace instead of a
+  modal alert; clicking Retry on a track that genuinely has stems
+  recovers cleanly.
 - [ ] **Stem-pack ZIP import:** a real multitrack zip (or Finder-compressed
   folder with `__MACOSX`/`._*` junk in it) imports every real audio file as
   its own stem lane named exactly as the file was, ignores the junk
