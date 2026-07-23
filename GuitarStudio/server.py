@@ -1689,9 +1689,20 @@ def _call_anthropic(prompt: str, api_key: str) -> str:
 
 def _call_google(prompt: str, api_key: str) -> str:
     model = LICK_PROVIDERS["google"]["model"]
+    # Real user report: replies were truncated to a single sentence.
+    # gemini-flash-latest is a "thinking" model that spends part of
+    # maxOutputTokens on invisible reasoning tokens before writing the
+    # visible answer — one sample burned 709 of a 900 token budget on
+    # thinking, leaving the actual reply to hit MAX_TOKENS after a
+    # sentence or two. thinkingConfig.thinkingBudget=0 is rejected by
+    # this model (400 INVALID_ARGUMENT), so use the minimum allowed
+    # budget of 1 instead, plus a larger ceiling as headroom.
     body = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"maxOutputTokens": 900},
+        "generationConfig": {
+            "maxOutputTokens": 2048,
+            "thinkingConfig": {"thinkingBudget": 1},
+        },
     }).encode("utf-8")
     req = Request(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
