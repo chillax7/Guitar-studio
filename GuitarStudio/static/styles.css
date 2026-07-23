@@ -7,21 +7,16 @@
   --text-dim: #9aa0b0;
   --accent: #5b8cff;
   --accent-dim: #33395a;
-  /* Second accent, reserved for "analysis" surfaces (chord ribbon, key/
-     scale highlighting) specifically — a real purple, not a tint of
-     --accent, so those surfaces read as a genuinely distinct color
-     rather than "the same blue again." (Studio's accent-2 used to just
-     equal --accent, which meant the chord ribbon here read exactly as
-     blue as everything else — a real report, "still need to fix the
-     blue colour on the chord ribbon, it's across all 3 themes now,"
-     after the other two themes' own accent-2 turned out too close to
-     blue-violet to read as clearly non-blue either — see Molten's and
-     Bright Spark's own blocks below for the same fix.) */
-  --accent-2: #a855f7;
-  --accent-2-dim: #362a52;
   /* Stem waveform bars — canvas-drawn, so drawWaveform (app.js) resolves
      this at draw time rather than CSS applying it directly. */
   --waveform: #5b8cff;
+  /* Second accent, used for "analysis" surfaces (chord ribbon, key/scale
+     highlighting): real user feedback was that the ribbon's color should
+     match the waveform color used for the stems, so it reads as "this
+     analysis belongs to this audio" rather than an arbitrary UI accent.
+     Deliberately == --waveform/--accent-dim, not a value of its own. */
+  --accent-2: var(--waveform);
+  --accent-2-dim: var(--accent-dim);
   --warn: #d9a441;
   --danger: #e0605a;
   --success: #4caf6a;
@@ -54,13 +49,12 @@
   --text-dim: #a89f9b;
   --accent: #ff7a3d;
   --accent-dim: #4a2e1c;
-  /* Shifted from the original #8a63ff toward magenta (hue ~292 rather
-     than ~257) — that first value was blue-violet enough to still read
-     as plain blue against this theme's near-black background, which was
-     the whole point of splitting it from --accent in the first place. */
-  --accent-2: #c026d3;
-  --accent-2-dim: #3a1a42;
   --waveform: #ff8a4d; /* ember bars — a touch lighter than --accent for canvas contrast */
+  /* Real user feedback: the chord ribbon's color should match the
+     waveform color used for the stems, not an unrelated accent. See the
+     base :root block's --accent-2 comment for the full history. */
+  --accent-2: var(--waveform);
+  --accent-2-dim: var(--accent-dim);
   --warn: #e8a13c;
   --danger: #e0605a;
   --success: #59b878;
@@ -104,17 +98,12 @@
 :root[data-theme="molten"] .pa-chain-icon.pa-chain-open {
   box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent);
 }
-/* Chord/analysis surfaces (chord ribbon, fretboard root dot) now get
+/* Chord/analysis surfaces (chord ribbon, fretboard root dot) get
    --accent-2 straight from the base rules further down (.chord-chip,
    .ailab-chord-chip, #ailab-legend-root, .ailab-dot-root) — every theme
-   defines its own real --accent-2 value above, so no per-theme override
-   is needed here anymore. That used to be Studio's --accent-2 == --accent
-   (by design, "Studio doesn't split them") plus Molten/Bright Spark
-   overrides for just this one purpose; both a real report that the
-   ribbon "still reads blue across all 3 themes" (Studio was identical to
-   its own blue accent; Molten's split color was itself too blue-violet
-   to read as distinct) and this simplification came from the same fix —
-   see each theme's --accent-2 comment above. */
+   points --accent-2 at its own --waveform value above, so no per-theme
+   override is needed here. See the base :root block's --accent-2
+   comment for why (real user feedback: match the stem waveform color). */
 :root[data-theme="molten"] #quest-log-count, :root[data-theme="molten"] #quest-log-modal-count,
 :root[data-theme="brightspark"] #quest-log-count, :root[data-theme="brightspark"] #quest-log-modal-count { color: var(--accent); }
 :root[data-theme="molten"] .quest-row.done .quest-rune, :root[data-theme="brightspark"] .quest-row.done .quest-rune { background: var(--success); border-color: var(--success); }
@@ -138,13 +127,12 @@
   --text-dim: #6b6455;
   --accent: #e08e00;
   --accent-dim: #fce8bd;
-  /* Same magenta-purple family as Molten/Studio's own accent-2 (below/
-     above), not the more blue-violet #7c3aed this started as — keeps the
-     "arcane" analysis-surface color a consistent, unambiguously-not-blue
-     identity across all three themes rather than each doing its own hue. */
-  --accent-2: #9333ea;
-  --accent-2-dim: #f3e8fd;
   --waveform: #e08e00;
+  /* Real user feedback: the chord ribbon's color should match the
+     waveform color used for the stems. See the base :root block's
+     --accent-2 comment for the full history. */
+  --accent-2: var(--waveform);
+  --accent-2-dim: var(--accent-dim);
   --warn: #b45309;
   --danger: #c9302c;
   --success: #157a3d;
