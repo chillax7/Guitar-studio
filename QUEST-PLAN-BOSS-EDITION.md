@@ -345,6 +345,14 @@ two different songs.
   clear progression, the key/root roughly agrees with what the chord lane
   is showing; a riff-heavy song you know is genuinely minor reads as
   minor, not falsely major.
+- [ ] **Manual key correction (real user report — "Afterlife" by Avenged
+  Sevenfold detected as A# major, actually D minor by ear):** below the
+  key hint, a root-note select + major/minor select + **Set** button
+  correct a wrong reading directly (no auto-fix formula exists for key
+  the way BPM's ½×/2× exists for tempo octave errors); the hint switches
+  to "manually corrected" and a **Reset** button appears to go back to
+  what was actually detected; the correction sticks on reselecting that
+  song later, and doesn't leak onto a different song.
 - [ ] **Export:** open the Export section (always visible once stems are
   loaded, no button to reveal it). Set a custom output name, try both WAV
   and MP3, toggle Normalize loudness off/on, adjust Target LUFS and Max

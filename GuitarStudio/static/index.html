@@ -261,6 +261,19 @@
       <p class="hint" id="pitch-hint"></p>
       <button id="pitch-apply-btn" style="display:none">Apply to Tune</button>
       <p class="hint" id="key-hint"></p>
+      <!-- Real user report: key detection is a heuristic and can get a real
+           song wrong (no simple ×2/½-style auto-fix like BPM's octave-error
+           escape hatch exists for key) — pick the real key/mode by ear and
+           click Set; Reset goes back to whatever was actually detected. -->
+      <div class="row" id="key-correct-row">
+        <select id="key-correct-root" title="Root note"></select>
+        <select id="key-correct-mode" title="Mode">
+          <option value="major">major</option>
+          <option value="minor">minor</option>
+        </select>
+        <button id="key-correct-set-btn" title="Manually correct the detected key">Set</button>
+        <button id="key-correct-reset-btn" style="display:none" title="Go back to the detected key">Reset</button>
+      </div>
       <p class="hint" id="chord-hint"></p>
     </section>
 

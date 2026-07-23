@@ -69,6 +69,17 @@ const State = {
   rigPresetCycleKeyBackward: null, // null = use the app-wide default ("ArrowLeft") — see playalong.js
   rigPresetApplied: false, // has paApplyAttachedRigPreset already run for the current track
   bpmOverride: null, // user-corrected BPM (×2/½ octave-error fix), overrides State.analysis.bpm once loaded
+  // Real user report: detect_key (backing_track.py) is a global chroma/
+  // profile-correlation heuristic — it can favor a related key (e.g. a
+  // bVII chord borrowed often enough in a D minor song can tip the
+  // correlation toward its relative-ish major, Bb/A#) over the one a
+  // guitarist would actually call the song. No auto-fix for this the way
+  // BPM's ×2/½ exists (there's no simple formula from "wrong key" to
+  // "right key"), so this is a direct manual override instead — see
+  // correctKey()/resetKeyCorrection(). Kept separate from
+  // State.analysis.key (which stays the raw detected value) rather than
+  // overwriting it, so "reset" has something real to go back to.
+  keyOverride: null,
 };
 
 const STEM_ORDER = ["vocals", "drums", "bass", "guitar", "piano", "other"];
@@ -771,6 +782,7 @@ function migrateProjectV2(raw) {
     rigPresetCycleKeyForward: null,
     rigPresetCycleKeyBackward: null,
     bpmOverride: null, // no tempo correction recorded on a v1 project
+    keyOverride: null, // no key correction recorded on a v1 project
   };
 }
 
@@ -792,6 +804,7 @@ function saveProjectDebounced() {
         rigPresetCycleKeyForward: State.rigPresetCycleKeyForward || null,
         rigPresetCycleKeyBackward: State.rigPresetCycleKeyBackward || null,
         bpmOverride: State.bpmOverride || null,
+        keyOverride: State.keyOverride || null,
         guitarStemOverride: State.guitarStemOverride || null,
       },
     }).catch(() => { /* best-effort */ });
@@ -1515,6 +1528,7 @@ async function selectTrack(name) {
   State.rigPresetCycleKeyBackward = (project && project.rigPresetCycleKeyBackward) || null;
   State.rigPresetApplied = false;
   State.bpmOverride = (project && project.bpmOverride) || null;
+  State.keyOverride = (project && project.keyOverride) || null;
   // GP-16: which stem (by name) stands in for "the guitar" on an imported
   // stem pack, where a real model-produced "guitar" stem never exists —
   // see resolvedGuitarStemName()'s own comment for what this unlocks.
@@ -2542,6 +2556,51 @@ function wireBpmCorrection() {
   document.getElementById("bpm-double-btn").addEventListener("click", () => correctBpm(2));
 }
 
+// Real user report: detect_key got a real song wrong (heard as A#, actually
+// D minor by ear) — unlike a BPM octave error, there's no simple formula
+// from "wrong key" to "right key" to auto-correct, so this is a direct
+// manual override instead. Deliberately doesn't touch State.analysis.key
+// (the raw detected value) — updateKeyHint() prefers State.keyOverride
+// when set, so "Reset" always has the original detection to go back to.
+function correctKey(root, mode) {
+  State.keyOverride = { key: root, mode };
+  updateKeyHint();
+  refreshKeyCorrectionControls();
+  saveProjectDebounced();
+}
+
+function resetKeyCorrection() {
+  State.keyOverride = null;
+  updateKeyHint();
+  refreshKeyCorrectionControls();
+  saveProjectDebounced();
+}
+
+// Keeps the two selects showing whatever key is actually in effect right
+// now (override if set, else the raw detection) and the Reset button only
+// visible once there's actually something to reset.
+function refreshKeyCorrectionControls() {
+  const key = State.keyOverride || (State.analysis || {}).key;
+  const rootSel = document.getElementById("key-correct-root");
+  const modeSel = document.getElementById("key-correct-mode");
+  if (!rootSel) return;
+  rootSel.disabled = modeSel.disabled = !key;
+  if (key) {
+    rootSel.value = key.key;
+    modeSel.value = key.mode;
+  }
+  document.getElementById("key-correct-reset-btn").style.display = State.keyOverride ? "inline-block" : "none";
+}
+
+function wireKeyCorrection() {
+  const rootSel = document.getElementById("key-correct-root");
+  rootSel.innerHTML = KEY_NOTE_NAMES.map((n) => `<option value="${n}">${n}</option>`).join("");
+  document.getElementById("key-correct-set-btn").addEventListener("click", () => {
+    correctKey(rootSel.value, document.getElementById("key-correct-mode").value);
+  });
+  document.getElementById("key-correct-reset-btn").addEventListener("click", resetKeyCorrection);
+}
+
 function updateBpmDisplay() {
   const a = State.analysis || {};
   if (!a.bpm) { setTransportText("bpm-display", "—"); return; }
@@ -2642,9 +2701,11 @@ function transposedKeyName(keyName, semitones) {
 // dragging Tune (wireSpeedTune), so it never goes stale mid-drag.
 function updateKeyHint() {
   const el = document.getElementById("key-hint");
-  const key = (State.analysis || {}).key;
+  const key = State.keyOverride || (State.analysis || {}).key;
   if (!key) { el.textContent = ""; return; }
-  const base = `Detected key: ${key.key} ${key.mode} (confidence ${key.confidence.toFixed(2)} — a heuristic, confirm by ear).`;
+  const base = State.keyOverride
+    ? `Key: ${key.key} ${key.mode} (manually corrected).`
+    : `Detected key: ${key.key} ${key.mode} (confidence ${key.confidence.toFixed(2)} — a heuristic, confirm by ear).`;
   const tuneEl = transportEls("tune-slider")[0];
   const cents = tuneEl ? parseFloat(tuneEl.value) : 0;
   const semitones = Math.trunc(cents / 100);
@@ -2743,6 +2804,7 @@ function renderInspector() {
     transportEls("tune-slider")[0].dispatchEvent(new Event("input"));
   };
   updateKeyHint();
+  refreshKeyCorrectionControls();
 
   const chordHintEl = document.getElementById("chord-hint");
   chordHintEl.textContent = (a.chords && a.chords.length)
@@ -3672,6 +3734,7 @@ async function init() {
   wireSpeedTune();
   wireSpeedTrainer();
   wireBpmCorrection();
+  wireKeyCorrection();
   wireVolumeSlider();
   wireKeyboardShortcuts();
   wireHelp();

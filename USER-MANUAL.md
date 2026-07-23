@@ -455,6 +455,16 @@ bar** below it has the playback essentials:
   all) can't tell a maj/min template apart on note content alone, so
   trusting one chord's label there was silently biasing riff-heavy rock
   and metal songs toward false "major" reads.
+- **Correcting a wrong key** — key detection is still just a heuristic,
+  and it can occasionally favor a related key over the one you'd actually
+  call the song by ear (a song that leans on a borrowed chord can tip a
+  global chroma match toward a neighboring key). Unlike the BPM ½×/2×
+  fix, there's no simple formula from "wrong key" to "right key", so
+  below the key reading there's a **root note + major/minor** picker and
+  a **Set** button — pick the real key and click Set. A **Reset** button
+  appears once you've done this, in case you want to go back to whatever
+  was actually detected. The correction is remembered for that song from
+  then on.
 - **Volume** — an overall listening-level slider for the backing track.
 
 And the two toolbar click features:
