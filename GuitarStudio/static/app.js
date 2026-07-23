@@ -3331,13 +3331,19 @@ function toggleShortcutsLegend() {
 // ---------------------------------------------------------------------------
 const QUEST_FLAGS_KEY = "gs_quest_flags";
 const QUEST_DEFS = [
-  { key: "summon", name: "Summon a song",
+  // These four all happen on the Mixer itself, so `screen` used to be
+  // left unset — but questJump() only clicks def.screen if it's truthy,
+  // meaning "go" was a total no-op for these four whenever clicked from
+  // any other screen (real user report: "go buttons don't do anything").
+  // Explicit "mixer-open-btn" here fixes that; harmless if you're on the
+  // Mixer already (clicking its own already-active nav button).
+  { key: "summon", name: "Summon a song", screen: "mixer-open-btn",
     desc: "Drop an audio file or stem pack — or rip one straight off the system audio." },
-  { key: "forge", name: "Forge the stems",
+  { key: "forge", name: "Forge the stems", screen: "mixer-open-btn",
     desc: "Pick a model, hit Separate. Drums, bass, vocals, guitar — cleaved apart." },
-  { key: "carve", name: "Carve the mix",
+  { key: "carve", name: "Carve the mix", screen: "mixer-open-btn",
     desc: "Mute or fade the original guitar. That space is yours now." },
-  { key: "battleground", name: "Mark your battleground",
+  { key: "battleground", name: "Mark your battleground", screen: "mixer-open-btn",
     desc: "Loop the riff or solo you're here to conquer." },
   { key: "awaken", name: "Awaken the rig", screen: "tonelab-open-btn",
     desc: "Tone Lab: enable your guitar input, choose an amp." },
