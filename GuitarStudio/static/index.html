@@ -423,6 +423,22 @@
             <button id="riff-save-btn" class="primary">🎸 Save that!</button>
             <p class="hint" id="riff-status"></p>
           </section>
+
+          <!-- GP-06 (looper-pedal-spec.md): real-time loop recorder/
+               overdubber. Same top-strip family as Riff Capture — this taps
+               and plays back in parallel, it doesn't process the signal
+               in line the way a pedal-chain card does. -->
+          <section class="pa-card pa-top-card">
+            <h3>Looper</h3>
+            <button id="looper-primary-btn" class="primary">● Record</button>
+            <div class="row">
+              <button id="looper-stop-btn" style="display:none">Stop</button>
+              <button id="looper-undo-btn" style="display:none">Undo</button>
+              <button id="looper-clear-btn" style="display:none">Clear</button>
+            </div>
+            <p class="hint" id="looper-length-hint"></p>
+            <p class="hint" id="looper-status"></p>
+          </section>
         </div>
 
         <!-- Record + Takes: always visible below the rig (a Perform/Record

@@ -672,6 +672,21 @@ Takes.*
   ("riff 01", …); saving doesn't interrupt the rolling capture (play again
   right after, save again, confirms a second distinct riff file); the
   rolling capture starts whether you opened Tone Lab or Play Along first.
+- [ ] **Looper (GP-06, first build):** ● Record a rhythm part, ■ Stop &
+  Loop — it plays back continuously. ● Overdub a second layer, ■ Stop
+  Overdub — both layers now audibly play together. **Undo** removes just
+  that last layer (back to one-layer sound); pressing Undo again right
+  after does nothing (one level only). **Stop** pauses without losing the
+  loop — the main button now reads **● Play**, resuming from the top
+  rather than re-recording. **Clear** wipes it back to empty. With a song
+  loaded and a detected BPM, the length hint reads "locked to N bars
+  (BPM)" and the loop is actually that many bars long, not your exact
+  recorded length; with no song loaded, it free-runs and says so. Record
+  a Take (or Riff Capture) while a loop is playing — confirm the loop is
+  audible in the result, not just your live guitar. Stop it, reopen the
+  song later — the most recent saved loop reloads paused/ready (not
+  auto-playing). First build — report anything sonically off (seam
+  clicks, drift on a long loop), not just crashes.
 
 **Loot:** at least one auto-calibrated A/V offset and one saved riff
 capture, both surviving into later bosses (Recording, Boss 11).

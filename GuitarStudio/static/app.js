@@ -1559,6 +1559,7 @@ async function selectTrack(name) {
   State.rigPresetCycleKeyForward = (project && project.rigPresetCycleKeyForward) || null;
   State.rigPresetCycleKeyBackward = (project && project.rigPresetCycleKeyBackward) || null;
   State.rigPresetApplied = false;
+  State.looperLoaded = false; // GP-06 — same "run once per track, not once per Play Along open" guard as rigPresetApplied above
   State.bpmOverride = (project && project.bpmOverride) || null;
   State.keyOverride = (project && project.keyOverride) || null;
   // GP-16: which stem (by name) stands in for "the guitar" on an imported

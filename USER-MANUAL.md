@@ -1107,6 +1107,54 @@ separately, "riff 01", "riff 02", …) — no need to have hit Record in
 advance. Saving doesn't interrupt the rolling capture; it keeps going
 right after.
 
+### 5.3a Looper — record, overdub, and play over your own loop
+
+The **Looper** card (Play Along's top strip, next to Riff Capture) is a
+real-time loop recorder/overdubber — lay down a rhythm part, have it loop
+back continuously, and play or solo over it, the same workflow a
+standalone looper pedal offers. Unlike a real pedal, it uses this app's
+own detected tempo when one's available: with a song loaded and a BPM
+detected, the loop length locks to the nearest whole bar (assuming 4/4)
+rather than whatever exact length you happened to record; with no song
+loaded (or no BPM detected), it free-runs at exactly the length between
+your two button presses, same as hardware.
+
+One primary button does almost everything, cycling through the same
+sequence a real pedal's single footswitch would:
+
+- **● Record** (nothing recorded yet) → starts recording.
+- **■ Stop & Loop** (recording) → stops, sets the loop length, starts
+  looping it back.
+- **● Overdub** (looping) → starts recording a new layer on top of the
+  running loop.
+- **■ Stop Overdub** (overdubbing) → commits that layer into the loop,
+  back to looping.
+
+Three secondary buttons appear once a loop exists: **Stop** pauses
+playback without discarding the loop (the primary button reads **● Play**
+to resume, from the top, not re-record); **Undo** removes only the most
+recent overdub layer (one level — undoing twice in a row does nothing the
+second time, same as a basic hardware looper); **Clear** wipes the loop
+entirely.
+
+The looper only ever records *your* processed guitar signal (post-amp,
+post-pedals) — never the backing track — so it behaves identically
+whether the backing track is playing, paused, or not loaded at all.
+Recording a Take or a Riff Capture while a loop is playing correctly
+captures the loop as part of the mix, the same as it would capture any
+other sound coming out of your speakers.
+
+Clicking **Stop** auto-saves the loop as a WAV alongside your takes and
+riffs (numbered separately, "loop 01", "loop 02", …) — reopening the song
+later reloads the most recent one automatically, paused and ready
+(pressing the button resumes it — it never starts playing on its own).
+
+**First build note:** this is a brand-new feature — everything above was
+verified with synthetic test signals, but real-world use (loop lengths
+much longer than a few bars, very long practice sessions, etc.) hasn't
+been extensively exercised yet. If something behaves oddly, that's
+genuinely useful to report.
+
 ### 5.4 A/V sync calibration
 
 Consumer webcams have a real pipeline delay (commonly 50–200ms) — video
@@ -1617,7 +1665,7 @@ input/                          source songs you've imported
 separated/<model>/<hash>/       cached stems (content-hash keyed)
 separated/_custom/<hash>/       your own dropped-in stems (§3.6a) — one per song, shared across every model
 output/<song>/                  exported mixes + a copy of every stem
-output/<song>/recordings/       takes (video + audio-only) and saved riffs
+output/<song>/recordings/       takes (video + audio-only), saved riffs, and saved loops
 GuitarStudio/models/nam/        .nam amp captures (subfolders OK)
 GuitarStudio/models/ir/         cabinet impulse responses (subfolders OK)
 GuitarStudio/projects/          autosaved per-song mix state, playlists, practice log

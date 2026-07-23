@@ -1117,6 +1117,36 @@ def next_riff_number(rec_dir: Path) -> int:
     return max_riff + 1
 
 
+# GP-06 (looper-pedal-spec.md §5): same "own regex, own numbering sequence"
+# idiom as riffs/dry takes — a fourth, independent counter so loop saves
+# never collide with take/riff/dry numbering. Each Stop while a loop exists
+# saves a new numbered file rather than overwriting (same append-only
+# convention every other recording type in this app already follows);
+# reopening a song loads whichever loop file has the HIGHEST number, i.e.
+# the most recent one.
+LOOP_RE = re.compile(r"loop (\d+)", re.IGNORECASE)
+
+
+def next_loop_number(rec_dir: Path) -> int:
+    max_loop = 0
+    if rec_dir.exists():
+        for f in rec_dir.iterdir():
+            m = LOOP_RE.search(f.stem)
+            if m:
+                max_loop = max(max_loop, int(m.group(1)))
+    return max_loop + 1
+
+
+def latest_loop_file(rec_dir: Path) -> Path | None:
+    best_n, best_f = 0, None
+    if rec_dir.exists():
+        for f in rec_dir.iterdir():
+            m = LOOP_RE.search(f.stem)
+            if m and int(m.group(1)) > best_n:
+                best_n, best_f = int(m.group(1)), f
+    return best_f
+
+
 # V5-B1: a regular take/riff records the backing track + guitar together
 # (Recorder.recordBus in recorder.js — deliberate, so a take is actually
 # listenable/watchable as a normal performance). That's exactly wrong input
@@ -1149,8 +1179,8 @@ def svc_recording_save(track: str, ext: str, data: bytes, prefix: str = "take") 
     # riffs never go through MediaRecorder at all, see riff-capture-processor.js).
     if ext not in ("mp4", "webm", "m4a", "wav"):
         raise ApiError(400, f"Unsupported extension '{ext}' — use mp4, webm, m4a, or wav")
-    if prefix not in ("take", "riff", "dry"):
-        raise ApiError(400, f"Unsupported prefix '{prefix}' — use take, riff, or dry")
+    if prefix not in ("take", "riff", "dry", "loop"):
+        raise ApiError(400, f"Unsupported prefix '{prefix}' — use take, riff, dry, or loop")
     if not data:
         raise ApiError(400, "Empty upload")
     track_name = safe_name(track) if track else "_untracked"
@@ -1160,6 +1190,8 @@ def svc_recording_save(track: str, ext: str, data: bytes, prefix: str = "take") 
         n = next_riff_number(rec_dir)
     elif prefix == "dry":
         n = next_dry_number(rec_dir)
+    elif prefix == "loop":
+        n = next_loop_number(rec_dir)
     else:
         n = next_take_number(rec_dir)
     filename = f"{track_name} - {prefix} {n:02d}.{ext}"

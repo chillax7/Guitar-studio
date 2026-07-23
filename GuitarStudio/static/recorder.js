@@ -70,7 +70,13 @@ function ensureRecordBus() {
   ensureCtx();
   if (!Recorder.recordBus) Recorder.recordBus = Audio.ctx.createGain();
   Audio.analyser.connect(Recorder.recordBus);
-  if (typeof PA !== "undefined" && PA.outputMute) PA.outputMute.connect(Recorder.recordBus);
+  // GP-06 (looper-pedal-spec.md §2): tap PA.loopSum, one node downstream of
+  // PA.outputMute — loopSum is where the looper's own playback feeds back
+  // in, so a Take or Riff Capture recorded while a loop is running actually
+  // contains "backing track + your loop + your live playing," not just the
+  // live playing. loopSum is a plain pass-through when the looper's never
+  // been used, so this is a no-op change for anyone who never touches it.
+  if (typeof PA !== "undefined" && PA.loopSum) PA.loopSum.connect(Recorder.recordBus);
 }
 
 function ensureRecordDest() {

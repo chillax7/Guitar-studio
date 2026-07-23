@@ -52,6 +52,12 @@ const PA = {
   midiAccess: null, // GP-11: Web MIDI access object, once granted
   midiInput: null, // the currently selected MIDIInput, if any
   midiLearnTarget: null, // "forward"|"backward"|null — set while a Learn… button is armed
+  loopSum: null, // GP-06 (looper-pedal-spec.md §2): sits between outputMute and outAnal so a Take/Riff Capture recorded while the loop plays actually contains it
+  looperNode: null,
+  looperState: "idle", // "idle" | "recording" | "playing" | "overdubbing" | "stopped" — mirrors the worklet's own state, kept here so the UI can render without a round trip
+  looperLengthFrames: 0,
+  looperBars: null, // null = free-running; a whole number = beat-grid-locked to that many bars
+  looperBpm: null, // the BPM the lock was computed against, for the length-hint display
 };
 
 // ---------------------------------------------------------------------------
@@ -498,7 +504,15 @@ async function ensurePAGraph() {
   PA.outputMute = Audio.ctx.createGain();
   PA.outAnal = Audio.ctx.createAnalyser();
   PA.outAnal.fftSize = 1024;
-  PA.outputGain.connect(PA.outputMute).connect(PA.outAnal).connect(Audio.ctx.destination);
+  // GP-06 (looper-pedal-spec.md §2): loopSum sits between outputMute and
+  // outAnal specifically so the looper's own playback can feed back in
+  // HERE — recorder.js's ensureRecordBus (and Riff Capture, which taps the
+  // same bus) listen to loopSum now, not outputMute directly, so a Take or
+  // Riff Capture recorded while a loop is playing actually contains it
+  // instead of silently missing it. A no-op pass-through when the looper
+  // has never been used (nothing else ever connects into it).
+  PA.loopSum = Audio.ctx.createGain();
+  PA.outputGain.connect(PA.outputMute).connect(PA.loopSum).connect(PA.outAnal).connect(Audio.ctx.destination);
 
   // GP-03: each stage's fan-in nodes (what the PREVIOUS stage's output must
   // connect to) and its single fan-out node (what feeds the NEXT stage).
@@ -1911,6 +1925,8 @@ async function paEnsureRigSessionReady() {
   // its absence) even when there's nothing to auto-apply.
   renderPresetChainList();
   await ensureRiffCapture(); // GP-07 — starts rolling as soon as the rig exists; no-op if already running
+  await ensureLooper(); // GP-06 — no-op if already running
+  await paLoadSavedLoop(); // no-op if already loaded for this track, or nothing saved
 }
 
 // Toggles which of the 4 persistent-screen nav buttons reads as "current,"
@@ -3359,6 +3375,223 @@ function wireRiffCapture() {
   document.getElementById("riff-save-btn").addEventListener("click", saveRiff);
 }
 
+// ---------------------------------------------------------------------------
+// GP-06 (looper-pedal-spec.md): real-time loop recorder/overdubber, top-strip
+// card next to Riff Capture. All the actual DSP state machine lives in
+// looper-processor.js — this is the main-thread control surface: setting up
+// the worklet + PA.loopSum tap once (§2 of the spec), driving it via
+// postMessage, and rendering its acks into the Looper card's UI.
+// ---------------------------------------------------------------------------
+
+async function ensureLooper() {
+  if (PA.looperNode) return;
+  ensureCtx();
+  await Audio.ctx.audioWorklet.addModule("looper-processor.js");
+  PA.looperNode = new AudioWorkletNode(Audio.ctx, "looper-processor", {
+    numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+  });
+  // Record tap: PA.outputMute (post-effects guitar, never the backing
+  // track). Playback return: PA.loopSum (§2 — one node downstream of
+  // outputMute, so a Take/Riff Capture recorded while the loop plays
+  // actually contains it).
+  PA.outputMute.connect(PA.looperNode);
+  PA.looperNode.connect(PA.loopSum);
+  PA.looperNode.port.onmessage = (e) => paHandleLooperMessage(e.data);
+}
+
+// One bar's length in frames at the song's detected BPM (assuming 4/4 —
+// same known limitation the Click already carries, USER-MANUAL.md §9) —
+// null (free-running) if no track/BPM. The worklet itself rounds the
+// actually-recorded length to the nearest whole multiple of this; see
+// looper-processor.js's own comment on why that rounding has to happen
+// worklet-side, not here.
+function paLooperBarLengthFrames() {
+  const bpm = State.analysis && State.analysis.bpm;
+  if (!bpm || !Audio.ctx) return null;
+  const secondsPerBar = (60 / bpm) * 4;
+  return Math.round(secondsPerBar * Audio.ctx.sampleRate);
+}
+
+function paLooperUpdateUI() {
+  const primaryBtn = document.getElementById("looper-primary-btn");
+  const stopBtn = document.getElementById("looper-stop-btn");
+  const undoBtn = document.getElementById("looper-undo-btn");
+  const clearBtn = document.getElementById("looper-clear-btn");
+  const hasLoop = ["playing", "overdubbing", "stopped"].includes(PA.looperState);
+  stopBtn.style.display = hasLoop ? "inline-block" : "none";
+  clearBtn.style.display = hasLoop ? "inline-block" : "none";
+  undoBtn.style.display = hasLoop ? "inline-block" : "none";
+
+  const labels = {
+    idle: "● Record",
+    recording: "■ Stop && Loop",
+    playing: "● Overdub",
+    overdubbing: "■ Stop Overdub",
+    stopped: "● Play",
+  };
+  primaryBtn.textContent = labels[PA.looperState] || "● Record";
+
+  const hintEl = document.getElementById("looper-length-hint");
+  if (!PA.looperLengthFrames) {
+    hintEl.textContent = "";
+  } else if (PA.looperBars) {
+    hintEl.textContent = `Loop length: locked to ${PA.looperBars} bar${PA.looperBars === 1 ? "" : "s"} (${Math.round(PA.looperBpm)} BPM).`;
+  } else {
+    hintEl.textContent = `Loop length: ${(PA.looperLengthFrames / Audio.ctx.sampleRate).toFixed(1)}s (free-running — no song loaded).`;
+  }
+}
+
+async function paLooperSaveToDisk() {
+  if (!PA.looperNode || !State.track) return;
+  const dump = await new Promise((resolve) => {
+    const onMsg = (e) => {
+      if (e.data.type !== "dumped") return;
+      PA.looperNode.port.removeEventListener("message", onMsg);
+      resolve(e.data);
+    };
+    PA.looperNode.port.addEventListener("message", onMsg);
+    PA.looperNode.port.postMessage({ type: "dump" });
+  });
+  if (!dump.left.length) return; // nothing committed yet — Stop from "recording" never reaches here anyway
+  const blob = wavEncode(dump.left, dump.right, dump.sampleRate);
+  try {
+    await fetch(`/api/recording/save?track=${encodeURIComponent(State.track)}&ext=wav&prefix=loop`, {
+      method: "POST", body: blob,
+    });
+  } catch (e) { /* best-effort — losing the auto-save shouldn't block Stop itself */ }
+}
+
+// Real user-facing state transitions — one function per primary-button
+// press, matching looper-pedal-spec.md §4's table exactly.
+function paLooperPrimaryPress() {
+  if (!PA.looperNode) return;
+  const barLengthFrames = paLooperBarLengthFrames();
+  if (PA.looperState === "idle") {
+    PA.looperNode.port.postMessage({ type: "start_record" });
+  } else if (PA.looperState === "recording") {
+    PA.looperBpm = State.analysis && State.analysis.bpm;
+    PA.looperNode.port.postMessage({ type: "stop_and_loop", barLengthFrames });
+  } else if (PA.looperState === "playing") {
+    PA.looperNode.port.postMessage({ type: "start_overdub" });
+  } else if (PA.looperState === "overdubbing") {
+    PA.looperNode.port.postMessage({ type: "stop_overdub" });
+  } else if (PA.looperState === "stopped") {
+    PA.looperNode.port.postMessage({ type: "resume" });
+  }
+}
+
+function paLooperStopPress() {
+  if (!PA.looperNode) return;
+  PA.looperNode.port.postMessage({ type: "stop" });
+}
+
+function paLooperUndoPress() {
+  if (!PA.looperNode) return;
+  PA.looperNode.port.postMessage({ type: "undo" });
+}
+
+function paLooperClearPress() {
+  if (!PA.looperNode) return;
+  PA.looperNode.port.postMessage({ type: "clear" });
+}
+
+function paHandleLooperMessage(data) {
+  const statusEl = document.getElementById("looper-status");
+  switch (data.type) {
+    case "started_recording":
+      PA.looperState = "recording";
+      statusEl.textContent = "Recording…";
+      break;
+    case "looped":
+      PA.looperState = "playing";
+      PA.looperLengthFrames = data.lengthFrames;
+      PA.looperBars = data.bars;
+      statusEl.textContent = "Looping.";
+      break;
+    case "overdub_started":
+      PA.looperState = "overdubbing";
+      statusEl.textContent = "Overdubbing…";
+      break;
+    case "overdub_stopped":
+      PA.looperState = "playing";
+      statusEl.textContent = "Overdub added.";
+      break;
+    case "stopped":
+      PA.looperState = "stopped";
+      statusEl.textContent = "Stopped — press Record/Overdub button to resume, or Clear to start over.";
+      paLooperSaveToDisk(); // §5: Stop (not Clear) is the save point
+      break;
+    case "resumed":
+      PA.looperState = "playing";
+      statusEl.textContent = "Looping.";
+      break;
+    case "undone":
+      statusEl.textContent = "Last overdub undone.";
+      break;
+    case "undo_failed":
+      statusEl.textContent = "Nothing to undo.";
+      break;
+    case "cleared":
+      PA.looperState = "idle";
+      PA.looperLengthFrames = 0;
+      PA.looperBars = null;
+      statusEl.textContent = "";
+      break;
+    case "loaded":
+      PA.looperState = "stopped";
+      statusEl.textContent = "Loaded a saved loop for this song — press the button to resume.";
+      break;
+  }
+  paLooperUpdateUI();
+}
+
+// §5: reopening a song with a previously-saved loop loads it paused/ready,
+// never auto-playing — same "explicit action to reactivate something
+// saved" posture the manual key-correction Reset button and rig-preset
+// auto-recall both already use. Same once-per-track guard as
+// paApplyAttachedRigPreset (State.rigPresetApplied) — State.looperLoaded.
+async function paLoadSavedLoop() {
+  if (State.looperLoaded || !State.track) return;
+  State.looperLoaded = true; // before the await — a second call while this is in flight shouldn't double-load
+  await ensureLooper();
+  let takes;
+  try {
+    const r = await Api.get(`/api/recordings?track=${encodeURIComponent(State.track)}`);
+    takes = r.takes;
+  } catch (e) { return; }
+  const loopFiles = takes
+    .map((t) => ({ ...t, num: (t.filename.match(/loop (\d+)/i) || [])[1] }))
+    .filter((t) => t.num != null)
+    .sort((a, b) => Number(b.num) - Number(a.num));
+  if (!loopFiles.length) return;
+  const latest = loopFiles[0];
+  try {
+    const buf = await (await fetch(`/api/output?path=${encodeURIComponent(latest.path)}`)).arrayBuffer();
+    const audioBuf = await Audio.ctx.decodeAudioData(buf);
+    // .slice() (not the raw AudioBuffer-owned array) so each channel has
+    // its own real, transferable ArrayBuffer — getChannelData's own buffer
+    // isn't guaranteed transferable/detachable the same way.
+    const left = audioBuf.getChannelData(0).slice();
+    const right = (audioBuf.numberOfChannels > 1 ? audioBuf.getChannelData(1) : audioBuf.getChannelData(0)).slice();
+    // Read .length and set PA state BEFORE posting — postMessage's transfer
+    // list detaches left.buffer/right.buffer SYNCHRONOUSLY the instant it's
+    // called (that's the whole point of a transfer — zero-copy), so reading
+    // left.length afterward would silently return 0 (a detached TypedArray
+    // reads as empty, not an error) instead of the real length.
+    PA.looperLengthFrames = left.length;
+    PA.looperBars = null; // a reloaded loop's original bar-count isn't tracked across a reload — shown as free-running length instead, still accurate
+    PA.looperNode.port.postMessage({ type: "load", left, right }, [left.buffer, right.buffer]);
+  } catch (e) { /* best-effort — a missing/corrupt saved loop shouldn't block opening the song */ }
+}
+
+function wireLooper() {
+  document.getElementById("looper-primary-btn").addEventListener("click", paLooperPrimaryPress);
+  document.getElementById("looper-stop-btn").addEventListener("click", paLooperStopPress);
+  document.getElementById("looper-undo-btn").addEventListener("click", paLooperUndoPress);
+  document.getElementById("looper-clear-btn").addEventListener("click", paLooperClearPress);
+  paLooperUpdateUI();
+}
+
 wirePAControls();
 renderChainIcons();
 paOpenChainCard("gate"); // panel is never empty on first load — Gate's bypass is the first thing shown
@@ -3371,6 +3604,7 @@ document.getElementById("pa-pedalboard").addEventListener("change", (e) => {
 });
 wireRigPresets();
 wireRiffCapture();
+wireLooper();
 // #pa-latency-hint lives on the Output card, which moved into Tone Lab
 // along with the rest of #pa-pedalboard — this listener moved with it.
 document.getElementById("tonelab-open-btn").addEventListener("click", paShowLatencyEstimate);

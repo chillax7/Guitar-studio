@@ -70,19 +70,31 @@ meant to play in v5.
 
 ## 1. The Looper pedal (GP-06) — L, needs its own design doc first
 
-**Update (2026-07-23): design spec done, build deliberately on hold.**
+**Update (2026-07-23): design spec done, M0 closed.**
 See [looper-pedal-spec.md](looper-pedal-spec.md) — it resolves every open
 question below (top-strip card placement, beat-grid-aware sync, the
 `PA.loopSum` tap that also fixes Takes/Riff Capture to include a running
 loop, the AudioWorkletProcessor design, the single-primary-button
-control scheme, and per-song persistence). M0 is closed. **M1 (the
-build) and M2 (MIDI) are both paused on purpose** — there's no MIDI
-footswitch on hand to validate M2's hookup against yet, and building M1
-first without that risks reworking the control surface once one's
-available (the spec's §6 already designs for a single-button footswitch
-specifically to minimize that risk, but "designed to minimize" isn't the
-same as "confirmed"). Resume with M1 whenever a footswitch is in hand —
-nothing about *what* to build is still open at that point.
+control scheme, and per-song persistence).
+
+**Update (2026-07-23, later same day): M1 built.** The Looper card,
+`looper-processor.js`, and the `PA.loopSum` architecture change all
+shipped, matching the spec exactly — see the commit for the full
+rundown. Verified end-to-end with real Web Audio DSP in a headless
+Chromium: quantization to the nearest bar at a known BPM (120 BPM, a
+~2.3s recording correctly locked to exactly 1 bar / 2.0s), overdub
+summation (a second injected tone measurably changed the committed
+buffer), one-level Undo (restored the pre-overdub buffer, a second Undo
+correctly no-opped), Stop → auto-save → full page reload → reopening the
+song correctly reloaded the saved loop paused/ready rather than
+auto-playing. One real bug caught and fixed during this verification: a
+classic transferable-object gotcha (postMessage's transfer list detaches
+the buffer synchronously, so reading `.length` on the transferred
+TypedArray *after* posting silently returned 0 instead of throwing —
+fixed by reading it before the post). M2 (MIDI) was already built
+ahead of schedule (§2's own update) once a footswitch got ordered, so
+this milestone's original "wait for M2" reasoning no longer applied by
+the time M1 started.
 
 **Why now, concretely:** every serious standalone pedalboard/rig app
 (the same competitive set release-v5-spec.md §11's market review
@@ -251,16 +263,19 @@ each milestone below, not deferred to a single pass at the very end
 
 - **M0 — Looper design spec (§1's gate). Done** — see
   [looper-pedal-spec.md](looper-pedal-spec.md).
-- **M1 — Looper build (§1) — still paused**, unchanged: the build itself
-  wasn't started even after M2 resumed (below) — a footswitch being
-  ordered de-risks M2 enough to build ahead of hardware arriving, but the
-  Looper's own build is real DSP work with no such shortcut available.
-  The release's anchor deliverable once resumed.
-- **M2 — MIDI hands-free control (§2). First build done, resumed ahead
-  of schedule** — a footswitch got ordered, so building against the
-  single-button design now (rather than waiting for it to arrive) was
-  the direct call. Verified with simulated MIDI messages; genuinely not
-  yet confirmed against real hardware — see §2's update.
+- **M1 — Looper build (§1). Built and verified** — the release's anchor
+  deliverable, shipped. See §1's second update for what was verified
+  (quantization, overdub, undo, Stop/save/reload) and the one real bug
+  caught along the way (a transferable-object length-read gotcha).
+  **Genuinely not yet exercised in real, sustained practice use** (long
+  sessions, many overdub cycles, unusual loop lengths) — a first build in
+  the same sense M2's MIDI mapping is.
+- **M2 — MIDI hands-free control (§2). First build done** — a footswitch
+  got ordered, so building against the single-button design ahead of
+  hardware arriving was the direct call, which in turn is what unblocked
+  M1 above starting immediately rather than staying paused. Verified with
+  simulated MIDI messages; genuinely not yet confirmed against real
+  hardware — see §2's update.
 - **M3 — Polish: measured latency + social export presets (§3's V6-B1/
   B2). Built and verified** — see §3's update.
 - **M4 — TONE3000 unblock-or-drop (§3's V6-B3). Research done, action
@@ -268,9 +283,9 @@ each milestone below, not deferred to a single pass at the very end
   everything else. (LAN mode is no longer part of this milestone — see
   §4, moved to backlog.)
 - **Ongoing, not a milestone — V6-P1 (§5):** a doc-currency check at the
-  close of M1, M2, and M3 each — done for M2/M3 alongside this update
-  (USER-MANUAL.md, TEST-PLAN.md, QUEST-PLAN-BOSS-EDITION.md all updated),
-  still owed once M1 (the Looper) actually ships.
+  close of M1, M2, and M3 each — done for all three now (USER-MANUAL.md,
+  TEST-PLAN.md, QUEST-PLAN-BOSS-EDITION.md all updated for the Looper
+  alongside this same pass).
 - **Stretch, time-permitting, not committed:** song-section detection
   (V5-S2) — first pull-forward candidate if any milestone above finishes
   early.
