@@ -627,12 +627,6 @@ function setAmpMode(mode) {
   document.getElementById("pa-amp-clean").style.display = mode === "clean" ? "block" : "none";
   document.getElementById("pa-amp-analog").style.display = mode === "analog" ? "block" : "none";
   document.getElementById("pa-amp-neural").style.display = mode === "neural" ? "block" : "none";
-  // Same reasoning as paOpenChainCard's own scroll-to-anchor comment:
-  // clean/analog/neural are quite different heights (Neural especially,
-  // with its model browser and Tweaker sliders), so there's no old
-  // scrollTop worth preserving — land on the mode-tabs row instead of an
-  // arbitrary clamped offset.
-  paScrollTonelabTo(document.getElementById("pa-amp-modes"));
 }
 
 // ---------------------------------------------------------------------------
@@ -2252,44 +2246,29 @@ function paRefreshChainIconStates() {
   });
 }
 
-// Scrolls #tonelab-overlay (its own nearest scrollable ancestor, a
-// position:fixed element) so el's top edge aligns with the overlay's own
-// top edge. Element.scrollIntoView({block:"start"}) turned out unreliable
-// here — measured empirically to leave the overlay's scrollTop completely
-// unchanged even though the target position was well within the
-// scrollable range, apparently specific to scrolling a position:fixed
-// ancestor. Computed manually via getBoundingClientRect deltas instead,
-// which sidesteps whatever scrollIntoView's internal ancestor-walk was
-// getting wrong.
-function paScrollTonelabTo(el) {
-  const overlay = document.getElementById("tonelab-overlay");
-  if (!overlay || !el) return;
-  const elTop = el.getBoundingClientRect().top;
-  const overlayTop = overlay.getBoundingClientRect().top;
-  overlay.scrollTop += (elTop - overlayTop);
-}
-
 // Click an icon -> its card becomes the one visible card below (the
 // user's confirmed interaction model: click opens the panel, and every
 // card's bypass control is already its first control, so it's the first
 // thing shown by default).
+//
+// Deliberately does NOT touch scroll position. An earlier version tried
+// to scroll the icon row back into view on every switch (reasoning: a
+// short Gate card vs. a tall Neural-mode Amp card changes the overlay's
+// content height a lot, so an old scrollTop might not even fit the new
+// content) — real feedback was that this was worse, not better: it
+// actively jumped the view on every click instead of leaving it alone.
+// Per that feedback, this now does nothing beyond swapping the card
+// itself; if the new content happens to be shorter than the current
+// scroll position, the browser clamps scrollTop on its own (unavoidable —
+// there's nothing to scroll to below content that doesn't exist), but it
+// never actively repositions you otherwise. Scrolling from here is
+// entirely the user's own call.
 function paOpenChainCard(id) {
   document.querySelectorAll("#pa-pedalboard .pa-rig-card").forEach((card) => {
     card.classList.toggle("pa-chain-open", card.dataset.cardId === id);
   });
   paOpenChainStage = id;
   paRefreshChainIconStates();
-  // Real user report ("clicking anything" jumps the scroll position):
-  // swapping which single card is visible changes #tonelab-overlay's
-  // total content height a lot (a short Gate card vs. a tall Neural-mode
-  // Amp card) — there's no old scrollTop to "preserve" once it no longer
-  // fits the new, shorter content; the browser just clamps it to
-  // whatever fits, landing on a semi-arbitrary offset into the new card
-  // rather than its top. Scrolling the icon strip to the top of the view
-  // instead gives a stable, predictable landing spot every time: you
-  // always see the tab row and the freshly opened card from its own top,
-  // regardless of how tall the previous card was.
-  paScrollTonelabTo(document.getElementById("pa-chain-icons"));
 }
 
 function renderChainIcons() {

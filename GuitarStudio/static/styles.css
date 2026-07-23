@@ -1503,10 +1503,10 @@ button:disabled:hover { filter: none; }
 .pa-tuner-mic-btn {
   position: absolute;
   bottom: 6%;
-  width: 34%;
+  width: 17%;
   aspect-ratio: 1;
-  min-width: 52px;
-  max-width: 84px;
+  min-width: 26px;
+  max-width: 42px;
   border-radius: 50%;
   background: var(--danger);
   border: none;
