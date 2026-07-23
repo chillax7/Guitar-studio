@@ -73,6 +73,28 @@ const State = {
 
 const STEM_ORDER = ["vocals", "drums", "bass", "guitar", "piano", "other"];
 
+// GP-16: an imported stem pack (§3.3) never produces a stem literally
+// named "guitar" — its stems keep whatever names the source files had.
+// Suggest a tone, Rate My Take, and Practice Tips all need one real WAV
+// file to treat as "the guitar" (they ask the server for a stem by exact
+// name), so without this they simply never appear for an imported pack,
+// even when one of its stems obviously IS the guitar part. Lets a user
+// designate any one stem as that reference — stored per-song
+// (State.guitarStemOverride, saveProjectDebounced) — without needing the
+// file itself renamed or reprocessed. A real model-produced "guitar"
+// stem always wins if one exists; the override only matters when there
+// isn't one (see the lane-guitar-btn wiring in renderLanes for where
+// it's set, and Guitar Split's own hasGuitar check in wireSplitPanel,
+// which deliberately does NOT use this — that feature specifically needs
+// the separator's own guitar stem, not an arbitrary stand-in).
+function resolvedGuitarStemName() {
+  if (State.stems.some((s) => s.name === "guitar" && !s.is_derived && !s.is_custom)) return "guitar";
+  if (State.guitarStemOverride && State.stems.some((s) => s.name === State.guitarStemOverride)) {
+    return State.guitarStemOverride;
+  }
+  return null;
+}
+
 function stemSortKey(name) {
   const base = name.replace(/_(center|sides)$/, "");
   const idx = STEM_ORDER.indexOf(base);
@@ -770,6 +792,7 @@ function saveProjectDebounced() {
         rigPresetCycleKeyForward: State.rigPresetCycleKeyForward || null,
         rigPresetCycleKeyBackward: State.rigPresetCycleKeyBackward || null,
         bpmOverride: State.bpmOverride || null,
+        guitarStemOverride: State.guitarStemOverride || null,
       },
     }).catch(() => { /* best-effort */ });
   }, 600);
@@ -1492,6 +1515,10 @@ async function selectTrack(name) {
   State.rigPresetCycleKeyBackward = (project && project.rigPresetCycleKeyBackward) || null;
   State.rigPresetApplied = false;
   State.bpmOverride = (project && project.bpmOverride) || null;
+  // GP-16: which stem (by name) stands in for "the guitar" on an imported
+  // stem pack, where a real model-produced "guitar" stem never exists —
+  // see resolvedGuitarStemName()'s own comment for what this unlocks.
+  State.guitarStemOverride = (project && project.guitarStemOverride) || null;
   toggleTransportClass("loop-toggle-btn", "active", State.ui.loopEnabled);
   updateModelBadge();
   if (typeof refreshTakesList === "function") refreshTakesList(); // recorder.js — takes are per-track
@@ -1625,7 +1652,8 @@ function renderLanes() {
         ${stem.is_derived ? '<span class="lane-derived-badge">derived</span>' : ""}
         ${stem.is_custom ? '<span class="lane-custom-badge" title="Added by you — not produced by the separation model">custom</span>' : ""}
         <button class="lane-rename-btn" title="Rename this stem (display name only — doesn't touch its saved mix)">✎</button>
-        ${stem.is_custom ? '<button class="lane-delete-btn" title="Remove this custom stem">✕</button>' : ""}</div>
+        ${stem.is_custom ? '<button class="lane-delete-btn" title="Remove this custom stem">✕</button>' : ""}
+        ${State.model === "imported" && name !== "guitar" ? `<button class="lane-guitar-btn${State.guitarStemOverride === name ? " on" : ""}" title="${State.guitarStemOverride === name ? "This is the guitar stem for Suggest a Tone / Rate My Take — click to unset" : "Mark this as the guitar stem, so Suggest a Tone / Rate My Take treat it like a real separated guitar stem"}">🎸</button>` : ""}</div>
       <div class="lane-buttons">
         <button class="mute-btn ${State.mix.muted[name] ? "on" : ""}">M</button>
         <button class="solo-btn ${State.mix.solo === name ? "on" : ""}">S</button>
@@ -1683,6 +1711,15 @@ function renderLanes() {
         alert(`Rename failed: ${err.message || err}`);
       }
     });
+    const guitarBtn = header.querySelector(".lane-guitar-btn");
+    if (guitarBtn) {
+      guitarBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        State.guitarStemOverride = (State.guitarStemOverride === name) ? null : name;
+        saveProjectDebounced();
+        renderLanes();
+      });
+    }
     if (stem.is_custom) {
       header.querySelector(".lane-delete-btn").addEventListener("click", async (e) => {
         e.stopPropagation();

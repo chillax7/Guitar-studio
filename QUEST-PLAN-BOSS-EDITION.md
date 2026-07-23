@@ -110,6 +110,15 @@ machine that tears it into stems.*
   extension in the Library.
 - [ ] BPM/beat grid/chord lane/key all populate for that imported pack
   against fuzzy stem-name matching (not the fixed separation vocabulary).
+- [ ] **Mark a stem as the guitar (imported packs, real user request):** a
+  🎸 button next to each stem's ✎ rename button (only on an imported-model
+  track, never on a normally-separated one) marks that stem as "the
+  guitar" for features that need one real reference file — clicking a
+  second stem's 🎸 un-marks the first (only one at a time). The choice
+  survives a song switch and a page reload. With a stem marked: Tone
+  Lab's Suggest a tone (Boss 11) works against it instead of showing its
+  "needs a guitar stem" hint, and Rate My Take/Practice Tips (Boss 8/9)
+  score against it instead of refusing.
 - [ ] A zip with two files colliding to the same sanitized stem name fails
   up front, naming both files, rather than silently overwriting one.
 - [ ] A non-audio zip, or a plain non-zip garbage file, fails with a clear
@@ -597,10 +606,16 @@ Takes.*
 - [ ] **Scrub timeline:** drag it, confirm it seeks and stays in sync with
   playback; its range matches the loaded song's real duration (not stale
   from a previous song).
-- [ ] **Tuner:** toggling on mutes both backing track and your live
-  processed tone (both restore to their real prior levels, not just
-  unity, on toggling off); note/cents/needle read correctly against a
-  tuned reference string.
+- [ ] **Tuner (v5 arc-gauge redesign, real user feedback):** the big
+  center mic button toggles it on/off (red -> green) and mutes both
+  backing track and your live processed tone (both restore to their real
+  prior levels, not just unity, on toggling off); against a real tuned
+  reference string, the note name, Hz, and cents readouts are all
+  accurate, and the pointer/dot on the arc move to the correct side (flat
+  = left, sharp = right) and turn green together with the mic button
+  within 5 cents of true. The gauge should visually fill the card's full
+  height next to Backing Track, not just its top portion — the whole
+  point of this redesign.
 - [ ] Double-click resets: Speed/Tune value readouts here **and** on the
   Mixer reset to 1.00×/0¢; master Volume readout resets to 100%.
 - [ ] **Speed/Tune audio quality:** with Tune moved off 0¢ (either
@@ -663,6 +678,14 @@ rig here and prove every stage of it actually does something.*
   preset later in this boss.
 - [ ] **Amp modes:** switch Pass Through → Analog → Neural cleanly, no
   clicks/pops; only the active mode's chain produces sound.
+- [ ] **Scroll position on panel/mode switch (real user report):** scroll
+  down while a tall panel is open (Neural mode's Amp card is the tallest),
+  then click a much shorter pedal icon (Gate) — the view lands back at
+  the icon-chain row showing the newly opened card from its own top,
+  instead of clamped at a confusing offset partway down the shorter
+  panel. Same check switching Amp mode while scrolled down. Turning a
+  bypass checkbox or moving a slider within the SAME already-open panel
+  should never move the scroll position at all.
 - [ ] **NAM Tweaker:** load a real `.nam` capture — metadata shown honestly
   (including an honest "no metadata" if the file carries none); Drive
   (-24..+48dB) audibly changes distortion character; Bass/Mid/Treble/

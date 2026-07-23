@@ -312,6 +312,19 @@ model produces. If two files in the zip would collide to the same stem
 name, the import fails up front with a clear message naming both, rather
 than silently overwriting one.
 
+**Marking a stem as the guitar.** Tone Lab's Suggest a tone, Rate My
+Take, and Practice Tips all need one real audio file they can point at as
+"the guitar" — a separated track always has one (a stem literally named
+`guitar`), but an imported pack's stems keep whatever names the source
+files had, so none of them will ever match automatically. A small **🎸**
+button next to each stem's **✎** rename button (imported packs only) lets
+you designate whichever stem is actually the guitar part; the marked
+stem lights up, and Suggest a tone/Rate My Take/Practice Tips immediately
+start treating it exactly like a real separated guitar stem. Only one
+stem can be marked at a time — marking a different one un-marks the
+previous choice — and it's remembered for that song like everything
+else, surviving a reload.
+
 ### 3.4 Playlists / setlists
 
 A playlist is its own collapsible group in the same tree as All Tracks,
@@ -716,7 +729,13 @@ fourteen other cards to find the one you want. An icon lights up (blue)
 when its stage is active and dims when bypassed — a glance at the row
 tells you what's actually in the signal path before you open anything.
 The icon row's own left-to-right order **is** the signal-chain order, so
-there's no separate diagram to keep in sync with it.
+there's no separate diagram to keep in sync with it. Switching which
+icon's panel is open (or switching Amp mode between Pass Through/Analog/
+Neural) scrolls the screen back to the icon row itself, rather than
+leaving you clamped at some arbitrary spot lower down — the different
+panels aren't all the same height, so there's no single scroll position
+that stays valid across all of them; landing back at the row every time
+is the predictable alternative.
 
 ![Tone Lab — Input strip, Rig Presets, and the pedalboard's first few cards.](docs/screenshots/tonelab-overview.jpg)
 
@@ -913,10 +932,12 @@ sits at the top of the panel, above the model browser (a suggested
 starting point is the first decision; browsing the whole library by
 hand is the fallback below it). It only appears if the loaded song has a
 real, model-produced `guitar` stem — separated with `bs_roformer_sw` or
-`htdemucs_6s` (§3.5); a song separated with a 4-stem model (`htdemucs`,
-`htdemucs_ft`, `mdx`, `mdx_extra`) has nothing to compare against, and an
-explanatory line says so in its place rather than the button just
-silently not being there. It compares that isolated guitar stem against your
+`htdemucs_6s` (§3.5) — or, for an imported stem pack, a stem you've
+marked as the guitar yourself (§3.3); a song separated with a 4-stem
+model (`htdemucs`, `htdemucs_ft`, `mdx`, `mdx_extra`) and no marked
+stand-in has nothing to compare against, and an explanatory line says so
+in its place rather than the button just silently not being there. It
+compares that isolated guitar stem against your
 available NAM models (or, in Analog mode, nudges the tone-stack sliders)
 using a brightness heuristic and picks the closest. **This is a rough
 starting point, not a guaranteed match** — always finish by ear; an exact
@@ -974,14 +995,16 @@ too.
 
 ### 5.1 Tuner (top strip)
 
-Click **Tuner: Off** to switch it on — the button label and the panel
-update to show note name, cents off, and a needle (green when within 5
-cents of true). **Turning the tuner on mutes the backing track and your
-processed guitar tone** (both restore to whatever level they were actually
-at once you turn it back off) — the same convention as a hardware tuner
-pedal muting its through signal, since tuning by ear against either fights
-the point of a tuner. The tuner needs a single, sustained note — chords
-won't read cleanly.
+Click the large mic button to switch the tuner on — a pointer and a
+colored dot slide around the arc together to show how sharp or flat you
+are (green, on the dot/pointer and the mic button both, within 5 cents of
+true), the note name appears where "Tap to Start" was, and the exact
+reading (Hz and cents) shows along the bottom of the card. **Turning the
+tuner on mutes the backing track and your processed guitar tone** (both
+restore to whatever level they were actually at once you turn it back
+off) — the same convention as a hardware tuner pedal muting its through
+signal, since tuning by ear against either fights the point of a tuner.
+The tuner needs a single, sustained note — chords won't read cleanly.
 
 ### 5.2 Recording a performance
 
@@ -1240,7 +1263,10 @@ built on.
 Scores a recorded solo/riff against the song's own guitar performance —
 per-beat pitch and timing agreement, an overall closeness percentage, and
 a heatmap you can judge by eye (rate-my-take-spec.md's research spike,
-now with a real screen instead of only a command line).
+now with a real screen instead of only a command line). Needs a real
+guitar stem to score against — a separated track's own `guitar` stem, or,
+for an imported stem pack, whichever stem you've marked as the guitar
+(§3.3).
 
 A link on this card jumps straight to Play Along's own Record card and
 back again (§5.2 has the same link in reverse) — useful for going back and

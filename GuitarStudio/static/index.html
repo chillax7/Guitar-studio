@@ -355,11 +355,23 @@
             <input type="range" id="pa-bt-volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
           </section>
 
-          <section class="pa-card pa-top-card">
-            <div class="row"><h3 style="margin:0">Tuner</h3><button id="pa-tuner-toggle">Tuner: Off</button></div>
-            <div id="pa-tuner-note">—</div>
-            <div class="pa-tuner-meter"><div id="pa-tuner-needle"></div><div class="pa-tuner-center-tick"></div></div>
-            <p class="hint" id="pa-tuner-cents">Enable input and play a single note.</p>
+          <section class="pa-card pa-top-card pa-tuner-card">
+            <h3>Guitar Tuner</h3>
+            <div class="pa-tuner-gauge">
+              <svg class="pa-tuner-arc-svg" viewBox="0 0 300 175" preserveAspectRatio="xMidYMid meet">
+                <path class="pa-tuner-arc-track" d="M30,150 A120,120 0 0,1 270,150"></path>
+                <polygon id="pa-tuner-pointer" class="pa-tuner-pointer" points="-8,-13 8,-13 0,0"></polygon>
+                <circle id="pa-tuner-arc-dot" class="pa-tuner-arc-dot" cx="150" cy="30" r="7"></circle>
+              </svg>
+              <button id="pa-tuner-toggle" class="pa-tuner-mic-btn" title="Click to enable/disable the tuner (mutes the backing track and your amp tone while on)">
+                <span class="pa-tuner-mic-icon">🎤</span>
+              </button>
+            </div>
+            <div id="pa-tuner-note" class="pa-tuner-status">Tap to Start</div>
+            <div class="pa-tuner-readout-row">
+              <span id="pa-tuner-hz">Hz</span>
+              <span id="pa-tuner-cents-val">Cents</span>
+            </div>
           </section>
 
           <!-- v3.2: quick rig-preset picker — full save/load/delete/attach
@@ -645,7 +657,7 @@
                      starting point" is the first decision, browsing the whole
                      library by hand is the fallback below it. -->
                 <button id="pa-suggest-btn" class="primary" style="display:none">Suggest from this track's guitar stem</button>
-                <p class="hint" id="pa-suggest-unavailable-hint" style="display:none">Needs a guitar stem to compare against — re-separate this song with <code>bs_roformer_sw</code> or <code>htdemucs_6s</code> to get one.</p>
+                <p class="hint" id="pa-suggest-unavailable-hint" style="display:none">Needs a guitar stem to compare against — re-separate this song with <code>bs_roformer_sw</code> or <code>htdemucs_6s</code> to get one, or (for an imported stem pack) mark one of its stems as the guitar with the 🎸 button next to it in the Mixer.</p>
                 <p class="hint" id="pa-suggest-result"></p>
                 <div class="model-browser" id="pa-nam-browser">
                   <input type="text" class="model-browser-search" id="pa-nam-search" placeholder="Search all models…">

@@ -685,6 +685,11 @@ async function aiLabScoreTake() {
     hintEl.textContent = "No dry take selected — record one above first.";
     return;
   }
+  const guitarStem = resolvedGuitarStemName();
+  if (!guitarStem) {
+    hintEl.textContent = "Needs a guitar stem to score against — re-separate with a guitar-capable model, or (for an imported stem pack) mark one of its stems as the guitar in the Mixer.";
+    return;
+  }
   const offset = parseFloat(document.getElementById("ailab-rmt-offset").value) || 0;
   const offsetSearch = parseFloat(document.getElementById("ailab-rmt-offset-search").value) || 0;
 
@@ -693,7 +698,7 @@ async function aiLabScoreTake() {
   try {
     const r = await Api.post("/api/rate/score", {
       source_path: State.track, take_path: takePath,
-      model: State.model, stem: "guitar",
+      model: State.model, stem: guitarStem,
       offset, offset_search: offsetSearch,
     });
     if (typeof questMarkDone === "function") questMarkDone("judge");
@@ -1130,6 +1135,11 @@ async function aiLabTipsSuggest() {
     hintEl.textContent = "No take selected.";
     return;
   }
+  const guitarStem = resolvedGuitarStemName();
+  if (!guitarStem) {
+    hintEl.textContent = "Needs a guitar stem to score against — re-separate with a guitar-capable model, or (for an imported stem pack) mark one of its stems as the guitar in the Mixer.";
+    return;
+  }
   const offset = parseFloat(document.getElementById("ailab-tips-offset").value) || 0;
   const offsetSearch = parseFloat(document.getElementById("ailab-tips-offset-search").value) || 0;
   const provider = aiLabLickCurrentProvider();
@@ -1139,7 +1149,7 @@ async function aiLabTipsSuggest() {
   resultCard.style.display = "none";
   try {
     const r = await Api.post("/api/practicetips/suggest", {
-      source_path: State.track, take_path: takePath, model: State.model, stem: "guitar",
+      source_path: State.track, take_path: takePath, model: State.model, stem: guitarStem,
       offset, offset_search: offsetSearch, provider,
     });
     // Reuses the take's existing Rate My Take scoring instead of

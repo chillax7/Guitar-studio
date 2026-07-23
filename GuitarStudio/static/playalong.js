@@ -627,6 +627,12 @@ function setAmpMode(mode) {
   document.getElementById("pa-amp-clean").style.display = mode === "clean" ? "block" : "none";
   document.getElementById("pa-amp-analog").style.display = mode === "analog" ? "block" : "none";
   document.getElementById("pa-amp-neural").style.display = mode === "neural" ? "block" : "none";
+  // Same reasoning as paOpenChainCard's own scroll-to-anchor comment:
+  // clean/analog/neural are quite different heights (Neural especially,
+  // with its model browser and Tweaker sliders), so there's no old
+  // scrollTop worth preserving — land on the mode-tabs row instead of an
+  // arbitrary clamped offset.
+  paScrollTonelabTo(document.getElementById("pa-amp-modes"));
 }
 
 // ---------------------------------------------------------------------------
@@ -843,36 +849,74 @@ function paFreqToNote(freq) {
   return { name: name + octave, cents };
 }
 
-function paResetTunerDisplay(hint) {
-  document.getElementById("pa-tuner-note").textContent = "—";
-  document.getElementById("pa-tuner-cents").textContent = hint;
-  const needleEl = document.getElementById("pa-tuner-needle");
-  needleEl.style.left = "50%";
-  needleEl.classList.remove("in-tune");
+// Arc gauge geometry (v5 redesign) — matches the SVG path in index.html:
+// "M30,150 A120,120 0 0,1 270,150", a semicircle centered at (150,150)
+// with radius 120. The pointer/dot both sit at the same angle, computed
+// from cents the same way a clock hand's position comes from an angle:
+// theta=0 (in tune) points straight up; theta scales linearly with cents
+// out to +-PA_TUNER_ARC_MAX_DEG at the +-50-cent clamp, leaving a little
+// headroom before the arc's own physical endpoints rather than pegging
+// the pointer exactly into the corners at max deflection.
+const PA_TUNER_ARC_CX = 150, PA_TUNER_ARC_CY = 150, PA_TUNER_ARC_R = 120;
+const PA_TUNER_ARC_MAX_DEG = 80;
+
+function paTunerArcPoint(cents, radius) {
+  const clamped = Math.max(-50, Math.min(50, cents));
+  const theta = (clamped / 50) * PA_TUNER_ARC_MAX_DEG * (Math.PI / 180);
+  return {
+    x: PA_TUNER_ARC_CX + radius * Math.sin(theta),
+    y: PA_TUNER_ARC_CY - radius * Math.cos(theta),
+  };
+}
+
+function paResetTunerDisplay(status) {
+  const statusEl = document.getElementById("pa-tuner-note");
+  statusEl.textContent = status;
+  statusEl.classList.remove("reading");
+  document.getElementById("pa-tuner-hz").textContent = "Hz";
+  document.getElementById("pa-tuner-cents-val").textContent = "Cents";
+  const pointer = document.getElementById("pa-tuner-pointer");
+  const dot = document.getElementById("pa-tuner-arc-dot");
+  const center = paTunerArcPoint(0, PA_TUNER_ARC_R);
+  const pointerPos = paTunerArcPoint(0, PA_TUNER_ARC_R + 18);
+  pointer.setAttribute("transform", `translate(${pointerPos.x}, ${pointerPos.y})`);
+  pointer.classList.remove("in-tune");
+  dot.setAttribute("cx", center.x);
+  dot.setAttribute("cy", center.y);
+  dot.classList.remove("in-tune");
 }
 
 function paUpdateTuner(inData) {
   const freq = paAutoCorrelate(inData, Audio.ctx.sampleRate);
   if (freq < 0) {
-    paResetTunerDisplay("Enable input and play a single note.");
+    paResetTunerDisplay("Listening…");
     return;
   }
-  const noteEl = document.getElementById("pa-tuner-note");
-  const centsEl = document.getElementById("pa-tuner-cents");
-  const needleEl = document.getElementById("pa-tuner-needle");
+  const statusEl = document.getElementById("pa-tuner-note");
   const { name, cents } = paFreqToNote(freq);
-  noteEl.textContent = name;
-  centsEl.textContent = `${freq.toFixed(1)} Hz, ${cents >= 0 ? "+" : ""}${cents}¢`;
-  const clamped = Math.max(-50, Math.min(50, cents));
-  needleEl.style.left = 50 + clamped + "%";
-  needleEl.classList.toggle("in-tune", Math.abs(cents) <= 5);
+  statusEl.textContent = name;
+  statusEl.classList.add("reading");
+  document.getElementById("pa-tuner-hz").textContent = `${freq.toFixed(1)} Hz`;
+  document.getElementById("pa-tuner-cents-val").textContent = `${cents >= 0 ? "+" : ""}${cents}¢`;
+  const inTune = Math.abs(cents) <= 5;
+  const pointer = document.getElementById("pa-tuner-pointer");
+  const dot = document.getElementById("pa-tuner-arc-dot");
+  const dotPos = paTunerArcPoint(cents, PA_TUNER_ARC_R);
+  const pointerPos = paTunerArcPoint(cents, PA_TUNER_ARC_R + 18);
+  pointer.setAttribute("transform", `translate(${pointerPos.x}, ${pointerPos.y})`);
+  pointer.classList.toggle("in-tune", inTune);
+  dot.setAttribute("cx", dotPos.x);
+  dot.setAttribute("cy", dotPos.y);
+  dot.classList.toggle("in-tune", inTune);
 }
 
 function paSetTunerEnabled(enabled) {
   PA.tunerEnabled = enabled;
   document.getElementById("pa-tuner-toggle").classList.toggle("active", enabled);
-  document.getElementById("pa-tuner-toggle").textContent = enabled ? "Tuner: On" : "Tuner: Off";
-  if (!enabled) paResetTunerDisplay("Tuner is off.");
+  document.getElementById("pa-tuner-toggle").title = enabled
+    ? "Click to turn the tuner off"
+    : "Click to enable the tuner (mutes the backing track and your amp tone while on)";
+  if (!enabled) paResetTunerDisplay("Tap to Start");
 
   // Tuning by ear against a live amp tone (or the backing track) fights the
   // whole point of a tuner — mute both while it's on, same convention as a
@@ -1542,7 +1586,9 @@ function zeroCrossingRate(data) {
 }
 
 async function paTargetGuitarZcr() {
-  const url = `/api/stem?source_path=${encodeURIComponent(State.track)}&model=${encodeURIComponent(State.model)}&stem=guitar`;
+  // resolvedGuitarStemName() (app.js): a real "guitar" stem if one
+  // exists, else an imported pack's user-designated stand-in (GP-16).
+  const url = `/api/stem?source_path=${encodeURIComponent(State.track)}&model=${encodeURIComponent(State.model)}&stem=${encodeURIComponent(resolvedGuitarStemName())}`;
   const arrBuf = await (await fetch(url)).arrayBuffer();
   const buf = await Audio.ctx.decodeAudioData(arrBuf);
   const data = buf.getChannelData(0);
@@ -1651,7 +1697,9 @@ async function paSuggestAnalogMatch() {
 }
 
 function paUpdateSuggestVisibility() {
-  const hasGuitar = typeof State !== "undefined" && State.stems && State.stems.some((s) => s.name === "guitar");
+  // resolvedGuitarStemName() (app.js) also covers an imported pack's
+  // user-designated guitar stand-in (GP-16), not just a real "guitar" stem.
+  const hasGuitar = typeof State !== "undefined" && State.stems && !!resolvedGuitarStemName();
   // The button used to just vanish with no guitar stem — silent enough
   // that a real user report ("I can't see the suggest button at all")
   // turned out to be exactly this, not a bug: their song was separated
@@ -2204,6 +2252,23 @@ function paRefreshChainIconStates() {
   });
 }
 
+// Scrolls #tonelab-overlay (its own nearest scrollable ancestor, a
+// position:fixed element) so el's top edge aligns with the overlay's own
+// top edge. Element.scrollIntoView({block:"start"}) turned out unreliable
+// here — measured empirically to leave the overlay's scrollTop completely
+// unchanged even though the target position was well within the
+// scrollable range, apparently specific to scrolling a position:fixed
+// ancestor. Computed manually via getBoundingClientRect deltas instead,
+// which sidesteps whatever scrollIntoView's internal ancestor-walk was
+// getting wrong.
+function paScrollTonelabTo(el) {
+  const overlay = document.getElementById("tonelab-overlay");
+  if (!overlay || !el) return;
+  const elTop = el.getBoundingClientRect().top;
+  const overlayTop = overlay.getBoundingClientRect().top;
+  overlay.scrollTop += (elTop - overlayTop);
+}
+
 // Click an icon -> its card becomes the one visible card below (the
 // user's confirmed interaction model: click opens the panel, and every
 // card's bypass control is already its first control, so it's the first
@@ -2214,6 +2279,17 @@ function paOpenChainCard(id) {
   });
   paOpenChainStage = id;
   paRefreshChainIconStates();
+  // Real user report ("clicking anything" jumps the scroll position):
+  // swapping which single card is visible changes #tonelab-overlay's
+  // total content height a lot (a short Gate card vs. a tall Neural-mode
+  // Amp card) — there's no old scrollTop to "preserve" once it no longer
+  // fits the new, shorter content; the browser just clamps it to
+  // whatever fits, landing on a semi-arbitrary offset into the new card
+  // rather than its top. Scrolling the icon strip to the top of the view
+  // instead gives a stable, predictable landing spot every time: you
+  // always see the tab row and the freshly opened card from its own top,
+  // regardless of how tall the previous card was.
+  paScrollTonelabTo(document.getElementById("pa-chain-icons"));
 }
 
 function renderChainIcons() {
