@@ -313,6 +313,12 @@ two different songs.
 - [ ] **BPM half/double correction:** on a track whose detected tempo
   looks halved/doubled, ½×/2× fix it in one click and the correction is
   remembered on reselecting that song later.
+- [ ] **Collapsible inspector (real user report — free up screen width):**
+  the ▸ tab on the seam between the lanes and the right-hand inspector
+  (Track/Speed Trainer/Export, or the Quest Log if no track's loaded)
+  collapses that panel to width 0 so the lanes widen to fill the freed
+  space; the tab stays visible (now showing ◂) so you can expand it back;
+  the collapsed/expanded state is remembered across a reload.
 
 ### Phase 4c — Chord lane, key detection, and export
 
@@ -426,13 +432,14 @@ expected result here.
   exactly back to default, nothing left over from either other theme.
   Spot-check Bright Spark specifically for readability (dark text on
   white, nothing washed out) since it's the newest and least-exercised of
-  the three. Confirm the Mixer's chord lane and AI Lab's chord ribbon
-  switch to the *same* purple analysis color as each other in **all
-  three** themes, Studio included — two real reports caught this: first
-  the two ribbons disagreeing with each other, then (after that fix) the
-  shared color itself still reading as plain blue rather than a clear
-  purple, in every theme including Studio, which didn't have a distinct
-  analysis color at all before this.
+  the three. Confirm the Mixer's chord lane and AI Lab's chord ribbon (and
+  the fretboard's root-note dot) are the exact same color as that theme's
+  stem waveform bars, in **all three** themes including Studio — three
+  real reports got this here: first the two ribbons disagreeing with each
+  other, then their shared color still reading as plain blue rather than a
+  clear purple, then finally (this round) dropping the separate purple
+  "analysis" color entirely in favor of literally matching the waveform
+  color, so chord analysis reads as belonging to the audio it describes.
 - [ ] **Quest Log (v5):** with no track loaded, the inspector shows the
   Quest Log instead of normal panels — re-verify every quest here in
   context (most were already ticked naturally by Bosses 1–5; confirm the

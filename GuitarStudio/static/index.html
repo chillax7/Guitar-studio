@@ -235,6 +235,13 @@
     </div>
   </div>
 
+  <!-- Toggles #app's inspector-collapsed class (wireInspectorCollapse in
+       app.js) to free up width for the lanes — real user report. Sits
+       outside the grid flow (position: absolute), same reasoning as
+       #sidebar-resize-handle above, but always visible rather than
+       hover-only since this is the only way back once collapsed. -->
+  <button id="inspector-toggle-btn" title="Collapse/expand this panel">▸</button>
+
   <div id="inspector">
     <!-- ui-review-v5-full.md §2.2/§4: with no track loaded, every panel
          below is a fully-interactive but meaningless control (Speed

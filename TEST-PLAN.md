@@ -89,6 +89,7 @@ exhaustive top-to-bottom playthrough of the entire app in one sitting
 - [ ] Speed/Tune reset to unity on track switch; Volume does not.
 - [ ] **BPM correction:** on a track where the detected BPM looks halved/doubled from the real tempo, the ½×/2× buttons fix it in one click and the correction is remembered on reselecting that song later.
 - [ ] Count-in (2 bars of click) plays before playback starts when enabled, synced to the track's detected BPM.
+- [ ] **Collapsible inspector (real user report — free up screen width):** the ▸ tab on the seam between the lanes and the right-hand inspector (Track/Speed Trainer/Export panels, or the Quest Log if no track's loaded) collapses that panel to width 0 and the lanes widen to fill the freed space; the tab itself stays visible (now showing ◂) so it can be expanded again; the collapsed/expanded state persists across a reload.
 
 ## 5. Guitar Split (experimental)
 
@@ -365,20 +366,20 @@ recommendations. All three sub-batches shipped together; test as one pass.
   and Bright Spark: nav buttons, stem waveforms (ember in Molten, gold in
   Bright Spark — never the Studio blue), loop-region tint, engaged/open
   chain icons, the camera framing-guide band, and the AI Lab Root/
-  Scale-tone legend dot (Root shows the secondary violet accent) all
-  reskin correctly; AI Lab's own dedicated "Follow song" green is
+  Scale-tone legend dot (Root matches that theme's own waveform color)
+  all reskin correctly; AI Lab's own dedicated "Follow song" green is
   untouched by either theme.
-- [ ] **Chord ribbon consistency (real user reports, two rounds):** the
-  Mixer's chord lane chips AND AI Lab's Scales-tab chord ribbon chips
-  switch to the *same* secondary/analysis accent color as each other and
-  as the fretboard's root-note dot, in **all three themes including
-  Studio** — never one ribbon stuck on the primary accent while the other
-  shows the analysis color. The analysis color itself should read as a
-  clear, unambiguous purple/magenta in every theme, not a blue-violet that
-  could still pass for plain blue at a glance (the first round of this fix
-  made the two ribbons consistent with each other; a follow-up report
-  ["still... blue... across all 3 themes"] was that the shared color
-  itself, and Studio's total lack of one, both still read as blue).
+- [ ] **Chord ribbon matches the stem waveform color (real user reports,
+  three rounds):** the Mixer's chord lane chips AND AI Lab's Scales-tab
+  chord ribbon chips, plus the fretboard's root-note dot, are the exact
+  same color as that theme's stem waveform bars — in **all three themes
+  including Studio** — never a separate accent unrelated to the audio
+  they're describing. (Round 1 made the two ribbons consistent with each
+  other via a dedicated purple/magenta "analysis" color; round 2 fixed
+  that color still reading as blue in places; round 3 — this one —
+  dropped the separate analysis color entirely in favor of literally
+  reusing the waveform color, per direct feedback that analysis surfaces
+  should look like they belong to the audio, not an arbitrary UI accent.)
 - [ ] **Bright Spark specifically:** white/paper background, dark
   readable text throughout (not just the Mixer — check Tone Lab's
   pedalboard and AI Lab too), and the "glow" idiom Molten Obsidian uses

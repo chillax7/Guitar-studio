@@ -24,6 +24,7 @@
   --solo: #e0c34a;
   --topbar-height: 44px;
   --sidebar-width: 240px; /* wireSidebarResize (app.js) overrides this live + persists it */
+  --inspector-width: 280px; /* wireInspectorCollapse (app.js) overrides this live + persists it */
   --heading-font: inherit;
   --heading-transform: none;
   --heading-tracking: normal;
@@ -189,10 +190,10 @@ body {
 
 #app {
   display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr 280px;
+  grid-template-columns: var(--sidebar-width) 1fr var(--inspector-width);
   grid-template-rows: auto 1fr;
   height: 100vh;
-  position: relative; /* anchors #sidebar-resize-handle, which sits outside the grid flow */
+  position: relative; /* anchors #sidebar-resize-handle/#inspector-toggle-btn, which sit outside the grid flow */
 }
 
 /* Drag left/right to resize #sidebar — a hit-target wider than its visible
@@ -1040,6 +1041,48 @@ button:disabled:hover { filter: none; }
   font-size: 12px;
 }
 #inspector h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin: 0 0 8px; }
+
+/* Collapsible Track/Speed Trainer/Export panel (real user report: it eats
+   screen width on the Mixer that could go to the lanes). Same "own CSS var
+   the JS drives live + persists" pattern as --sidebar-width above, just
+   toggled between its normal width and 0 instead of dragged. #app.
+   inspector-collapsed strips #inspector's own padding/border so a 0-width
+   column doesn't leave a visible sliver, and hides its content so nothing
+   inside it is still tab-reachable while collapsed. */
+#app.inspector-collapsed #inspector {
+  padding: 0;
+  border-left: none;
+  overflow: hidden;
+}
+#app.inspector-collapsed #inspector > * { display: none; }
+
+/* Always-visible tab (unlike #sidebar-resize-handle, which hides until
+   hovered — a resize seam can afford to be discoverable-on-hover, but a
+   collapse control needs to stay findable while collapsed, or there'd be
+   no way back). Sits right on the workspace/inspector seam and tracks it
+   as --inspector-width changes, so it lands flush against the window's
+   right edge once collapsed. */
+#inspector-toggle-btn {
+  position: absolute;
+  top: calc(var(--topbar-height) + 12px);
+  right: var(--inspector-width);
+  transform: translateX(50%);
+  z-index: 50;
+  width: 20px;
+  height: 36px;
+  padding: 0;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+#inspector-toggle-btn:hover { color: var(--text); border-color: var(--accent); }
 
 /* ui-review-v5-full.md §2.2/§4: Quest Log replaces the dead Speed Trainer/
    Export controls while no track is loaded — toggled by showState() in

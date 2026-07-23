@@ -3536,6 +3536,35 @@ function wireSidebarResize() {
   });
 }
 
+// Inspector (Track/Speed Trainer/Export) collapse — real user report: it
+// eats screen width on the Mixer that could go to the lanes. Binary
+// collapse/expand rather than a drag-resize like the sidebar, since the
+// ask was just to free up width, not to fine-tune this panel's size.
+const INSPECTOR_WIDTH_DEFAULT = 280;
+const INSPECTOR_COLLAPSED_KEY = "gs_inspector_collapsed";
+
+function applyInspectorCollapsed(collapsed) {
+  document.getElementById("app").classList.toggle("inspector-collapsed", collapsed);
+  document.documentElement.style.setProperty(
+    "--inspector-width", (collapsed ? 0 : INSPECTOR_WIDTH_DEFAULT) + "px");
+  document.getElementById("inspector-toggle-btn").textContent = collapsed ? "◂" : "▸";
+}
+
+function wireInspectorCollapse() {
+  const btn = document.getElementById("inspector-toggle-btn");
+  applyInspectorCollapsed(localStorage.getItem(INSPECTOR_COLLAPSED_KEY) === "1");
+  btn.addEventListener("click", () => {
+    const collapsed = !document.getElementById("app").classList.contains("inspector-collapsed");
+    applyInspectorCollapsed(collapsed);
+    localStorage.setItem(INSPECTOR_COLLAPSED_KEY, collapsed ? "1" : "0");
+    // #workspace's width just changed because this grid column did — same
+    // "no native resize event fires for this" reasoning as the sidebar
+    // drag handler above.
+    applyZoomWidth();
+    if (State.track) renderLanes();
+  });
+}
+
 function wireHelp() {
   document.getElementById("help-open-btn").addEventListener("click", toggleHelp);
   document.getElementById("help-close-btn").addEventListener("click", toggleHelp);
@@ -3641,6 +3670,7 @@ async function init() {
   wireKeyboardShortcuts();
   wireHelp();
   wireSidebarResize();
+  wireInspectorCollapse();
   wireQuestLog();
   wireThemeToggle();
   showState("empty-state"); // syncs Quest Log vs. normal-panels visibility on first load

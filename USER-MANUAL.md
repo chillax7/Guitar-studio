@@ -689,10 +689,9 @@ the app name and current-screen label:
   feature behaves changes, only the color scheme. Your choice is
   remembered across reloads with no flash of the wrong theme while the
   page loads. Every themed surface reskins together, including the chord
-  ribbon (Mixer and AI Lab's Scales tab both shift to the same purple
-  "analysis" accent, distinct from the theme's main accent in all three
-  themes — Studio included, which used to just reuse its own blue) and
-  the stem waveforms.
+  ribbon (Mixer and AI Lab's Scales tab both use the same color as that
+  song's stem waveforms, so chord analysis reads as belonging to the
+  audio it describes) and the stem waveforms themselves.
 - **Quest Log** — before you've loaded any track, the right-hand inspector
   panel (where the mixer's usual per-track panels normally live) shows a
   first-use checklist instead: separate a song, mix it, dial in a tone,
@@ -704,6 +703,11 @@ the app name and current-screen label:
   **❓ Help** panel, in case you want to check your progress without
   clearing your current track. Loading any track swaps the panel back to
   the normal per-track inspector views.
+- **Collapsible inspector** — the small ▸/◂ tab sitting right on the seam
+  between the lanes and the right-hand inspector (Track/Speed Trainer/
+  Export, or the Quest Log before a track's loaded) collapses that whole
+  panel to free up width for the lanes, and expands it back. Remembered
+  across reloads.
 
 ---
 
