@@ -134,6 +134,20 @@ before its build.
 
 ## 2. MIDI hands-free control (V5-B3's remaining half) — M
 
+**Update (2026-07-23): first build done, resumed ahead of the original
+pause** — a real footswitch got ordered, so building against the
+single-button design ahead of time (rather than waiting for it to
+physically arrive) was the direct call made here. Device picker, Learn
+mode for forward/backward, and the matching logic are all in
+`playalong.js` (`wireMidiControls`, `paHandleMidiMessage` et al. — see
+the file's own header comment on this section). Verified with simulated
+MIDI messages (Note On/CC learn-and-match, "release" events correctly
+ignored, unmapped buttons correctly ignored) — **genuinely not yet
+validated against real hardware**, which is a different, real risk (a
+specific pedal's channel/debounce/message-type quirks can't be predicted
+from simulation alone). Treat this as a first build to confirm once the
+footswitch arrives, not a finished, hardware-confirmed feature.
+
 GP-14 (rig-preset-chain-spec.md) already shipped the keyboard half of
 "hands-free rig": an ordered per-song rig-preset chain, cycled forward/
 backward with configurable keys. What's still missing is the actual
@@ -163,12 +177,15 @@ persisted per-user like the cycle keys already are.
 
 ## 3. Small, already-scoped polish — both S, both promoted directly from v5
 
-**Update (2026-07-23): all three design specs done, ready to build/act
-on directly** — see [measured-latency-spec.md](measured-latency-spec.md),
-[social-export-presets-spec.md](social-export-presets-spec.md), and
-[tone3000-unblock-spec.md](tone3000-unblock-spec.md). Unlike the Looper
-(§1), none of these are paused — no hardware or external dependency
-blocks starting any of them.
+**Update (2026-07-23): V6-B1 and V6-B2 built and verified; V6-B3's
+research is done, the action itself is the user's own next step** — see
+[measured-latency-spec.md](measured-latency-spec.md) and
+[social-export-presets-spec.md](social-export-presets-spec.md) for what
+shipped (both verified against the real server: latency's detection
+logic and the export presets' actual crop dimensions/loudness-only
+behavior, including the audio-only-take restriction), and
+[tone3000-unblock-spec.md](tone3000-unblock-spec.md) for the TONE3000
+research and the two questions ready to send.
 
 **V6-B1 = Measured round-trip latency (GP-13, was V5-B5).** Loopback
 ping: play a short click out the current output, capture it back
@@ -234,20 +251,26 @@ each milestone below, not deferred to a single pass at the very end
 
 - **M0 — Looper design spec (§1's gate). Done** — see
   [looper-pedal-spec.md](looper-pedal-spec.md).
-- **M1 — Looper build (§1) — paused on purpose, resume once a MIDI
-  footswitch is available to validate M2 against** (see §1's update).
+- **M1 — Looper build (§1) — still paused**, unchanged: the build itself
+  wasn't started even after M2 resumed (below) — a footswitch being
+  ordered de-risks M2 enough to build ahead of hardware arriving, but the
+  Looper's own build is real DSP work with no such shortcut available.
   The release's anchor deliverable once resumed.
-- **M2 — MIDI hands-free control (§2).** Same pause as M1, same reason
-  — hardware-gated, not effort-gated.
+- **M2 — MIDI hands-free control (§2). First build done, resumed ahead
+  of schedule** — a footswitch got ordered, so building against the
+  single-button design now (rather than waiting for it to arrive) was
+  the direct call. Verified with simulated MIDI messages; genuinely not
+  yet confirmed against real hardware — see §2's update.
 - **M3 — Polish: measured latency + social export presets (§3's V6-B1/
-  B2). Design specs done, ready to build** — measured-latency-spec.md,
-  social-export-presets-spec.md.
+  B2). Built and verified** — see §3's update.
 - **M4 — TONE3000 unblock-or-drop (§3's V6-B3). Research done, action
   ready** — tone3000-unblock-spec.md. Cheap, parallelizable with
   everything else. (LAN mode is no longer part of this milestone — see
   §4, moved to backlog.)
 - **Ongoing, not a milestone — V6-P1 (§5):** a doc-currency check at the
-  close of M1, M2, and M3 each, not saved for the end.
+  close of M1, M2, and M3 each — done for M2/M3 alongside this update
+  (USER-MANUAL.md, TEST-PLAN.md, QUEST-PLAN-BOSS-EDITION.md all updated),
+  still owed once M1 (the Looper) actually ships.
 - **Stretch, time-permitting, not committed:** song-section detection
   (V5-S2) — first pull-forward candidate if any milestone above finishes
   early.

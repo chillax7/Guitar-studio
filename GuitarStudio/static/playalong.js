@@ -49,6 +49,9 @@ const PA = {
   irModels: [],
   tunerEnabled: false, // GP-01 — off by default; autocorrelation is O(n^2)
                        // and there's no reason to spend it when not tuning
+  midiAccess: null, // GP-11: Web MIDI access object, once granted
+  midiInput: null, // the currently selected MIDIInput, if any
+  midiLearnTarget: null, // "forward"|"backward"|null — set while a Learn… button is armed
 };
 
 // ---------------------------------------------------------------------------
@@ -1037,6 +1040,70 @@ async function paCalibrate() {
     `${suggestedDb >= 0 ? "+" : ""}${suggestedDb} dB as a starting point. Adjust further by ear.`;
 }
 
+// GP-13 (measured-latency-spec.md): #pa-latency-hint (paShowLatencyEstimate,
+// above) only ever reports the browser's own OUTPUT-side buffering — no Web
+// Audio API can see the input side (interface/USB/driver), which for an
+// external interface is usually the LARGER share of real round-trip
+// latency. This is a real measurement instead: a short, sharp click out the
+// current output, detected coming back in through the currently enabled
+// input, timed against the audio clock (ctx.currentTime), not wall-clock —
+// requires a physical loop (the interface's own direct-out → direct-in, or
+// its hardware direct-monitor path), which the UI says plainly rather than
+// silently measuring whatever acoustic path (speaker → mic, an open room)
+// happens to exist instead.
+const PA_LATENCY_CAPTURE_MS = 1000;
+const PA_LATENCY_CLICK_MS = 6; // short and sharp, not a sine — a sine's ambiguous zero-crossings make onset timing imprecise
+const PA_LATENCY_THRESHOLD = 0.05; // relative amplitude; well above a quiet interface's own noise floor
+
+async function paMeasureLatency() {
+  const resultEl = document.getElementById("pa-measure-latency-result");
+  if (!PA.source) { resultEl.textContent = "Enable input first — see Setup above."; return; }
+  const ctx = Audio.ctx;
+  resultEl.textContent = "Measuring — make sure your interface's output is looped into its own input " +
+    "(direct-out → direct-in, or its own direct-monitor path is engaged), then wait a moment…";
+
+  // A short, full-scale square burst: sharp onset, unambiguous to detect —
+  // this is a diagnostic test tone, not something meant to sound musical.
+  const clickSamples = Math.max(1, Math.round(ctx.sampleRate * PA_LATENCY_CLICK_MS / 1000));
+  const clickBuf = ctx.createBuffer(1, clickSamples, ctx.sampleRate);
+  clickBuf.getChannelData(0).fill(1);
+  const clickSrc = ctx.createBufferSource();
+  clickSrc.buffer = clickBuf;
+  clickSrc.connect(ctx.destination);
+
+  const playAt = ctx.currentTime + 0.05; // small head start so scheduling itself never races playback
+  clickSrc.start(playAt);
+
+  const fftSize = PA.inAnal.fftSize;
+  const data = new Float32Array(fftSize);
+  const deadline = performance.now() + PA_LATENCY_CAPTURE_MS;
+  let detectedAt = null;
+  while (performance.now() < deadline) {
+    // getFloatTimeDomainData's window always ends "now" on the audio clock —
+    // reconstructing each sample's own audio-clock time from its offset
+    // within that window (rather than using wall-clock poll time) keeps
+    // this accurate to about one render quantum, not just the polling
+    // interval.
+    const windowEndsAt = ctx.currentTime;
+    PA.inAnal.getFloatTimeDomainData(data);
+    for (let i = 0; i < fftSize; i++) {
+      if (Math.abs(data[i]) < PA_LATENCY_THRESHOLD) continue;
+      const sampleTime = windowEndsAt - (fftSize - i) / ctx.sampleRate;
+      if (sampleTime >= playAt) { detectedAt = sampleTime; break; } // ignore anything before the click even played (existing input noise/signal)
+    }
+    if (detectedAt !== null) break;
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+
+  if (detectedAt === null) {
+    resultEl.textContent = "No loopback detected — make sure your interface's output is physically " +
+      "connected to its input (or its direct-monitor path is engaged), then try again.";
+    return;
+  }
+  const ms = (detectedAt - playAt) * 1000;
+  resultEl.textContent = `Measured round-trip latency: ~${ms.toFixed(0)} ms (interface looped: direct-out → direct-in).`;
+}
+
 // ---------------------------------------------------------------------------
 // NAM model + cab IR loading
 // ---------------------------------------------------------------------------
@@ -1998,6 +2065,7 @@ function wirePAControls() {
     updateClipIndicator();
   });
   document.getElementById("pa-calibrate-btn").addEventListener("click", paCalibrate);
+  document.getElementById("pa-measure-latency-btn").addEventListener("click", paMeasureLatency);
   document.getElementById("pa-tuner-toggle").addEventListener("click", () => paSetTunerEnabled(!PA.tunerEnabled));
   paSetTunerEnabled(false); // sync button label/state with the PA.tunerEnabled default
 
@@ -2956,6 +3024,141 @@ async function paApplyAttachedRigPreset() {
   renderPresetChainList();
 }
 
+// ---------------------------------------------------------------------------
+// GP-11/V6-MIDI: hardware footswitch control over the same rig-preset
+// forward/backward cycle actions the keyboard keys above already trigger
+// (paCyclePresetChain) — see research/release-v6-spec.md §2. Global (not
+// per-song, unlike the keyboard cycle keys) — a physical pedal's button
+// layout doesn't change per song, so remapping it every time you switch
+// tracks would be the surprising choice here, not the safe default.
+//
+// A learned mapping is just the (status byte, data1) pair a footswitch
+// button actually sent while Learn… was armed — covers Note On, Control
+// Change, and Program Change uniformly without needing to special-case
+// each message type, since a real footswitch reliably sends the same pair
+// every time that button is pressed regardless of which of the three it
+// happens to use. Deliberately NOT hardware-tested yet — no footswitch was
+// on hand while this was built — so treat this as a first build to
+// validate against a real device, not a finished, confirmed-working
+// feature; the code path was verified in isolation with synthetic MIDI
+// messages, which confirms the logic but not real-world hardware quirks
+// (e.g. a pedal that sends on a different channel per press, or debounces
+// oddly).
+// ---------------------------------------------------------------------------
+const PA_MIDI_DEVICE_KEY = "gs_midi_device_id";
+const PA_MIDI_MAP_FORWARD_KEY = "gs_midi_map_forward";
+const PA_MIDI_MAP_BACKWARD_KEY = "gs_midi_map_backward";
+
+function paMidiLoadMapping(key) {
+  try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; }
+}
+
+function paMidiMapLabel(map) {
+  if (!map) return "not set";
+  const type = map.status & 0xf0;
+  const typeName = type === 0x90 ? "Note" : type === 0xb0 ? "CC" : type === 0xc0 ? "Program" : "MIDI";
+  return `${typeName} ${map.data1} (ch ${(map.status & 0x0f) + 1})`;
+}
+
+// Only a "press," never a "release," counts — a footswitch commonly sends
+// Note On velocity 0 (a disguised Note Off, per the MIDI spec's own
+// convention) or a CC value of 0 on release, and both Learn mode and live
+// matching need to agree on which half of that pair is the trigger.
+function paMidiIsPressEvent(status, data2) {
+  const type = status & 0xf0;
+  if (type === 0x90) return (data2 || 0) > 0; // Note On, real velocity
+  if (type === 0xb0) return (data2 || 0) > 0; // Control Change, real value
+  if (type === 0xc0) return true; // Program Change has no release concept at all
+  return false; // Note Off, pitch-bend, aftertouch, etc. — not a footswitch press
+}
+
+function paHandleMidiMessage(event) {
+  const [status, data1, data2] = event.data;
+  if (!paMidiIsPressEvent(status, data2)) return;
+
+  if (PA.midiLearnTarget) {
+    const target = PA.midiLearnTarget;
+    PA.midiLearnTarget = null;
+    const map = { status, data1 };
+    localStorage.setItem(target === "forward" ? PA_MIDI_MAP_FORWARD_KEY : PA_MIDI_MAP_BACKWARD_KEY, JSON.stringify(map));
+    document.getElementById(`pa-midi-${target}-display`).textContent = paMidiMapLabel(map);
+    document.getElementById("pa-midi-status").textContent = `MIDI cycle ${target} set to ${paMidiMapLabel(map)}.`;
+    return;
+  }
+
+  const fwdMap = paMidiLoadMapping(PA_MIDI_MAP_FORWARD_KEY);
+  const backMap = paMidiLoadMapping(PA_MIDI_MAP_BACKWARD_KEY);
+  if (fwdMap && fwdMap.status === status && fwdMap.data1 === data1) {
+    paCyclePresetChain(1);
+  } else if (backMap && backMap.status === status && backMap.data1 === data1) {
+    paCyclePresetChain(-1);
+  }
+}
+
+function paSelectMidiDevice(id) {
+  if (PA.midiInput) PA.midiInput.onmidimessage = null;
+  PA.midiInput = null;
+  const statusEl = document.getElementById("pa-midi-status");
+  if (!PA.midiAccess || !id) { statusEl.textContent = ""; return; }
+  const input = [...PA.midiAccess.inputs.values()].find((inp) => inp.id === id);
+  if (!input) { statusEl.textContent = ""; return; }
+  PA.midiInput = input;
+  PA.midiInput.onmidimessage = paHandleMidiMessage;
+  localStorage.setItem(PA_MIDI_DEVICE_KEY, id);
+  statusEl.textContent = `Connected: ${input.name || input.id}.`;
+}
+
+async function paRefreshMidiDevices() {
+  const select = document.getElementById("pa-midi-device-select");
+  const statusEl = document.getElementById("pa-midi-status");
+  if (!navigator.requestMIDIAccess) {
+    select.innerHTML = '<option value="">Not supported in this browser — try Chrome or Edge</option>';
+    return;
+  }
+  try {
+    PA.midiAccess = await navigator.requestMIDIAccess();
+  } catch (e) {
+    select.innerHTML = '<option value="">MIDI access denied</option>';
+    statusEl.textContent = "MIDI access was denied — check your browser's site permissions.";
+    return;
+  }
+  const inputs = [...PA.midiAccess.inputs.values()];
+  select.innerHTML = inputs.length
+    ? inputs.map((inp) => `<option value="${inp.id}">${escapeHtml(inp.name || inp.id)}</option>`).join("")
+    : '<option value="">No MIDI devices found</option>';
+  const savedId = localStorage.getItem(PA_MIDI_DEVICE_KEY);
+  const toSelect = inputs.find((inp) => inp.id === savedId) || inputs[0];
+  if (toSelect) {
+    select.value = toSelect.id;
+    paSelectMidiDevice(toSelect.id);
+  }
+  // A footswitch plugged in (or unplugged) after this ran shouldn't need a
+  // page reload to show up — real gap a one-time enumeration would leave.
+  PA.midiAccess.onstatechange = () => paRefreshMidiDevices();
+}
+
+function wireMidiControls() {
+  document.getElementById("pa-midi-device-select").addEventListener("change", (e) => {
+    paSelectMidiDevice(e.target.value);
+  });
+
+  function wireLearnBtn(btnId, target) {
+    document.getElementById(btnId).addEventListener("click", () => {
+      const statusEl = document.getElementById("pa-midi-status");
+      if (!PA.midiInput) { statusEl.textContent = "Pick a MIDI device above first."; return; }
+      PA.midiLearnTarget = target;
+      statusEl.textContent = `Press the footswitch button you want to cycle ${target} now…`;
+    });
+  }
+  wireLearnBtn("pa-midi-forward-learn-btn", "forward");
+  wireLearnBtn("pa-midi-backward-learn-btn", "backward");
+
+  document.getElementById("pa-midi-forward-display").textContent = paMidiMapLabel(paMidiLoadMapping(PA_MIDI_MAP_FORWARD_KEY));
+  document.getElementById("pa-midi-backward-display").textContent = paMidiMapLabel(paMidiLoadMapping(PA_MIDI_MAP_BACKWARD_KEY));
+
+  paRefreshMidiDevices();
+}
+
 function wireRigPresets() {
   document.getElementById("pa-preset-select").addEventListener("change", () => {
     paSyncPresetQuickpick();
@@ -3036,6 +3239,7 @@ function wireRigPresets() {
   }
   wireCycleKeyChangeBtn("pa-cycle-key-forward-change-btn", "rigPresetCycleKeyForward", "forward");
   wireCycleKeyChangeBtn("pa-cycle-key-backward-change-btn", "rigPresetCycleKeyBackward", "backward");
+  wireMidiControls();
 
   // Only active while Tone Lab or Play Along is open — both share the same
   // live rig (paSetActiveScreen/openToneLab/openPlayAlong). The Mixer's own

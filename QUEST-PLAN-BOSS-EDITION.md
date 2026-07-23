@@ -694,6 +694,19 @@ rig here and prove every stage of it actually does something.*
 - [ ] **Calibrate (play your loudest chord):** run it, confirm the
   suggested output trim keeps your loudest playing safely below clipping
   afterward.
+- [ ] **Measure round-trip latency (GP-13):** with a physical loop
+  (interface direct-out → direct-in, or its direct-monitor path) and
+  Input enabled, get a real round-trip figure within a couple seconds —
+  not the same (near-zero-capable) number as the separate output-only
+  estimate elsewhere. No loop connected → an honest "No loopback
+  detected" instead of a fake reading.
+- [ ] **MIDI footswitch (first build — real hardware not yet tested):**
+  connect a footswitch, pick it from the dropdown, Learn a button for
+  Cycle forward and a different one for Cycle backward, then confirm
+  pressing them mid-song actually cycles this song's rig-preset chain the
+  same as the keyboard keys do. Report anything that behaves oddly with
+  your specific pedal — this hasn't been validated against real hardware
+  yet.
 - [ ] **Icon chain:** one icon per stage (Gate, Amp, all 12 pedals,
   Output) in signal order, wrapping to a second row on a narrow window;
   exactly one panel open at a time; Gate's panel open by default on first
@@ -826,6 +839,11 @@ Boss will actually play through.
 - [ ] **Takes list:** star/rename/reveal/delete all work; **Play** loads
   into the inline player; **Trim start/end** + **Trim** produces a new
   losslessly-trimmed file without touching the original.
+- [ ] **Export for... (social presets):** on a video take, 9:16 and 1:1
+  both produce a new, correctly-cropped sibling file (1080×1920/1080×1080)
+  with a Reveal in Finder link once done; Normalized for web keeps the
+  frame size but changes only loudness. On an audio-only take, only
+  Normalized for web is offered — 9:16/1:1 don't show at all.
 - [ ] **Practice mode (auto-retake on loop):** set a loop + Loop on, check
   "Practice mode" — backing track starts from loop top and records; each
   loop wrap saves the just-finished pass as its own take and starts the

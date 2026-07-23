@@ -596,6 +596,13 @@
               <p class="hint">Too cold / good / too hot zones — clip light latches until cleared</p>
               <button id="pa-calibrate-btn">Calibrate (play your loudest chord)</button>
               <p class="hint" id="pa-calibrate-result"></p>
+              <!-- GP-13: the estimate on the Output card (#pa-latency-hint)
+                   is output-buffering only — this is a real measurement,
+                   needs input enabled and a physical loop (interface's
+                   direct-out -> its own direct-in, or its own hardware
+                   direct-monitor path). -->
+              <button id="pa-measure-latency-btn">Measure round-trip latency</button>
+              <p class="hint" id="pa-measure-latency-result"></p>
             </details>
           </section>
         </div>
@@ -635,6 +642,25 @@
           <div class="row">
             <label style="margin:0">Cycle backward: <kbd id="pa-cycle-key-backward-display">←</kbd></label>
             <button id="pa-cycle-key-backward-change-btn">Change…</button>
+          </div>
+
+          <!-- GP-11/V6-MIDI: same forward/backward cycle actions as the
+               keyboard keys above, triggered by an external MIDI
+               footswitch instead — see research/release-v6-spec.md §2.
+               Global (not per-song, unlike the keyboard keys) since a
+               physical pedal's own button layout doesn't change per song. -->
+          <label>MIDI footswitch (optional)</label>
+          <div class="row">
+            <select id="pa-midi-device-select"><option value="">No MIDI devices found</option></select>
+          </div>
+          <p class="hint" id="pa-midi-status"></p>
+          <div class="row">
+            <label style="margin:0">Cycle forward: <kbd id="pa-midi-forward-display">not set</kbd></label>
+            <button id="pa-midi-forward-learn-btn">Learn…</button>
+          </div>
+          <div class="row">
+            <label style="margin:0">Cycle backward: <kbd id="pa-midi-backward-display">not set</kbd></label>
+            <button id="pa-midi-backward-learn-btn">Learn…</button>
           </div>
         </section>
 

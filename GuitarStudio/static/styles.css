@@ -1591,12 +1591,18 @@ button:disabled:hover { filter: none; }
 /* ---------- Takes browser (VD-02/VD-03) ---------- */
 
 .take-row {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   padding: 6px 0; border-bottom: 1px solid var(--border);
   font-size: 12px;
 }
-.take-row .take-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.take-row .take-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 80px; }
 .take-row button { padding: 3px 7px; font-size: 11px; }
+.take-export-select {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 6px; font-size: 11px;
+}
+.take-export-status { flex-basis: 100%; color: var(--text-dim); }
+.take-export-status:empty { display: none; }
 .take-star-btn.starred { color: #facc15; border-color: #facc15; }
 #takes-player {
   width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 4px; margin: 8px 0;

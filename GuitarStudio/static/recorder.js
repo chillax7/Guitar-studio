@@ -631,7 +631,14 @@ async function refreshTakesList() {
       <button class="take-play-btn">Play</button>
       <button class="take-rename-btn">Rename</button>
       <button class="take-reveal-btn">Reveal</button>
-      <button class="take-delete-btn">Delete</button>`;
+      <button class="take-delete-btn">Delete</button>
+      <select class="take-export-select" title="Export a cropped/normalized copy for social platforms — writes a new file, never touches this take">
+        <option value="">Export for…</option>
+        <option value="9x16">9:16 (Reels/Shorts/Stories)</option>
+        <option value="1x1">1:1 (square)</option>
+        <option value="web_loudnorm">Normalized for web</option>
+      </select>
+      <span class="take-export-status hint"></span>`;
     listEl.appendChild(row);
 
     row.querySelector(".take-compare-check").addEventListener("change", (e) => {
@@ -682,6 +689,26 @@ async function refreshTakesList() {
       }
       compareSelection = compareSelection.filter((t) => t.path !== take.path);
       refreshTakesList();
+    });
+    // social-export-presets-spec.md: writes a NEW sibling file next to
+    // this take, never touches the take itself — same "reveal what you
+    // just got" idiom the Record card's own post-recording result uses.
+    row.querySelector(".take-export-select").addEventListener("change", async (e) => {
+      const preset = e.target.value;
+      e.target.value = ""; // reset immediately so the same preset can be picked again and still fire "change"
+      if (!preset) return;
+      const statusEl = row.querySelector(".take-export-status");
+      statusEl.textContent = "Exporting…";
+      try {
+        const r = await Api.post("/api/recording/export_social", { path: take.path, preset });
+        statusEl.textContent = `Exported: ${r.filename} — `;
+        const revealBtn = document.createElement("button");
+        revealBtn.textContent = "Reveal in Finder";
+        revealBtn.addEventListener("click", () => Api.post("/api/reveal", { path: r.path }).catch(() => {}));
+        statusEl.appendChild(revealBtn);
+      } catch (err) {
+        statusEl.textContent = "Export failed: " + err.message;
+      }
     });
   }
   updateCompareUI();

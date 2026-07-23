@@ -775,6 +775,16 @@ session, once you've noted it and fixed your gain staging). **Calibrate
 suggests an output trim so your loudest playing lands safely below
 clipping.
 
+**Measure round-trip latency** (also inside Setup) is a real
+measurement, not the estimate below it (§4.8) — it plays a short click
+out and listens for it coming back in, timing the actual round trip.
+This needs a physical loop: your interface's own direct-out connected
+to its direct-in, or its hardware direct-monitor path engaged — it's
+measuring that specific path, not the acoustic path through the room
+(speaker to mic), so don't run it expecting to measure open-air latency.
+If nothing comes back within a second, it says so plainly ("No loopback
+detected...") rather than reporting a meaningless number.
+
 ### 4.2 Amp — three modes
 
 - **Pass Through:** dry signal, no coloration — just gate → EQ → comp → delay/reverb.
@@ -844,6 +854,20 @@ output down and back up in ~20ms around the swap so the parameter jump
 underneath never reaches the speaker as a click; if the new preset loads a
 different NAM capture or IR, the fade stays down for however long that
 takes to load, which can be longer than 20ms on a slower switch.
+
+**MIDI footswitch (optional)** does the same forward/backward cycling as
+the keyboard keys above, from a connected MIDI footswitch instead —
+useful mid-song when your hands are both on the guitar. Pick your device
+from the dropdown (the browser will ask for MIDI permission once — Chrome
+or Edge; Safari doesn't support Web MIDI as of this writing), click
+**Learn…** next to Cycle forward or Cycle backward, then press the
+footswitch button you want mapped to it. Unlike the chain and keyboard
+keys, this mapping is global, not per-song — a physical pedal's button
+layout doesn't change from one song to the next. **First-build note:**
+this was built and verified with simulated MIDI messages, but not yet
+against a real footswitch — if something behaves oddly with your specific
+hardware, that's genuinely useful to report, not a known-working feature
+being mis-described.
 
 Play Along carries a lighter **Rig Preset** picker in its own top strip —
 just a dropdown, no Save/Delete/chain controls, for a one-off load of any
@@ -1121,6 +1145,14 @@ with:
 - **Rename** — rename in place.
 - **Reveal** — show it in Finder.
 - **Delete** — permanent, asks to confirm first.
+- **Export for...** — a dropdown with three social-media-ready presets,
+  each writing a brand-new file next to the take (your original is never
+  touched): **9:16** and **1:1** center-crop the video (only offered on a
+  take that actually has video — an audio-only Rate My Take dry take
+  won't show them), and **Normalized for web** loudness-normalizes the
+  audio to the same level the Mixer's own Export already targets, leaving
+  the video (if any) untouched. A **Reveal in Finder** link appears next
+  to the export once it finishes.
 
 With a take loaded in the player, **Trim start/end** sliders plus **Trim
 (lossless copy, new file)** cut the top/tail off losslessly (stream copy,

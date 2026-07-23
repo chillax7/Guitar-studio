@@ -1547,6 +1547,91 @@ def svc_recording_finalize(path: str, av_offset_ms: float) -> dict:
     return {"finalized": True, "path": str(target)}
 
 
+def find_ffprobe() -> str | None:
+    """Same robust lookup as engine.find_ffmpeg(), for the one companion
+    tool this app didn't previously need — ffprobe normally ships
+    alongside ffmpeg in the same install, so a plain PATH/common-location
+    check is enough without duplicating find_ffmpeg's own reasoning."""
+    found = shutil.which("ffprobe")
+    if found:
+        return found
+    for candidate in ("/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe", "/usr/bin/ffprobe"):
+        if Path(candidate).exists():
+            return candidate
+    return None
+
+
+def _ffprobe_has_video_stream(path: Path) -> bool:
+    """social-export-presets-spec.md §1: don't trust the file extension (a
+    .webm can be either) — ask ffprobe directly whether this take actually
+    has a video stream, so the two crop presets can be refused with a real
+    reason on an audio-only take instead of failing deep inside ffmpeg."""
+    ffprobe = find_ffprobe()
+    if not ffprobe:
+        return False  # honest degrade: no ffprobe means "can't confirm video," not "assume yes"
+    result = subprocess.run(
+        [ffprobe, "-v", "error", "-select_streams", "v", "-show_entries", "stream=codec_type",
+         "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True,
+    )
+    return result.returncode == 0 and "video" in result.stdout
+
+
+_SOCIAL_EXPORT_PRESETS = {
+    "9x16": {"suffix": "_9x16.mp4", "needs_video": True,
+             "vf": "crop='min(iw,ih*9/16)':'min(ih,iw*16/9)',scale=1080:1920",
+             "extra": ["-c:v", "libx264", "-crf", "20", "-c:a", "aac", "-b:a", "192k"]},
+    "1x1": {"suffix": "_1x1.mp4", "needs_video": True,
+            "vf": "crop='min(iw,ih)':'min(iw,ih)',scale=1080:1080",
+            "extra": ["-c:v", "libx264", "-crf", "20", "-c:a", "aac", "-b:a", "192k"]},
+    # Loudness only — video (if any) is stream-copied untouched, matching
+    # this preset's own name ("normalized for web," not "recropped").
+    "web_loudnorm": {"suffix": None, "needs_video": False,
+                      "af": f"loudnorm=I={engine.DEFAULT_TARGET_LUFS}:TP=-1.5:LRA=11",
+                      "extra": ["-c:v", "copy"]},
+}
+
+
+def svc_export_social(path: str, preset: str) -> dict:
+    """Writes a NEW sibling file next to an existing take/riff — never
+    overwrites the original (same "work on a temp file, only replace on
+    success" caution svc_recording_finalize already uses, just aimed at a
+    different destination here). preset in _SOCIAL_EXPORT_PRESETS' keys."""
+    if preset not in _SOCIAL_EXPORT_PRESETS:
+        raise ApiError(400, f"Unknown preset '{preset}'")
+    target = Path(path).resolve()
+    try:
+        target.relative_to(PROJECT_ROOT.resolve())
+    except ValueError:
+        raise ApiError(400, "path must be inside the project directory")
+    if not target.exists():
+        raise ApiError(404, "Recording not found")
+
+    spec = _SOCIAL_EXPORT_PRESETS[preset]
+    if spec["needs_video"] and not _ffprobe_has_video_stream(target):
+        raise ApiError(400, "This take has no video to crop.")
+
+    ffmpeg = engine.find_ffmpeg()
+    if not ffmpeg:
+        raise ApiError(500, "ffmpeg not found — required to export. Is it installed? (brew install ffmpeg)")
+
+    suffix = spec["suffix"] or f"_web{target.suffix}"
+    dest = target.with_name(target.stem + suffix)
+
+    cmd = [ffmpeg, "-y", "-i", str(target)]
+    if "vf" in spec:
+        cmd += ["-vf", spec["vf"]]
+    if "af" in spec:
+        cmd += ["-af", spec["af"]]
+    cmd += spec["extra"] + [str(dest)]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        dest.unlink(missing_ok=True)
+        raise ApiError(500, f"Export failed: {result.stderr[-500:]}")
+    return {"ok": True, "path": str(dest), "filename": dest.name}
+
+
 def svc_recording_discard(path: str) -> dict:
     target = Path(path).resolve()
     try:
@@ -2782,6 +2867,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/recording/discard":
                 body = self._read_json_body()
                 result = svc_recording_discard(body.get("path", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/recording/export_social":
+                body = self._read_json_body()
+                result = svc_export_social(body.get("path", ""), body.get("preset", ""))
                 return self._send_json(200, result)
 
             if path == "/api/recording/star":
