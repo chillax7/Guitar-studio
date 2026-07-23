@@ -1374,6 +1374,26 @@ button:disabled:hover { filter: none; }
   gap: 14px;
 }
 
+/* Add-to-library drop zone above the NAM/IR picker (real user ask — same
+   dashed-box idiom as #import-drop, just accepting a batch: single file(s),
+   a whole folder including nested subfolders, or a .zip pack). */
+.model-upload-drop {
+  margin-bottom: 10px;
+  padding: 10px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.model-upload-drop.dragover { border-color: var(--accent); color: var(--accent); }
+.model-upload-drop p { margin: 0; }
+.model-upload-drop a { color: var(--accent); cursor: pointer; }
+.model-upload-drop a:hover { text-decoration: underline; }
+.model-upload-drop .hint { margin-top: 4px; }
+
 /* Folder-navigable NAM/IR picker — a flat <select> stopped being usable
    once real libraries ran to hundreds/thousands of files across nested
    pack subfolders. Breadcrumb + one folder level at a time, with a search

@@ -1185,6 +1185,127 @@ function wireModelBrowser(prefix) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// NAM/IR upload — real user ask: adding to the library shouldn't mean
+// hand-copying files into models/nam or models/ir in Finder. One drop zone
+// per library takes a single file, a whole folder (nested subfolders
+// included — real packs often ship that way), or a .zip pack. The server
+// (svc_nam_upload/svc_ir_upload) does the actual routing by extension; the
+// client's job is just turning whatever got dropped/picked into a flat list
+// of (File, relative path) pairs and uploading them one at a time.
+// ---------------------------------------------------------------------------
+
+// readEntries() only returns one batch at a time (spec-mandated, historically
+// capped around 100) — has to be called repeatedly until it comes back empty
+// to see everything in a large dropped folder.
+function paReadAllDirEntries(dirReader) {
+  return new Promise((resolve, reject) => {
+    const all = [];
+    function readBatch() {
+      dirReader.readEntries((entries) => {
+        if (!entries.length) { resolve(all); return; }
+        all.push(...entries);
+        readBatch();
+      }, reject);
+    }
+    readBatch();
+  });
+}
+
+async function paWalkDroppedEntry(entry, relPrefix, out) {
+  if (entry.isFile) {
+    const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+    out.push({ file, relPath: relPrefix + entry.name });
+  } else if (entry.isDirectory) {
+    const children = await paReadAllDirEntries(entry.createReader());
+    for (const child of children) await paWalkDroppedEntry(child, relPrefix + entry.name + "/", out);
+  }
+}
+
+// webkitGetAsEntry (Chrome/Safari/Edge) is what makes dropping a whole
+// folder — not just loose files or a zip — work as one gesture; it's how a
+// nested pack's subfolder structure gets preserved. Falls back to the flat
+// file list (no folder support) on a browser without it, same graceful-
+// degradation spirit as the rest of this app's drag/drop.
+async function paCollectDroppedModelFiles(dataTransfer) {
+  const out = [];
+  const items = dataTransfer.items;
+  if (items && items.length && items[0].webkitGetAsEntry) {
+    for (const item of items) {
+      const entry = item.webkitGetAsEntry();
+      if (entry) await paWalkDroppedEntry(entry, "", out);
+    }
+  } else {
+    for (const file of dataTransfer.files) out.push({ file, relPath: file.name });
+  }
+  return out;
+}
+
+async function paUploadModelFiles(prefix, entries, statusEl) {
+  const endpoint = prefix === "nam" ? "/api/nam/upload" : "/api/ir/upload";
+  let written = 0, skipped = 0;
+  for (let i = 0; i < entries.length; i++) {
+    const { file, relPath } = entries[i];
+    statusEl.textContent = `Uploading ${i + 1} of ${entries.length}: ${relPath}…`;
+    try {
+      const buf = await file.arrayBuffer();
+      // Same cloud-storage-placeholder check importFile (app.js) makes —
+      // a NAM/IR library is exactly the kind of thing that lives in a
+      // selectively-synced cloud folder. One bad file shouldn't sink an
+      // entire folder/zip batch, so this counts as a skip, not an abort.
+      if (buf.byteLength === 0 || buf.byteLength < file.size) {
+        skipped++;
+        continue;
+      }
+      const r = await Api.postRaw(`${endpoint}?filename=${encodeURIComponent(relPath)}`, buf);
+      written += r.written != null ? r.written : 1;
+      skipped += r.skipped || 0;
+    } catch (e) {
+      skipped++;
+    }
+  }
+  const kind = prefix === "nam" ? ".nam" : ".wav";
+  statusEl.textContent = `Added ${written} file${written === 1 ? "" : "s"}` +
+    (skipped ? `, skipped ${skipped} (not a ${kind}/.zip file, empty, or failed to read).` : ".");
+  if (prefix === "nam") await paRefreshNamModels(); else await paRefreshIrModels();
+}
+
+function wireModelUpload(prefix) {
+  const dropEl = document.getElementById(`pa-${prefix}-drop`);
+  const filesInput = document.getElementById(`pa-${prefix}-upload-files`);
+  const folderInput = document.getElementById(`pa-${prefix}-upload-folder`);
+  const statusEl = document.getElementById(`pa-${prefix}-upload-status`);
+
+  document.getElementById(`pa-${prefix}-upload-files-link`).addEventListener("click", (e) => {
+    e.preventDefault();
+    filesInput.click();
+  });
+  document.getElementById(`pa-${prefix}-upload-folder-link`).addEventListener("click", (e) => {
+    e.preventDefault();
+    folderInput.click();
+  });
+  filesInput.addEventListener("change", (e) => {
+    const entries = [...e.target.files].map((file) => ({ file, relPath: file.name }));
+    filesInput.value = ""; // same file picked twice in a row must still fire "change"
+    if (entries.length) paUploadModelFiles(prefix, entries, statusEl);
+  });
+  folderInput.addEventListener("change", (e) => {
+    // webkitdirectory files carry webkitRelativePath ("PackName/sub/file.nam")
+    const entries = [...e.target.files].map((file) => ({ file, relPath: file.webkitRelativePath || file.name }));
+    folderInput.value = "";
+    if (entries.length) paUploadModelFiles(prefix, entries, statusEl);
+  });
+
+  dropEl.addEventListener("dragover", (e) => { e.preventDefault(); dropEl.classList.add("dragover"); });
+  dropEl.addEventListener("dragleave", (e) => { if (!dropEl.contains(e.relatedTarget)) dropEl.classList.remove("dragover"); });
+  dropEl.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    dropEl.classList.remove("dragover");
+    const entries = await paCollectDroppedModelFiles(e.dataTransfer);
+    if (entries.length) paUploadModelFiles(prefix, entries, statusEl);
+  });
+}
+
 // Probe a model in a throwaway OfflineAudioContext before it goes anywhere
 // near the live render thread: measure its output-level calibration gain
 // (sync/blocking — the offline render thread can block freely) AND its
@@ -1905,6 +2026,7 @@ function wirePAControls() {
   }
 
   wireModelBrowser("nam");
+  wireModelUpload("nam");
   document.getElementById("pa-nam-in").addEventListener("input", (e) => {
     PA.namNode.parameters.get("inputGainDb").value = parseFloat(e.target.value);
     document.getElementById("pa-nam-in-val").textContent = e.target.value + " dB";
@@ -1930,6 +2052,7 @@ function wirePAControls() {
   document.getElementById("pa-suggest-btn").addEventListener("click", paSuggestClosestModel);
 
   wireModelBrowser("ir");
+  wireModelUpload("ir");
   document.getElementById("pa-ir-bypass").addEventListener("change", (e) => {
     const bypassed = e.target.checked;
     PA.irDryGain.gain.value = bypassed ? 1 : 0;

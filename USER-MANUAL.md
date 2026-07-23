@@ -929,12 +929,21 @@ persists across reloads and is captured/recalled as part of a rig preset
 
 ### 4.6 Adding amp models & cab IRs
 
-Drop `.nam` files into `GuitarStudio/models/nam/` and `.wav` impulse
-responses into `GuitarStudio/models/ir/` — subfolders are fine (a large
-library organized into pack folders is scanned recursively) and they show
-up in the pickers after reopening the panel, no restart needed. Both
-pickers are a searchable, folder-navigable browser rather than a flat
-list — type in the search box to filter across the whole library
+A drop zone sits right above each picker (Amp → Neural (NAM) mode for
+amp captures; Cab IR for impulse responses) — drop a single `.nam`/`.wav`
+file, a whole folder (nested subfolders preserved, so a pack organized
+into sub-packs still lands the same way it's organized on disk), or a
+`.zip` pack onto it, or use the **choose files**/**choose a folder** links
+if you'd rather browse. Whichever way you add them, they show up in the
+picker immediately (no reopening the panel or restarting needed), and
+non-matching files inside a dropped folder or zip (a stray readme, a
+`__MACOSX/` junk entry from a Finder-compressed zip) are silently
+skipped, not treated as an error. You can still drop `.nam` files into
+`GuitarStudio/models/nam/` and `.wav` impulse responses into
+`GuitarStudio/models/ir/` by hand in Finder if you prefer — both paths
+land in the same place and both pickers scan recursively either way.
+Both pickers are a searchable, folder-navigable browser rather than a
+flat list — type in the search box to filter across the whole library
 regardless of folder, or click through folders to browse. Two small
 starter NAM captures ship with the app so there's something to try
 immediately. [TONE3000](https://www.tone3000.com) hosts a large free

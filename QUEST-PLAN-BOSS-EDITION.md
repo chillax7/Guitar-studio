@@ -724,6 +724,14 @@ rig here and prove every stage of it actually does something.*
   that clears the offline probe but struggles live, confirm it rolls back
   within ~100ms, restoring the previous rig state with an updated status
   line.
+- [ ] **Add NAM models & IRs via the UI (real user ask — no more hand-
+  copying into Finder):** above each picker, a drop zone takes a single
+  file, a whole folder (nested subfolders preserved — a pack organized
+  into sub-packs lands the same way), or a `.zip` pack; **choose files**/
+  **choose a folder** links do the same via a file dialog. New entries
+  show up in the picker immediately. Drop a folder or zip with a mix of
+  matching and non-matching files (a readme, `__MACOSX/` junk) — the real
+  ones land, everything else is silently skipped rather than erroring.
 - [ ] **Cab IR:** picking one auto-disables bypass; toggle is audible;
   loudness stays roughly consistent switching between a few different IR
   files (peak-normalized on load, not wildly different depending on source

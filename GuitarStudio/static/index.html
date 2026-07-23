@@ -690,6 +690,19 @@
                 <button id="pa-suggest-btn" class="primary" style="display:none">Suggest from this track's guitar stem</button>
                 <p class="hint" id="pa-suggest-unavailable-hint" style="display:none">Needs a guitar stem to compare against — re-separate this song with <code>bs_roformer_sw</code> or <code>htdemucs_6s</code> to get one, or (for an imported stem pack) mark one of its stems as the guitar with the 🎸 button next to it in the Mixer.</p>
                 <p class="hint" id="pa-suggest-result"></p>
+                <!-- Real user ask: adding to the NAM library shouldn't mean
+                     hand-copying files into models/nam/ in Finder. One drop
+                     zone takes a single .nam file, a whole folder (nested
+                     subfolders preserved), or a .zip pack — same routing-by-
+                     what-you-dropped idiom as the sidebar's import zone. -->
+                <div class="model-upload-drop" id="pa-nam-drop">
+                  <p>Drop .nam file(s), a folder, or a .zip pack here — or
+                    <a href="#" id="pa-nam-upload-files-link">choose files</a> /
+                    <a href="#" id="pa-nam-upload-folder-link">choose a folder</a></p>
+                  <input type="file" id="pa-nam-upload-files" accept=".nam,.zip" multiple style="display:none">
+                  <input type="file" id="pa-nam-upload-folder" webkitdirectory multiple style="display:none">
+                  <p class="hint" id="pa-nam-upload-status"></p>
+                </div>
                 <div class="model-browser" id="pa-nam-browser">
                   <input type="text" class="model-browser-search" id="pa-nam-search" placeholder="Search all models…">
                   <div class="model-browser-breadcrumb" id="pa-nam-breadcrumb"></div>
@@ -729,6 +742,16 @@
             <h3>Cab IR</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-ir-bypass" checked></div>
+              <!-- Same idiom as the NAM drop zone above — single .wav, a
+                   whole folder (nested subfolders preserved), or a .zip pack. -->
+              <div class="model-upload-drop" id="pa-ir-drop">
+                <p>Drop .wav IR file(s), a folder, or a .zip pack here — or
+                  <a href="#" id="pa-ir-upload-files-link">choose files</a> /
+                  <a href="#" id="pa-ir-upload-folder-link">choose a folder</a></p>
+                <input type="file" id="pa-ir-upload-files" accept=".wav,.zip" multiple style="display:none">
+                <input type="file" id="pa-ir-upload-folder" webkitdirectory multiple style="display:none">
+                <p class="hint" id="pa-ir-upload-status"></p>
+              </div>
               <div class="model-browser" id="pa-ir-browser">
                 <input type="text" class="model-browser-search" id="pa-ir-search" placeholder="Search all IRs…">
                 <div class="model-browser-breadcrumb" id="pa-ir-breadcrumb"></div>

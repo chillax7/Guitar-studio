@@ -405,6 +405,77 @@ def resolve_ir_file(filename: str) -> Path:
     return _resolve_model_file(IR_DIR, filename, "IR")
 
 
+# ---------------------------------------------------------------------------
+# NAM/IR upload — real user ask: a single file, a whole folder (nested
+# subfolders included — a real pack often ships that way), or a .zip should
+# all be able to land in models/nam or models/ir straight from the UI, not
+# just by hand in Finder. One relative-path-plus-bytes endpoint per library
+# covers all three: the client sends one POST per loose/folder file (its
+# path preserving whatever subfolder it came from), or one POST for a whole
+# .zip (detected by its own filename's extension) which gets extracted
+# server-side, same folder-preserving behavior either way.
+# ---------------------------------------------------------------------------
+
+def _model_upload_dest(root: Path, rel_path: str) -> Path:
+    """Resolve a (possibly nested) relative path under root, verifying
+    containment — same idea as _resolve_model_file, but this can't reuse
+    safe_name() (which strips '/' as its own traversal defense) since a
+    dropped pack's subfolder structure is the whole point of preserving."""
+    parts = [p for p in rel_path.replace("\\", "/").split("/") if p not in ("", ".", "..")]
+    if not parts:
+        raise ApiError(400, "Invalid path")
+    dest = root.joinpath(*parts).resolve()
+    try:
+        dest.relative_to(root.resolve())
+    except ValueError:
+        raise ApiError(400, "Invalid path")
+    return dest
+
+
+def _extract_model_zip(root: Path, zip_bytes: bytes, suffixes: tuple[str, ...], kind: str) -> dict:
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    except zipfile.BadZipFile:
+        raise ApiError(400, "Not a valid zip file")
+    suffixes_lower = tuple(s.lower() for s in suffixes)
+    written = skipped = 0
+    for info in zf.infolist():
+        if info.is_dir() or _is_junk_zip_entry(info.filename):
+            continue
+        if Path(info.filename).suffix.lower() not in suffixes_lower:
+            skipped += 1
+            continue
+        dest = _model_upload_dest(root, info.filename)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(zf.read(info))
+        written += 1
+    if written == 0:
+        raise ApiError(400, f"No usable {kind} files found in this zip "
+                             f"({'/'.join(suffixes)} only, after filtering __MACOSX/ junk)")
+    return {"ok": True, "written": written, "skipped": skipped}
+
+
+def _upload_model_asset(root: Path, rel_path: str, data: bytes, suffixes: tuple[str, ...], kind: str) -> dict:
+    if not data:
+        raise ApiError(400, "Empty upload")
+    if rel_path.lower().endswith(".zip"):
+        return _extract_model_zip(root, data, suffixes, kind)
+    if Path(rel_path).suffix.lower() not in tuple(s.lower() for s in suffixes):
+        raise ApiError(400, f"'{rel_path}' isn't a {kind} file ({'/'.join(suffixes)} or .zip)")
+    dest = _model_upload_dest(root, rel_path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    return {"ok": True, "written": 1, "skipped": 0, "filename": str(dest.relative_to(root))}
+
+
+def svc_nam_upload(rel_path: str, data: bytes) -> dict:
+    return _upload_model_asset(NAM_DIR, rel_path, data, (".nam",), "NAM")
+
+
+def svc_ir_upload(rel_path: str, data: bytes) -> dict:
+    return _upload_model_asset(IR_DIR, rel_path, data, (".wav",), "IR")
+
+
 def svc_import(filename: str, data: bytes) -> dict:
     if not data:
         raise ApiError(400, "Empty upload")
@@ -2627,6 +2698,16 @@ class Handler(BaseHTTPRequestHandler):
                 _, query = self._query()
                 filename = query.get("filename", "")
                 result = svc_import_stem_zip(self._read_body(), filename)
+                return self._send_json(200, result)
+
+            if path == "/api/nam/upload":
+                _, query = self._query()
+                result = svc_nam_upload(query.get("filename", ""), self._read_body())
+                return self._send_json(200, result)
+
+            if path == "/api/ir/upload":
+                _, query = self._query()
+                result = svc_ir_upload(query.get("filename", ""), self._read_body())
                 return self._send_json(200, result)
 
             if path == "/api/rip/save":
