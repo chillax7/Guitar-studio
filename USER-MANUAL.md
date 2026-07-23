@@ -731,11 +731,12 @@ tells you what's actually in the signal path before you open anything.
 The icon row's own left-to-right order **is** the signal-chain order, so
 there's no separate diagram to keep in sync with it. Switching which
 icon's panel is open (or switching Amp mode between Pass Through/Analog/
-Neural) scrolls the screen back to the icon row itself, rather than
-leaving you clamped at some arbitrary spot lower down — the different
-panels aren't all the same height, so there's no single scroll position
-that stays valid across all of them; landing back at the row every time
-is the predictable alternative.
+Neural) never moves your scroll position on its own — wherever you'd
+scrolled to stays exactly there. The one exception is unavoidable: if the
+newly-opened panel is shorter than the one you were looking at, and your
+scroll position no longer exists in the new, shorter page, the browser
+clamps it to the nearest valid spot — the same way any web page behaves
+when its content shrinks.
 
 ![Tone Lab — Input strip, Rig Presets, and the pedalboard's first few cards.](docs/screenshots/tonelab-overview.jpg)
 

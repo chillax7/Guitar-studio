@@ -678,14 +678,17 @@ rig here and prove every stage of it actually does something.*
   preset later in this boss.
 - [ ] **Amp modes:** switch Pass Through → Analog → Neural cleanly, no
   clicks/pops; only the active mode's chain produces sound.
-- [ ] **Scroll position on panel/mode switch (real user report):** scroll
-  down while a tall panel is open (Neural mode's Amp card is the tallest),
-  then click a much shorter pedal icon (Gate) — the view lands back at
-  the icon-chain row showing the newly opened card from its own top,
-  instead of clamped at a confusing offset partway down the shorter
-  panel. Same check switching Amp mode while scrolled down. Turning a
-  bypass checkbox or moving a slider within the SAME already-open panel
-  should never move the scroll position at all.
+- [ ] **Scroll position on panel/mode switch (real user report — no active
+  repositioning):** scroll down while a tall panel is open (Neural mode's
+  Amp card is the tallest), then click a much shorter pedal icon (Gate) —
+  the scroll position stays exactly where it was; nothing snaps back to
+  the icon-chain row. The only exception is the browser's own unavoidable
+  clamp when the shorter panel's content ends above the old scroll
+  position — that's the page unable to stay scrolled past its own
+  bottom, not a deliberate reposition. Same check switching Amp mode
+  while scrolled down. Turning a bypass checkbox or moving a slider
+  within the SAME already-open panel should never move the scroll
+  position at all.
 - [ ] **NAM Tweaker:** load a real `.nam` capture — metadata shown honestly
   (including an honest "no metadata" if the file carries none); Drive
   (-24..+48dB) audibly changes distortion character; Bass/Mid/Treble/
