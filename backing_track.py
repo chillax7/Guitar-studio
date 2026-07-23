@@ -137,8 +137,13 @@ ANALYSIS_FILE = "analysis.json"
 # so the whole chord lane, which windows per beat) now falls back to onset
 # tracking on the pitched stems when there's no drums stem to track — a
 # drumless/acoustic song used to produce no beats at all and an entirely
-# empty chord lane.
-ANALYSIS_VERSION = 11
+# empty chord lane; v12: adds coarse song-section detection (BT-20,
+# song-section-detection-spec.md) — a beat-free (fixed ~1s grid),
+# self-similarity + Foote-novelty pass over the full mix that returns labeled
+# {start, end, label} regions (A/B/C… by repetition), for a section ribbon you
+# can jump to / loop. Assistive, first-cut, best-effort — same framing as the
+# chord lane and key detection; simply omitted when there's no confident read.
+ANALYSIS_VERSION = 12
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -996,6 +1001,205 @@ def key_from_chords(chords: list, chroma_mean: "np.ndarray" = None) -> dict | No
     return {"key": root, "mode": mode, "confidence": confidence}
 
 
+# BT-20 (song-section detection, song-section-detection-spec.md): the same
+# beat-synchronous, self-similarity + Foote-novelty recipe the MIR structure
+# literature has used since Foote 2000 / MSAF. NOT a verse/chorus transcriber:
+# it finds where the song's *texture and harmony* change enough to call a
+# boundary, then labels repeated material with the same letter (A/B/C…), so
+# the UI can show "this bit here comes back later" and let you jump to / loop a
+# section — the same assistive-not-authoritative framing as the chord lane and
+# key detection. Semantic names (intro/verse/chorus/solo) are deliberately out
+# of scope for a first cut: they need reliable repetition-counting + loudness
+# heuristics that mislabel more than they help, and a wrong "Chorus" tag reads
+# worse than an honest "Section B".
+# A fixed ~1s feature grid, NOT a beat-synchronous one. Beat-sync is the
+# textbook choice, but it depends on the beat tracker covering the whole song,
+# and a quiet drumless intro (Mull of Kintyre again) gets no beats there — so
+# that whole passage collapses into a single feature column and can't be seen
+# as its own section. A uniform time grid has no such blind spot, its
+# time-mapping is trivial (column j starts at j * window seconds), and at ~1s
+# resolution it's easily fine for the coarse boundaries this feature reports.
+SECTION_WINDOW_SECONDS = 1.0        # feature-grid resolution: frames pooled into ~1s windows
+SECTION_MIN_SECONDS = 8.0           # real-music floor: sections shorter than this get merged away (drop their weakest-novelty boundary) — a 5-second "section" is over-segmentation, not structure
+SECTION_KERNEL_HALF_SECONDS = 12.0  # Foote checkerboard half-width in seconds — the timescale section changes are looked for at
+SECTION_NOVELTY_DELTA = 0.06        # peak-pick threshold on the normalized novelty curve; higher = fewer, more confident boundaries
+SECTION_LABEL_SIM = 0.72            # cosine similarity between two segments' mean features above which they get the SAME letter (are "the same kind of section")
+SECTION_MAX_LABELS = 8              # never invent more distinct letters than this — beyond it, structure reads as noise, not sections
+
+
+def _checkerboard_kernel(half: int) -> "np.ndarray":
+    """A Gaussian-radially-tapered checkerboard kernel (Foote 2000): +1 in the
+    top-left / bottom-right quadrants (self-similar past & future), -1 in the
+    off-diagonal quadrants (past vs future differ). Slid down a self-similarity
+    matrix's diagonal it peaks exactly where the block structure switches — a
+    section boundary. The Gaussian taper weights the cell nearest the diagonal
+    most, so a sharp local change matters more than distant material."""
+    axis = np.arange(-half, half)
+    xx, yy = np.meshgrid(axis, axis)
+    sigma = half / 2.0
+    gauss = np.exp(-(xx ** 2 + yy ** 2) / (2 * sigma ** 2))
+    return np.sign(xx) * np.sign(yy) * gauss
+
+
+def _foote_novelty(ssm: "np.ndarray", half: int) -> "np.ndarray":
+    """Correlate the checkerboard kernel along the SSM diagonal → a novelty
+    curve, one value per beat, normalized to [0,1]. Zero-padded at the ends
+    (the very start/end are always boundaries anyway, so their edge artifacts
+    don't matter)."""
+    n = ssm.shape[0]
+    ker = _checkerboard_kernel(half)
+    padded = np.pad(ssm, half, mode="constant", constant_values=0.0)
+    nov = np.empty(n)
+    for i in range(n):
+        nov[i] = float(np.sum(ker * padded[i:i + 2 * half, i:i + 2 * half]))
+    nov = np.maximum(nov, 0.0)
+    peak = nov.max()
+    return nov / peak if peak > 0 else nov
+
+
+def _label_segments(feat_norm: "np.ndarray", bounds: list) -> list:
+    """Greedy cosine labeling: walk the segments in order, giving each one an
+    existing letter if its mean feature vector is within SECTION_LABEL_SIM of
+    that letter's centroid, otherwise a fresh letter (up to SECTION_MAX_LABELS,
+    after which the nearest existing letter is reused). Repeated material
+    (verse, verse-reprise) collapses to one letter; genuinely new material gets
+    its own. Returns a label string per segment."""
+    centroids = []  # (unit-normalized centroid, count) per letter
+    labels = []
+    for a, b in zip(bounds, bounds[1:]):
+        m = feat_norm[:, a:b].mean(axis=1)
+        m = m / (np.linalg.norm(m) + 1e-9)
+        sims = [float(m @ c) for c, _ in centroids]
+        best = int(np.argmax(sims)) if sims else -1
+        if best >= 0 and (sims[best] >= SECTION_LABEL_SIM or len(centroids) >= SECTION_MAX_LABELS):
+            c, cnt = centroids[best]
+            merged = (c * cnt + m)
+            centroids[best] = (merged / (np.linalg.norm(merged) + 1e-9), cnt + 1)
+            labels.append(best)
+        else:
+            centroids.append((m, 1))
+            labels.append(len(centroids) - 1)
+    return [chr(ord("A") + i) for i in labels]
+
+
+def detect_sections(out_dir: Path, beats: list = None) -> list | None:
+    """BT-20: coarse song structure — a list of {start, end, label} regions.
+    Uses the FULL mix (every stem summed, drums and vocals included) on
+    purpose: instrumentation and texture changes (drums or vocals entering, a
+    solo) are exactly the cues a section boundary rides on, the opposite of
+    detect_chords which strips them. Works on a fixed ~1s feature grid (not the
+    beat grid — see SECTION_WINDOW_SECONDS), so a quiet drumless intro is
+    covered like anything else. `beats` is accepted for signature stability but
+    unused. Returns None (a fine "no reading" — never fatal) when the song is
+    too short to have structure worth showing."""
+    import librosa
+
+    wavs = [w for w in sorted(out_dir.glob("*.wav"))
+            if w.stem.lower() not in ("click", "beat", "beats", "metronome")]
+    if not wavs:
+        return None
+
+    sources = []
+    sr = None
+    for w in wavs:
+        y, sr = librosa.load(str(w), sr=None, mono=True)
+        sources.append(y)
+    max_len = max(len(y) for y in sources)
+    mono = np.zeros(max_len, dtype=np.float32)
+    for y in sources:
+        mono[:len(y)] += y
+
+    hop = 512
+    song_end = float(len(mono) / sr)
+    frame_sec = hop / sr
+    pool = max(1, int(round(SECTION_WINDOW_SECONDS / frame_sec)))  # frames per ~1s window
+    win_sec = pool * frame_sec
+    min_win = max(2, int(round(SECTION_MIN_SECONDS / win_sec)))
+
+    # Timbre (MFCC — catches instrumentation/texture) + harmony (chroma —
+    # catches a verse/chorus that differs by chords), the two complementary
+    # feature families the structure literature stacks — pooled from the native
+    # frame rate into fixed ~1s windows.
+    mfcc = librosa.feature.mfcc(y=mono, sr=sr, n_mfcc=13, hop_length=hop)
+    chroma = librosa.feature.chroma_cqt(y=mono, sr=sr, hop_length=hop)
+    n_frames = min(mfcc.shape[1], chroma.shape[1])
+    n = n_frames // pool
+    if n < 2 * min_win:
+        return None
+
+    def _pool(x):
+        usable = n * pool
+        return x[:, :usable].reshape(x.shape[0], n, pool).mean(axis=2)
+
+    def _znorm(x):
+        return (x - x.mean(axis=1, keepdims=True)) / (x.std(axis=1, keepdims=True) + 1e-9)
+
+    feat = np.vstack([_znorm(_pool(mfcc[:, :n_frames])), _znorm(_pool(chroma[:, :n_frames]))])
+    feat_norm = feat / (np.linalg.norm(feat, axis=0, keepdims=True) + 1e-9)
+    ssm = feat_norm.T @ feat_norm  # cosine self-similarity, one column/row per ~1s window
+
+    half = max(2, min(int(round(SECTION_KERNEL_HALF_SECONDS / win_sec)), n // 2 - 1))
+    novelty = _foote_novelty(ssm, half)
+
+    peaks = librosa.util.peak_pick(
+        novelty, pre_max=min_win, post_max=min_win,
+        pre_avg=min_win, post_avg=min_win,
+        delta=SECTION_NOVELTY_DELTA, wait=min_win)
+
+    # Fixed grid → trivial time-mapping: window j starts at j * win_sec, and the
+    # final boundary is the true song end.
+    boundtimes = np.concatenate([np.arange(n) * win_sec, [song_end]])
+
+    bounds = [0] + [int(p) for p in peaks if min_win <= int(p) <= n - min_win] + [n]
+    bounds = sorted(set(bounds))
+    if len(bounds) < 2:
+        return None
+
+    # Real-music floor: merge away any segment shorter than SECTION_MIN_SECONDS
+    # by dropping the weaker (lower-novelty) of the boundaries bordering it,
+    # until every surviving section clears the floor. A 5-second "section" is
+    # over-segmentation from a transient (a fill, a single loud hit), not
+    # structure worth showing.
+    def _novelty_at(col):
+        return float(novelty[col]) if 0 <= col < len(novelty) else 1.0
+
+    while len(bounds) > 2:
+        durs = [boundtimes[b] - boundtimes[a] for a, b in zip(bounds, bounds[1:])]
+        i = int(np.argmin(durs))
+        if durs[i] >= SECTION_MIN_SECONDS:
+            break
+        cands = []
+        if i > 0:
+            cands.append(i)          # drop the left border of segment i
+        if i + 1 < len(bounds) - 1:
+            cands.append(i + 1)      # drop the right border of segment i
+        if not cands:
+            break
+        bounds.pop(min(cands, key=lambda k: _novelty_at(bounds[k])))
+
+    labels = _label_segments(feat_norm, bounds)
+
+    # Collapse consecutive same-letter segments (a boundary the novelty found
+    # inside what turns out to be one kind of section) into a single run.
+    merged_bounds = [bounds[0]]
+    merged_labels = []
+    for idx, label in enumerate(labels):
+        if merged_labels and merged_labels[-1] == label:
+            merged_bounds[-1] = bounds[idx + 1]
+        else:
+            merged_labels.append(label)
+            merged_bounds.append(bounds[idx + 1])
+
+    sections = []
+    for (a, b), label in zip(zip(merged_bounds, merged_bounds[1:]), merged_labels):
+        start = float(boundtimes[a])
+        end = float(boundtimes[min(b, len(boundtimes) - 1)])
+        if end - start <= 0:
+            continue
+        sections.append({"start": round(start, 3), "end": round(end, 3), "label": label})
+    return sections or None
+
+
 def analyze_track(out_dir: Path) -> dict:
     """BT-01/BT-16/BT-03/BT-04: best-effort tempo + reference-pitch + key +
     chord analysis. Tempo comes from the drums stem (present for every
@@ -1121,6 +1325,16 @@ def analyze_track(out_dir: Path) -> dict:
             chord_key = key_from_chords(chords, chroma_mean)
             if chord_key:
                 result["key"] = chord_key  # overrides detect_key's chroma-profile guess — see key_from_chords' docstring
+    except Exception:
+        pass
+
+    # BT-20: coarse song structure (see detect_sections). Its own try — a
+    # segmentation failure never costs the readings above it — and, like every
+    # other field here, simply omitted when there's no confident reading.
+    try:
+        sections = detect_sections(out_dir, result.get("beats"))
+        if sections:
+            result["sections"] = sections
     except Exception:
         pass
 

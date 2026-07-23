@@ -968,6 +968,42 @@ button:disabled:hover { filter: none; }
    as Rate My Take's planned low-confidence heatmap zones. */
 .chord-chip-unknown { opacity: 0.35; }
 
+/* BT-20 song-section ribbon — same sticky-header/timeToPct layout model as
+   #chord-lane, one row up. Per-label colors (set inline in renderSectionLane)
+   make a repeated section instantly recognizable as "the same part again." */
+#section-lane {
+  display: none; /* flipped to "flex" by renderSectionLane only when the analysis has sections */
+  align-items: stretch;
+  gap: 4px;
+  height: 15px;
+  margin: 0 0 2px 0;
+}
+#section-lane-content {
+  position: relative;
+  flex: 1 0 auto;
+  min-width: calc(100% - 158px); /* see #markers-row-content's comment */
+}
+.section-block {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+  border-radius: 2px;
+  opacity: 0.72;
+}
+.section-block:hover { opacity: 1; }
+
 #ruler {
   display: flex;
   align-items: stretch;

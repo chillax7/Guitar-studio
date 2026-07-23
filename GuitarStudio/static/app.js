@@ -287,9 +287,11 @@ function applyZoomWidth() {
   const rulerContent = document.getElementById("ruler-content");
   const markersContent = document.getElementById("markers-row-content");
   const chordContent = document.getElementById("chord-lane-content");
+  const sectionContent = document.getElementById("section-lane-content");
   if (rulerContent) rulerContent.style.width = contentWidth + "px";
   if (markersContent) markersContent.style.width = contentWidth + "px";
   if (chordContent) chordContent.style.width = contentWidth + "px";
+  if (sectionContent) sectionContent.style.width = contentWidth + "px";
   // The sticky header's own box (its opaque background, not just the
   // -content children widened above) needs to grow to the same total
   // width as a .lane row — left un-widened, it stayed at the pre-zoom fit
@@ -2547,6 +2549,7 @@ function rerenderTimeline() {
   renderLanes();
   renderMarkers();
   renderBeatGrid();
+  renderSectionLane();
   renderChordLane();
   updateLoopVisual();
   renderPlayhead(currentPosition());
@@ -2820,6 +2823,57 @@ function chordSymbol(chord, semitones) {
   return root + suffix;
 }
 
+// BT-20: a fixed palette keyed by section letter, so the SAME letter always
+// draws the SAME color across the whole song — the point of the ribbon is to
+// make "this part comes back later" visible at a glance, which only works if
+// every A is one color, every B another. Deliberately distinct hues, readable
+// in both themes at the ribbon's low opacity.
+const SECTION_COLORS = ["#4a90d9", "#5cb85c", "#d9a441", "#b86bd9", "#d9645c", "#41c7d9", "#9db84a", "#d97f9e"];
+function sectionColor(label) {
+  const i = (label.charCodeAt(0) - 65) % SECTION_COLORS.length;
+  return SECTION_COLORS[i < 0 ? 0 : i];
+}
+function fmtClock(t) {
+  const m = Math.floor(t / 60), s = Math.floor(t % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+// Coarse song structure (BT-20, detect_sections in backing_track.py) — same
+// sticky-header/timeToPct layout as renderChordLane, one row up. Unlike chords
+// these don't transpose, so it's re-rendered on zoom/scroll/select but not on
+// Tune changes.
+function renderSectionLane() {
+  const outer = document.getElementById("section-lane");
+  const row = document.getElementById("section-lane-content");
+  if (!outer || !row) return;
+  const sections = (State.analysis || {}).sections;
+  if (!sections || !sections.length || !Audio.duration) {
+    outer.style.display = "none";
+    row.innerHTML = "";
+    return;
+  }
+  outer.style.display = "flex";
+  row.innerHTML = "";
+
+  const { start: viewStart, end: viewEnd } = viewWindow();
+  const frag = document.createDocumentFragment();
+  sections.forEach((sec) => {
+    if (sec.end < viewStart || sec.start > viewEnd) return;
+    const color = sectionColor(sec.label);
+    const block = document.createElement("div");
+    block.className = "section-block";
+    block.style.left = timeToPct(sec.start) + "%";
+    block.style.width = Math.max(0, timeToPct(sec.end) - timeToPct(sec.start)) + "%";
+    block.style.background = color;
+    block.style.border = "1px solid " + color;
+    block.textContent = sec.label;
+    block.title = `Section ${sec.label} (${fmtClock(sec.start)}–${fmtClock(sec.end)}) — click to jump. Structure is assistive/approximate; A/B/C mark repeated parts, not verse/chorus names.`;
+    block.addEventListener("click", () => seekTo(sec.start));
+    frag.appendChild(block);
+  });
+  row.appendChild(frag);
+}
+
 // Same "always visible when data exists, no separate toggle" idiom as
 // renderBeatGrid — and the same viewWindow()/timeToPct() positioning BT-17
 // established, except chips have a real width (a run of beats), not a
@@ -2901,6 +2955,7 @@ function renderInspector() {
   chordHintEl.textContent = (a.chords && a.chords.length)
     ? "Chord lane (above the ruler): assistive, best on pop/rock — no confident read for palm muted chugs. Confirm by ear."
     : "";
+  renderSectionLane();
   renderChordLane();
   // V5-F2: a new track's chord regions make any previously-selected AI Lab
   // chord index meaningless — re-pick the one under the playhead instead.

@@ -219,6 +219,16 @@
           <div class="timeline-gutter"></div>
           <div id="markers-row-content"></div>
         </div>
+        <!-- BT-20 (song-section-detection-spec.md): coarse song structure —
+             one colored block per detected section (A/B/C… by repetition, so
+             the two verses share a color), positioned via timeToPct like the
+             chord ribbon. Hidden (display:none) when the analysis has no
+             sections key, same graceful-omission contract as the chord lane.
+             See renderSectionLane in app.js. -->
+        <div id="section-lane">
+          <div class="timeline-gutter">Sections</div>
+          <div id="section-lane-content"></div>
+        </div>
         <!-- V4-F1: one chip per beat-grid interval, positioned/widthed via
              timeToPct like every other ruler-aligned element — see
              renderChordLane in app.js. Hidden entirely (display:none) when
