@@ -137,13 +137,24 @@ ANALYSIS_FILE = "analysis.json"
 # so the whole chord lane, which windows per beat) now falls back to onset
 # tracking on the pitched stems when there's no drums stem to track — a
 # drumless/acoustic song used to produce no beats at all and an entirely
-# empty chord lane; v12: adds coarse song-section detection (BT-20,
+# empty chord lane; v11b ("Norwegian Wood" pass): chord IDENTITY (root AND
+# quality) now reads the non-bass mix for the WHOLE decode, not just the CD-2/
+# CD-5 gates — a bass note is near-pure root energy and summed into the chroma
+# it buries the third (the one bin telling maj from min) below the noise floor,
+# so a plain E major over an E bass was decoding as E minor (real modal-shift
+# song, verse read minor); the bass now contributes only through CD-4's
+# explicit root bonus. Fixed the maj/min discrimination across the board (also
+# resolved a lingering E-major→E-minor wobble in the Mull 4/4 material). Known
+# remaining hard case: a sustained tonic drone (sitar/tanpura/bagpipe) still
+# floods the non-bass chroma and reads as a power chord — needs background/
+# drone subtraction, deferred pending real drone-heavy audio. v12: adds coarse
+# song-section detection (BT-20,
 # song-section-detection-spec.md) — a beat-free (fixed ~1s grid),
 # self-similarity + Foote-novelty pass over the full mix that returns labeled
 # {start, end, label} regions (A/B/C… by repetition), for a section ribbon you
 # can jump to / loop. Assistive, first-cut, best-effort — same framing as the
 # chord lane and key detection; simply omitted when there's no confident read.
-ANALYSIS_VERSION = 12
+ANALYSIS_VERSION = 13
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -867,33 +878,32 @@ def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"]
     for y in sources:
         mono[:len(y)] += y
 
-    chroma, chroma_raw, frame_times = _compute_chord_chroma(mono, sr)
-    chroma_mean = chroma.mean(axis=1)
-    main_windows = _beat_windowed_chroma(chroma, frame_times, beats)
-
-    # CD-2 (real-song fix, "Mull of Kintyre" pass): the power-chord gate's
-    # "is a third present?" ratio test MUST run on the non-bass chroma, not
-    # the full pitched mix. The bass plays a chord's root and fifth by
-    # default in BOTH power chords and full triads, so summing it in inflates
-    # the root+fifth energy the gate uses as its denominator and buries a
-    # genuinely-played third below the threshold — silently turning honest
-    # major/minor triads into "5" power chords on every song that has a bass
-    # guitar (i.e. almost all of them). Measured on a clean A-major triad: the
-    # major-third holds ~0.48 of root+fifth energy from the guitar alone, but
-    # only ~0.02 once the bass line is summed in — a 0.2 threshold that
-    # correctly saw the third guitar-only completely misses it in the mix.
-    # Whether a third was *played* is a question about the chord instruments,
-    # not the bass, so the gate looks at them alone. Falls back to the full
-    # mix's raw chroma when there's no separate non-bass stem to isolate.
+    # CD-2 / CD-5 / CD-7 ("Mull of Kintyre" + "Norwegian Wood" passes): a
+    # chord's IDENTITY — its root AND quality — is read from the CHORD
+    # instruments, never the bass. A bass note is almost pure root energy, and
+    # summed into the chroma it swamps the whole vector: it buries the third
+    # (the one bin telling maj from min, and telling a triad from a power
+    # chord) far below the noise floor. Measured on a clean E-major triad, the
+    # major-third bin holds ~0.99 of the root guitar-only but collapses to
+    # ~0.04 once an E bass is summed in — at which point random leakage in the
+    # minor-third bin (~0.045) actually outscores it and a plain E major
+    # decodes as E minor. Same root cause as the power-chord gate reading a
+    # triad as "5". So ALL of chord recognition — template matching, the
+    # power/seventh gates, and the whole-song mode chroma key_from_chords uses
+    # — runs on the non-bass mix; the bass contributes only through CD-4's
+    # explicit, controlled root bonus below. Falls back to the full mix when
+    # there's no separable non-bass stem (a bass-only or single-stem source).
     if harmonic_sources:
         harmonic_len = max(len(y) for y in harmonic_sources)
-        harmonic_mono = np.zeros(harmonic_len, dtype=np.float32)
+        id_mono = np.zeros(harmonic_len, dtype=np.float32)
         for y in harmonic_sources:
-            harmonic_mono[:len(y)] += y
-        _, gate_chroma_raw, gate_frame_times = _compute_chord_chroma(harmonic_mono, sr)
-        gate_windows_raw = _beat_windowed_chroma(gate_chroma_raw, gate_frame_times, beats)
+            id_mono[:len(y)] += y
     else:
-        gate_windows_raw = _beat_windowed_chroma(chroma_raw, frame_times, beats)
+        id_mono = mono
+    chroma, chroma_raw, frame_times = _compute_chord_chroma(id_mono, sr)
+    chroma_mean = chroma.mean(axis=1)
+    main_windows = _beat_windowed_chroma(chroma, frame_times, beats)
+    gate_windows_raw = _beat_windowed_chroma(chroma_raw, frame_times, beats)  # raw (pre-log) ratios for the gates
 
     # CD-4: the bass stem states a chord's root more reliably than the full
     # mix — a small per-beat bonus toward whatever root the bass agrees

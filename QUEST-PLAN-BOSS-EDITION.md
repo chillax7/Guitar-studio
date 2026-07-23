@@ -366,6 +366,18 @@ two different songs.
   both are now judged from the non-bass chord instruments. Guard the other
   direction too: a song where you genuinely hear a bluesy **A7** should
   *still* show 7, not get flattened to plain A.
+- [ ] **Major chords stay major over a bass + modal shifts (CD-7 "Norwegian
+  Wood" pass):** the deepest of the bass fixes — a bass note is nearly pure
+  root energy and used to swamp the chroma so hard that a plain **major**
+  chord over its own bass root decoded as **minor**. Chord quality is now
+  read entirely off the non-bass instruments. On a song with a real
+  major→minor shift (Norwegian Wood: E-major/Mixolydian verse, E-minor
+  bridge), confirm the verse reads major (E/D/A) and the bridge genuinely
+  flips to **Em**, and that a plain major open chord never shows as its
+  parallel minor just because a bass sits under it. Compound 6/8/12/8 meter
+  is fine for the lane (BPM may show the eighth-note pulse — use ½×).
+  *Known limitation:* a constant tonic drone (sitar/bagpipe) may read as one
+  long power chord — expected, don't file it.
 - [ ] **Drumless songs get a chord lane at all (BT-02 fallback):** a
   fingerpicked/drumless piece (or a fuller song's drum-free intro) used to
   show an empty chord ribbon because the beat grid came only from a drum

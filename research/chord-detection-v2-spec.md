@@ -440,6 +440,46 @@ tracking coped fine with slow 3/4 (~89bpm detected vs 90 true) — the
 feared waltz-vs-4/4 beat-grid problem did **not** materialise, so no
 change there.
 
+**CD-7, "Norwegian Wood" pass — chord identity comes off the non-bass mix
+entirely; `ANALYSIS_VERSION` 12→13.** Prompted by the user's own diagnosis
+that CD-1…CD-6 had "inadvertently over-fitted to the rock and metal songs".
+A synthetic Norwegian-Wood-like reference (6/8 compound meter, an E-major
+Mixolydian verse, a genuine **E-minor bridge**, a sitar-style tonic drone)
+run through the real pipeline exposed the deepest version of the
+bass-contamination problem yet: a plain **E major over an E bass decoded as
+E minor** — not just at the boundary, a whole sustained E-major chord. Root
+cause, measured: the CD-2 and CD-5 fixes moved the *gates* onto the non-bass
+chroma, but the actual maj/min/7/5 **template matching** still ran on the
+full, bass-summed chroma. A bass note is near-pure root energy, so summed in
+it swamps the whole vector — the major-third bin of a clean E major holds
+~0.99 of the root guitar-only but collapses to ~0.04 with an E bass added,
+at which point random leakage in the minor-third bin (~0.045) outscores it
+and `min` wins by a hair. It's the same lesson as the power-chord gate (a
+bass buries the third), one level up: it corrupts maj-vs-min, not just
+triad-vs-power. Fix: the chroma used for template matching **and** the
+whole-song mode chroma `key_from_chords` reads are now the non-bass mix too
+(all of `main_windows`, `gate_windows_raw`, and `chroma_mean` come from one
+non-bass chroma), so every part of chord *identity* is decided by the chord
+instruments; the bass influences only the root, and only through CD-4's
+explicit bonus. Falls back to the full mix when there's no separable
+non-bass stem.
+
+Verified through the real pipeline: the E-major verse now reads **E** and
+the E-minor bridge reads **Em** (the modal shift is caught), the key reads E
+major (was E minor), and this *also* cleared a lingering E-major→E-minor
+wobble that had shown up in the earlier Mull 4/4 material — while every CD-5
+regression still holds (majors→A/D/E, minors→Am/Dm/Em, true power chords→5,
+real dom7→7). Compound 6/8 meter tracked fine (no half/double-time blow-up),
+so no beat-grid change was needed. **Known remaining hard case, deferred:** a
+*sustained tonic drone* (sitar/tanpura/bagpipe/hurdy-gurdy) lives in the
+non-bass mix, so this fix doesn't reach it — a constant root+fifth drone
+floods every window and reads as one long power chord. The standard remedy
+is background/drone subtraction (remove a per-bin temporal-floor percentile
+before matching), but it risks eating legitimate pedal tones and shouldn't
+be tuned against a synthetic drone that's likely harsher than a real sitar —
+so it waits for real drone-heavy audio to validate against, exactly the way
+CD-5 waited for real distorted stems.
+
 Test protocol for CD-5 (goes into TEST-PLAN.md when CD-1 lands):
 1. Re-run analysis on the test song (version bump forces it).
 2. Count chips in one verse+chorus: **expect roughly the chord-event

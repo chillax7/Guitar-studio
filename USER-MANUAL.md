@@ -625,12 +625,16 @@ dimmed **?**
 chip means no confident read for that beat rather than a guess; zoom in
 (above) to actually read the chord names, since a whole song's worth of
 chips at full width just reads as a solid bar. Chord roots transpose live
-with the Tune slider, same as the Detected Key hint. **Known rough edge:**
+with the Tune slider, same as the Detected Key hint. **Known rough edges:**
 on riff-heavy songs, the ribbon can read as busier than the underlying
 harmony actually is (individual moving notes flipping the per-beat
 read rather than the rhythm part changing chord) — judge by ear, and
 treat a wall of rapidly-alternating chips as "this section is
-riff-based," not as literal chord-by-chord accuracy.
+riff-based," not as literal chord-by-chord accuracy. And a song built over
+a **constant droning note** (a sitar or bagpipe holding the tonic under
+everything) can read as one held power chord — the drone floods every beat
+with the same root+fifth and drowns out the chords moving over it; this is
+a known limitation, not something to file per-song.
 
 **Speed Trainer:** in the right-hand inspector — set a loop first
 (a marker double-click is the fastest way), then use **Start** / **Step
