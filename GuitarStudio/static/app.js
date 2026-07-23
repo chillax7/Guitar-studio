@@ -860,6 +860,16 @@ async function refreshTrackList() {
   const r = await Api.get("/api/tracks");
   State.tracks = r.tracks;
   renderTrackList();
+  // Real user report: "Summon a song" never ticks on the inline Quest Log
+  // (the empty-state one, not the Help-modal one). Cause: unlike every
+  // other quest, "summon" isn't set via questMarkDone — questIsDone()
+  // derives it live from State.tracks.length, so it only ever reflects
+  // reality at the moment something re-renders the Quest Log. The Help
+  // modal re-renders fresh on every open, so it always looked right; this
+  // inline panel was rendered once at init and then only on a later
+  // questMarkDone() call for a DIFFERENT quest — importing the very first
+  // track never triggered any of those, so it sat un-ticked indefinitely.
+  renderQuestLog();
 }
 
 // Library tree: "All Tracks" (every track, regardless of playlist
