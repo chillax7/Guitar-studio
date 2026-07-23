@@ -8,6 +8,8 @@ release-v5-spec.md had to post-v4-backlog-audit.md.
 
 **Companion docs:** [post-v5-backlog-audit.md](post-v5-backlog-audit.md)
 (source list for everything picked or declined below),
+[looper-pedal-spec.md](looper-pedal-spec.md) (§1's M0 deliverable — the
+full Looper design, done; build paused pending MIDI hardware),
 [rig-preset-chain-spec.md](rig-preset-chain-spec.md) (GP-14 — the
 already-shipped keyboard half of "hands-free rig," which §2 below
 completes with hardware MIDI), [market-review-2026.md](market-review-2026.md)
@@ -58,6 +60,20 @@ meant to play in v5.
 ---
 
 ## 1. The Looper pedal (GP-06) — L, needs its own design doc first
+
+**Update (2026-07-23): design spec done, build deliberately on hold.**
+See [looper-pedal-spec.md](looper-pedal-spec.md) — it resolves every open
+question below (top-strip card placement, beat-grid-aware sync, the
+`PA.loopSum` tap that also fixes Takes/Riff Capture to include a running
+loop, the AudioWorkletProcessor design, the single-primary-button
+control scheme, and per-song persistence). M0 is closed. **M1 (the
+build) and M2 (MIDI) are both paused on purpose** — there's no MIDI
+footswitch on hand to validate M2's hookup against yet, and building M1
+first without that risks reworking the control surface once one's
+available (the spec's §6 already designs for a single-button footswitch
+specifically to minimize that risk, but "designed to minimize" isn't the
+same as "confirmed"). Resume with M1 whenever a footswitch is in hand —
+nothing about *what* to build is still open at that point.
 
 **Why now, concretely:** every serious standalone pedalboard/rig app
 (the same competitive set release-v5-spec.md §11's market review
@@ -191,12 +207,13 @@ each milestone below, not deferred to a single pass at the very end
 
 ## 6. v6 milestones
 
-- **M0 — Looper design spec (§1's gate).** Blocking for M1; nothing else
-  in this release depends on it, so it can run in parallel with M2–M4.
-- **M1 — Looper build (§1) — only after M0's design gate passes.** The
-  release's anchor deliverable.
-- **M2 — MIDI hands-free control (§2).** Independent of M0/M1; can run
-  in parallel.
+- **M0 — Looper design spec (§1's gate). Done** — see
+  [looper-pedal-spec.md](looper-pedal-spec.md).
+- **M1 — Looper build (§1) — paused on purpose, resume once a MIDI
+  footswitch is available to validate M2 against** (see §1's update).
+  The release's anchor deliverable once resumed.
+- **M2 — MIDI hands-free control (§2).** Same pause as M1, same reason
+  — hardware-gated, not effort-gated.
 - **M3 — Polish: measured latency + social export presets (§3's V6-B1/
   B2).**
 - **M4 — TONE3000 unblock-or-drop (§3's V6-B3) + LAN-mode spec spike
