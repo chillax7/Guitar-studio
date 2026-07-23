@@ -1340,6 +1340,25 @@
     </div>
   </div>
 
+  <!-- Real user report: a Rip that ran ~4 minutes unattended in a
+       background tab, then a native prompt() for naming it right after
+       Stop — a blocking native dialog on a backgrounded tab is a known
+       real freeze pattern (nothing else in the tab can run, including
+       painting, until it's dismissed — easy to miss if your attention
+       moved to another window while a long background task finished).
+       textPrompt() (app.js) replaces every prompt() in the app with this
+       one non-blocking, app-styled modal instead. -->
+  <div id="text-prompt-overlay">
+    <div id="text-prompt-modal">
+      <p id="text-prompt-message"></p>
+      <input type="text" id="text-prompt-input">
+      <div class="row">
+        <button id="text-prompt-cancel-btn">Cancel</button>
+        <button id="text-prompt-ok-btn" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
+
 <script src="app.js"></script>
 <script src="ailab.js"></script>
 <script src="playalong.js"></script>

@@ -190,9 +190,23 @@ one custom stem added to each, needed as raw material for every boss below.
   output, volume keys/menu-bar slider misbehave; switching back to normal
   speakers restores them.
 
+- [ ] **The dialog that couldn't freeze you (real user report):** a
+  4-minute unattended Rip in a backgrounded tab once froze and eventually
+  crashed the browser right after Stop Rip was clicked — the prime
+  suspect was the native `prompt()` used to name the rip, which blocks
+  the *entire tab* until dismissed and is trivial to miss if your
+  attention (and the tab's focus) moved elsewhere while a long rip
+  finished in the background. Every naming/rename dialog in the app (Rip,
+  tracks, playlists, stems, takes, markers) now uses a non-blocking,
+  app-styled modal instead. Confirm naming a rip shows this in-app
+  dialog — not a native browser prompt — and that it works normally
+  (OK/Cancel/Enter/Escape) even right after a long rip finishes in a tab
+  you weren't looking at.
+
 **Loot:** one ripped song in the Library, proving the whole BlackHole
 pipeline end to end, plus one deliberately-silent rip that correctly
-warned you instead of lying.
+warned you instead of lying, plus confirmation that naming it can no
+longer freeze the tab.
 
 ---
 

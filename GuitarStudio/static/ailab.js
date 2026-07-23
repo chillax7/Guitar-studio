@@ -512,7 +512,7 @@ function aiLabRmtPlayTake(take) {
 // matching "... - dry NN".
 async function aiLabRmtRenameTake(take) {
   const base = take.filename.replace(/\.[^.]+$/, "");
-  const newName = prompt("Rename take to:", base);
+  const newName = await textPrompt("Rename take to:", base);
   if (!newName || newName === base) return;
   try {
     await Api.post("/api/recording/rename", { path: take.path, new_name: newName });

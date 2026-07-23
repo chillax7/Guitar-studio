@@ -172,6 +172,51 @@ function escapeHtml(s) {
 
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
+// Real user report: a Rip that ran ~4 minutes unattended in a background
+// tab, then a browser freeze/crash right after clicking Stop. The prompt()
+// called immediately afterward (to name the rip) is the prime suspect — a
+// native prompt()/alert() blocks the ENTIRE tab's event loop (no repaint,
+// no other JS) until dismissed, and is easy to genuinely miss if your
+// attention was on a different window while a long background task
+// finished, which is exactly Rip's own intended use ("capture whatever's
+// playing" while doing something else). A tab stuck like that for long
+// enough reads as "frozen," and the OS/browser eventually offering to kill
+// an unresponsive tab reads as "crashed" — matching the report exactly.
+// textPrompt() replaces every prompt() in the app (8 call sites, not just
+// Rip's) with this non-blocking, app-styled modal instead — same
+// resolve(string)/resolve(null)-on-cancel shape as prompt() itself, so
+// every call site is just "await textPrompt(...)" instead of "prompt(...)".
+function textPrompt(message, defaultValue = "") {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById("text-prompt-overlay");
+    const input = document.getElementById("text-prompt-input");
+    document.getElementById("text-prompt-message").textContent = message;
+    input.value = defaultValue;
+    overlay.classList.add("show");
+    input.focus();
+    input.select();
+
+    function finish(value) {
+      overlay.classList.remove("show");
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      input.removeEventListener("keydown", onKeydown);
+      resolve(value);
+    }
+    const okBtn = document.getElementById("text-prompt-ok-btn");
+    const cancelBtn = document.getElementById("text-prompt-cancel-btn");
+    const onOk = () => finish(input.value);
+    const onCancel = () => finish(null);
+    const onKeydown = (e) => {
+      if (e.key === "Enter") { e.preventDefault(); onOk(); }
+      else if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+    };
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+    input.addEventListener("keydown", onKeydown);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // BT-17: waveform zoom. Every ruler/lane-body position on screen is time
 // mapped through these three functions instead of a bare Audio.duration
@@ -968,7 +1013,7 @@ function renderTrackRenameButton(trackName) {
   btn.addEventListener("click", async (e) => {
     e.stopPropagation();
     const base = trackName.replace(/\.[^.]+$/, "");
-    const newName = prompt("Rename track to:", base);
+    const newName = await textPrompt("Rename track to:", base);
     if (!newName || !newName.trim() || newName.trim() === base) return;
     try {
       const r = await Api.post("/api/track/rename", { track: trackName, new_name: newName.trim() });
@@ -1055,7 +1100,7 @@ function renderAddToPlaylistControl(trackName) {
   newBtn.textContent = "+ New playlist…";
   newBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
-    const name = prompt("New playlist name:");
+    const name = await textPrompt("New playlist name:");
     if (!name || !name.trim()) return;
     const trimmed = name.trim();
     if (State.playlists[trimmed]) { alert(`A playlist named "${trimmed}" already exists.`); return; }
@@ -1347,7 +1392,7 @@ function renderPlaylistGroup(name) {
 
   header.querySelector(".playlist-group-rename-btn").addEventListener("click", async (e) => {
     e.stopPropagation();
-    const newName = prompt("Rename playlist to:", name);
+    const newName = await textPrompt("Rename playlist to:", name);
     if (!newName || !newName.trim() || newName.trim() === name) return;
     const trimmed = newName.trim();
     if (State.playlists[trimmed]) { alert(`A playlist named "${trimmed}" already exists.`); return; }
@@ -1759,7 +1804,7 @@ function renderLanes() {
     header.querySelector(".lane-rename-btn").addEventListener("click", async (e) => {
       e.stopPropagation();
       const current = stemDisplayName(name, stem.label);
-      const newLabel = prompt("Rename this stem to:", current);
+      const newLabel = await textPrompt("Rename this stem to:", current);
       if (!newLabel || !newLabel.trim() || newLabel.trim() === current) return;
       try {
         const r = await Api.post("/api/stem/rename", {
@@ -2148,9 +2193,9 @@ function renderMarkers() {
   });
 }
 
-function addMarkerAtPlayhead() {
+async function addMarkerAtPlayhead() {
   if (!Audio.duration) return;
-  const label = prompt("Marker name:", `Marker ${(State.markers || []).length + 1}`);
+  const label = await textPrompt("Marker name:", `Marker ${(State.markers || []).length + 1}`);
   if (label === null) return; // cancelled
   State.markers = [...(State.markers || []), { time: currentPosition(), label: label.trim() || "Marker" }];
   renderMarkers();
@@ -3338,7 +3383,7 @@ async function ripFinalizeAndUpload(chunks, mimeType) {
   const blob = new Blob(chunks, { type: mimeType });
   const srcExt = mimeType.includes("mp4") ? "m4a" : "webm";
   const defaultName = `Rip ${new Date().toLocaleString()}`;
-  const name = prompt("Name this rip:", defaultName) || defaultName;
+  const name = (await textPrompt("Name this rip:", defaultName)) || defaultName;
 
   hintEl.textContent = "Saving rip…";
   try {

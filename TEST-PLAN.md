@@ -50,6 +50,7 @@ exhaustive top-to-bottom playthrough of the entire app in one sitting
 - [ ] **Stop Rip** prompts for a name, uploads, and the resulting mp3 appears in the Library, selectable and playable like any normal import.
 - [ ] Audio actually played through BlackHole during the capture window is present and audible in the resulting file.
 - [ ] **Silent rip warning:** ripping with BlackHole not actually routed (or nothing playing) still saves the file, but immediately pops an alert naming the measured peak level and walking through the BlackHole/Multi-Output Device fix — rather than only finding out minutes later as a cryptic "didn't find a 'vocals' stem" separation error. Ripping real, audible audio through a correctly-routed BlackHole does **not** trigger the warning.
+- [ ] **Naming dialogs (real user report — Rip freeze/crash):** a real user reported a ~4-minute unattended Rip in a backgrounded tab freezing and eventually crashing the browser right after clicking Stop Rip. The suspected cause — a native `prompt()` blocking the whole tab, easy to miss if focus was elsewhere when it fired — is fixed: every rename/naming dialog in the app (Rip naming, track/playlist/stem/take rename, marker naming) now uses an in-app modal instead of `prompt()`. Confirm: naming a rip (long or short) shows the app-styled modal, not a native browser dialog; OK/Cancel/Enter/Escape all work; and this holds even if the tab was recently backgrounded/unfocused when Stop Rip was clicked.
 
 ## 3. Library — Playlists & Practice log
 

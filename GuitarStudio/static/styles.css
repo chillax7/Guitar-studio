@@ -1129,6 +1129,26 @@ button:disabled:hover { filter: none; }
 #quest-log-modal-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
 #quest-log-modal-head h2 { margin: 0; font-size: 16px; }
 #quest-log-modal-close-btn { margin-top: 14px; width: 100%; }
+
+/* textPrompt() (app.js) — same overlay idiom as #quest-log-overlay, a
+   non-blocking replacement for every prompt() in the app (real user
+   report: a native prompt() firing on a backgrounded tab after a long
+   unattended Rip read as a full browser freeze). */
+#text-prompt-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  align-items: center; justify-content: center; z-index: 300;
+}
+#text-prompt-overlay.show { display: flex; }
+#text-prompt-modal {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 20px 24px; max-width: 400px; width: 90%;
+}
+#text-prompt-message { margin: 0 0 10px; font-size: 13px; }
+#text-prompt-input {
+  width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: 6px 8px; font-size: 13px; margin-bottom: 14px;
+}
+#text-prompt-modal .row { justify-content: flex-end; }
 #inspector section { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
 #inspector .hint { color: var(--text-dim); font-size: 11px; line-height: 1.5; margin: 4px 0; }
 #inspector label { display: block; margin: 8px 0 2px; color: var(--text-dim); }

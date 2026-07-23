@@ -670,7 +670,7 @@ async function refreshTakesList() {
     });
     row.querySelector(".take-rename-btn").addEventListener("click", async () => {
       const base = take.filename.replace(/\.[^.]+$/, "");
-      const newName = prompt("Rename take to:", base);
+      const newName = await textPrompt("Rename take to:", base);
       if (!newName || newName === base) return;
       try {
         const r = await Api.post("/api/recording/rename", { path: take.path, new_name: newName });

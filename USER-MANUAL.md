@@ -1637,6 +1637,7 @@ current song has attached.
 | Recording didn't finalize / "not remuxed" note | `ffmpeg` isn't installed, or the remux itself failed — the raw take is still saved either way, just not container-fixed. |
 | Trimming a take fails with "file not found" | Only possible if you renamed the take in another app while it was loaded in the player — reload the take from the Takes list and trim again. |
 | Hardware volume keys/menu-bar slider stop working | Your Mac's default output is set to BlackHole or a Multi-Output Device containing it (§1.7/§3.2) — switch back to your normal speakers/headphones when you're done ripping. |
+| A long unattended action (e.g. a several-minute Rip) seemed to freeze or crash the tab right when it finished | Fixed — naming a rip (or any rename dialog: tracks, playlists, stems, takes, markers) used to use the browser's native `prompt()`, which blocks the entire tab until dismissed and is easy to miss if the tab wasn't focused when it appeared. All of these now use an in-app dialog instead, so they can't freeze the tab even if it's in the background when they pop up. |
 
 ## 9. Known limitations (by design, not oversights)
 
