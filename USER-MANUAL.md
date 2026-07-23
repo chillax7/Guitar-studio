@@ -597,7 +597,16 @@ smoothed across beats rather than picked one beat at a time, so an
 ordinary riff or chug reads as one steady chord instead of flickering
 between neighboring guesses; a bare power chord (root+fifth, no third —
 most distorted rhythm-guitar parts) reads as e.g. **A5** rather than
-being forced into major or minor. A dimmed **?**
+being forced into major or minor. On the other end — simple acoustic
+songs — an honest major or minor open chord now reads as plain **A** or
+**Am** and isn't dragged to a power chord or a dominant **A7** by the
+bass sitting underneath it (the bass's root and its overtones used to
+mask the guitar's third and fake a flat-seventh; the quality decision now
+ignores the bass and listens to the chord instruments themselves). The
+chord ribbon also no longer needs a drum track to exist — a fingerpicked
+or drumless song still gets a beat grid (tracked from the guitar/piano
+onsets instead) and a full chord lane, where before it showed nothing. A
+dimmed **?**
 chip means no confident read for that beat rather than a guess; zoom in
 (above) to actually read the chord names, since a whole song's worth of
 chips at full width just reads as a solid bar. Chord roots transpose live

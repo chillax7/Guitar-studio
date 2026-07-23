@@ -357,6 +357,20 @@ two different songs.
   **A5**, not forced into maj/min; a real major/minor triad elsewhere in
   the same song (clean verse, open chord) still reads correctly, not
   swallowed into "5" by an over-eager gate.
+- [ ] **Simple acoustic reads as plain chords, not power/7 (CD-5 "Mull of
+  Kintyre" pass):** on a beginner acoustic strummer you know is plain
+  major/minor open chords (A/D/E — Mull of Kintyre is the canonical case),
+  the ribbon should read **A / D / E**, *not* A5/D5/E5 and *not* A7/E7. The
+  bass used to fool the quality read two ways at once — masking the guitar's
+  third (→ power chord) and adding a phantom flat-seven (→ dominant 7) — and
+  both are now judged from the non-bass chord instruments. Guard the other
+  direction too: a song where you genuinely hear a bluesy **A7** should
+  *still* show 7, not get flattened to plain A.
+- [ ] **Drumless songs get a chord lane at all (BT-02 fallback):** a
+  fingerpicked/drumless piece (or a fuller song's drum-free intro) used to
+  show an empty chord ribbon because the beat grid came only from a drum
+  stem; it now falls back to tracking guitar/piano onsets, so the lane
+  populates. Confirm it appears and roughly lines up with what you hear.
 - [ ] **Root accuracy:** sanity-check the chord lane's actual root names
   against what you'd call out by ear on a song you know — not just
   stability/quality, the specific note names. Confirm it still works (just

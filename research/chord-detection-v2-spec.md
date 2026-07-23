@@ -245,7 +245,7 @@ position at open) and never moves. Spec:
 | CD-2 | Power-chord template + third-absence gate (§5.1) — **shipped** | S | CD-1 (tune together) |
 | CD-3 | Chroma front end: HPSS, tuning, log compression (§5.2) — **shipped** | S | CD-1 |
 | CD-4 | Bass-anchored root bonus (§5.3) — **shipped** | S | CD-1 |
-| CD-5 | **Acceptance test on "Too Much, Too Young, Too Fast"** + 1–2 easier pop/rock tracks; tune `SELF_TRANSITION_P`, third-absence gate, bass bonus against what the lane shows vs a published chord chart | S | CD-1..4 |
+| CD-5 | Acceptance test + gate tuning against real ground truth — **shipped, two passes:** (1) distorted rock ("Too Much, Too Young, Too Fast", chord chart + isolated stems) → the raw-chroma gate fix; (2) simple acoustic ("Mull of Kintyre", A/D/E in 3/4) → the non-bass gate chroma, the phantom-seventh guard, and the drumless beat-grid fallback (see the two "real-song pass" writeups below) | S | CD-1..4 |
 | CD-6 | Backlog: downbeat detection → snap chord changes to bar lines; madmom A/B behind a flag; mid-song key changes (already in release-v5-spec §9) | — | — |
 
 **CD-1 shipped:** `_decode_chord_sequence` (Viterbi over an augmented
@@ -378,6 +378,67 @@ windowing, gating, bass bonus, Viterbi decode, run-merge) and got exactly
 two stable, correctly-rooted `5` chips out. `ANALYSIS_VERSION` bumped
 7→8. Real-song validation (does this actually get more roots right on a
 track a guitarist can check by ear) is still CD-5's job.
+
+**CD-5 second real-song pass — simple acoustic ("Mull of Kintyre"),
+`ANALYSIS_VERSION` 10→11.** A user reference case — simple beginner
+acoustic guitar, A major, I–IV–V (A/D/E), 3/4 waltz — surfaced two real
+bugs that the earlier distorted-rock passes structurally couldn't. Both
+were found and fixed against the *actual* pipeline (synthesised A/D/E
+triad stems run through the real `analyze_track`, ground truth known
+exactly), not by code inspection:
+
+1. **The power-chord gate was fooled by the bass → honest triads read as
+   bare power chords on every song with a bass guitar.** CD-2's
+   third-presence ratio test ran on the full pitched mix, which *includes
+   the bass*. The bass plays a chord's root and fifth by default in both
+   power chords and full triads, so summing it in inflates the root+fifth
+   energy the gate uses as its denominator and buries a genuinely-played
+   third below the 20% threshold. Measured on a clean A-major triad: the
+   major-third holds **~0.48** of root+fifth energy from the guitar alone
+   but only **~0.02** once the bass line is summed in — so the gate that
+   correctly saw the third guitar-only completely missed it in the mix and
+   forced a `5`. This is the opposite failure to the distorted-rock one
+   (there, real power chords were wrongly gaining thirds; here, real thirds
+   were wrongly being erased) and it went unnoticed because the rock
+   acceptance material *was* mostly power chords. Fix: whether a third was
+   *played* is a question about the chord instruments, not the bass, so the
+   gate now runs on a **non-bass** chroma (sum of the pitched stems
+   excluding bass), computed once per analysis; it falls back to the full
+   mix when there's no separable non-bass stem. Template matching, the
+   bass-root bonus (CD-4) and `chroma_mean` are unchanged — only the gate's
+   ratio test switched source.
+
+2. **Phantom dominant-sevenths from bass overtones → plain majors read as
+   `7`.** With the third restored, plain A/D/E majors then decoded as
+   A7/D7/E7. Cause: `"7"` (0,4,7,10) is a strict superset of `"maj"`
+   (0,4,7), so — exactly like the `5`-vs-`maj` superset problem CD-2
+   solves one template down — it out-scores plain `maj` on any incidental
+   b7 energy, and a bass root's 7th partial lands right on the b7. On a
+   clean guitar-only triad the b7 sits at ~0.004 of root+fifth (a plucked
+   string's 7th partial is weak; HPSS/CQT suppress it further) and `A maj`
+   beats `A7` 0.99 vs 0.86 — but the bass overtone in the mix flips it.
+   Fix: a new `_gate_seventh_chord_scores`, mirroring the power-chord gate,
+   suppresses `7` for a root unless the b7 genuinely holds
+   `CHORD_SEVENTH_ABSENCE_RATIO` (0.2) of that root's root+fifth energy **in
+   the same non-bass chroma**. A *real* dominant 7 (guitar actually plays
+   the b7) survives untouched — verified with a synthetic dom7 case that
+   still reads A7/D7/E7 — while phantom bass-overtone 7ths demote to major.
+
+Plus a structural gap the acoustic case exposed: **the beat grid — and so
+the entire chord lane, which windows per beat — was derived only from the
+drums stem.** A drumless song (a fingerpicked piece, a hymn, the quiet
+intro before a band enters) produced no beats at all and an *empty* chord
+lane. `analyze_track` now falls back to onset tracking on the pitched
+stems (a strummed/plucked chord is a fine onset source) when the drums
+stem is missing or yields no beats (BT-02 fallback).
+
+Regression coverage (all synthesised, run through the real pipeline):
+plain major triads → `A/D/E` (was `A5`/`A7`); minor triads → `Am/Dm/Em`;
+true power chords → `E5/G5/A5` (CD-2 preserved); real dom7 → `A7/D7/E7`
+(new gate preserved); drumless input → populated lane (was empty). Tempo
+tracking coped fine with slow 3/4 (~89bpm detected vs 90 true) — the
+feared waltz-vs-4/4 beat-grid problem did **not** materialise, so no
+change there.
 
 Test protocol for CD-5 (goes into TEST-PLAN.md when CD-1 lands):
 1. Re-run analysis on the test song (version bump forces it).

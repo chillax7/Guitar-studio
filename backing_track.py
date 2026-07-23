@@ -127,8 +127,18 @@ ANALYSIS_FILE = "analysis.json"
 # energy well past its real physical proportion, so on real distorted
 # guitar the gate was still tripping into "third present" at harmonic
 # bleed levels that are actually a genuine power chord (real user report,
-# with real isolated stems + a chord chart as ground truth this time).
-ANALYSIS_VERSION = 10
+# with real isolated stems + a chord chart as ground truth this time);
+# v11 ("Mull of Kintyre" pass, two real-song fixes verified against the
+# actual pipeline): (a) the CD-2 power-chord gate now runs its
+# third-presence ratio test on the NON-bass chroma only — summing the bass
+# in inflated root+fifth energy and buried a genuinely-played third below
+# the threshold, so honest major/minor triads were being labeled bare "5"
+# power chords on every song that has a bass guitar; (b) the beat grid (and
+# so the whole chord lane, which windows per beat) now falls back to onset
+# tracking on the pitched stems when there's no drums stem to track — a
+# drumless/acoustic song used to produce no beats at all and an entirely
+# empty chord lane.
+ANALYSIS_VERSION = 11
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -484,6 +494,23 @@ CHORD_CONFIDENCE_FLOOR = 0.5  # below this, report "no chord" rather than a gues
 # detect_chords). One constant, tuned against real riffs during CD-5.
 CHORD_POWER_THIRD_ABSENCE_RATIO = 0.2
 
+# CD-5 real-song fix ("Mull of Kintyre" pass): the "7" (dominant seventh) template is a
+# strict superset of "maj" — the same 0,4,7 plus a b7 — so, exactly like the
+# power-chord "5" superset problem the CD-2 gate solves, "7" wins over plain
+# "maj" on any incidental b7 energy even when nobody played a seventh. The
+# usual source of that phantom b7 is the BASS: a bass root's 7th partial
+# lands near the b7, so a plain major triad over a bass note reads as a
+# dominant 7 across a whole song. A played seventh, though, shows up as real
+# energy in the CHORD instruments, so — like the third-presence gate — this
+# runs on the non-bass chroma: at a candidate root, "7" only gets to compete
+# against maj/min when the b7 bin genuinely holds at least this fraction of
+# that root's root+fifth energy. Guitar-only measurement of a clean major
+# triad: b7 sits at ~0.004 of root+fifth (a plucked string's 7th partial is
+# weak and HPSS/CQT suppress it further), while a real dominant-7 voicing
+# puts the played b7 well above this — clean separation. Tunable against real
+# 7-heavy blues/rock material.
+CHORD_SEVENTH_ABSENCE_RATIO = 0.2
+
 # chord-detection-v2-spec.md CD-1: per-beat argmax had no memory of the
 # previous beat, so ordinary chroma noise (a passing note, a bend, a fill)
 # flips single beats to a different template and every flip breaks a run
@@ -600,6 +627,29 @@ def _gate_power_chord_scores(scores: "np.ndarray", window_chroma: "np.ndarray") 
                 if quality == "5":
                     continue
                 scores[CHORD_TEMPLATE_INDEX[(KEY_NOTE_NAMES[root_pc], quality)]] = -1.0
+
+
+def _gate_seventh_chord_scores(scores: "np.ndarray", window_chroma: "np.ndarray") -> None:
+    """CD-5 real-song fix (see CHORD_SEVENTH_ABSENCE_RATIO): the same superset problem the
+    power-chord gate solves, one template up. "7" (0,4,7,10) is "maj" (0,4,7)
+    plus a b7, so it out-scores plain "maj" on any incidental b7 energy — and
+    the bass supplies exactly that (its root's 7th partial lands near the b7),
+    turning honest major triads into dominant 7ths across a whole song. A
+    genuinely-played seventh shows up in the chord instruments, so this — like
+    the third-presence gate above — takes the NON-bass chroma: "7" is
+    suppressed for a root (so maj/min win) unless that root's b7 bin holds at
+    least CHORD_SEVENTH_ABSENCE_RATIO of its root+fifth energy. Same
+    out-of-range sentinel (-1.0) so a suppressed candidate can never win.
+    Must run on the same non-bass raw chroma the power gate uses."""
+    for root_pc in range(12):
+        root_fifth_energy = window_chroma[root_pc] + window_chroma[(root_pc + 7) % 12]
+        idx7 = CHORD_TEMPLATE_INDEX[(KEY_NOTE_NAMES[root_pc], "7")]
+        if root_fifth_energy <= 0:
+            scores[idx7] = -1.0
+            continue
+        b7 = window_chroma[(root_pc + 10) % 12]
+        if b7 < CHORD_SEVENTH_ABSENCE_RATIO * root_fifth_energy:
+            scores[idx7] = -1.0
 
 
 def _decode_chord_sequence(raw_scores: "np.ndarray") -> list[tuple]:
@@ -791,11 +841,19 @@ def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"]
         hint_words=("guitar", "bass", "piano", "keys", "synth", "organ", "string"),
         exclude_words=("vocal", "vox", "voice", "drum", "kit", "perc"))
 
+    bass_paths = _find_stems_fuzzy(
+        out_dir, exact_names=("bass",), hint_words=("bass",),
+        exclude_words=("vocal", "vox", "voice", "drum", "kit", "perc"))
+    bass_path_set = {str(p) for p in bass_paths}
+
     sources = []
+    harmonic_sources = []  # CD-2 gate: pitched stems EXCLUDING bass (see below)
     sr = None
     for stem_path in stem_paths:
         y, sr = librosa.load(str(stem_path), sr=None, mono=True)
         sources.append(y)
+        if str(stem_path) not in bass_path_set:
+            harmonic_sources.append(y)
     if not sources:
         return None
 
@@ -807,7 +865,30 @@ def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"]
     chroma, chroma_raw, frame_times = _compute_chord_chroma(mono, sr)
     chroma_mean = chroma.mean(axis=1)
     main_windows = _beat_windowed_chroma(chroma, frame_times, beats)
-    main_windows_raw = _beat_windowed_chroma(chroma_raw, frame_times, beats)  # CD-2's gate needs real (pre-log) ratios
+
+    # CD-2 (real-song fix, "Mull of Kintyre" pass): the power-chord gate's
+    # "is a third present?" ratio test MUST run on the non-bass chroma, not
+    # the full pitched mix. The bass plays a chord's root and fifth by
+    # default in BOTH power chords and full triads, so summing it in inflates
+    # the root+fifth energy the gate uses as its denominator and buries a
+    # genuinely-played third below the threshold — silently turning honest
+    # major/minor triads into "5" power chords on every song that has a bass
+    # guitar (i.e. almost all of them). Measured on a clean A-major triad: the
+    # major-third holds ~0.48 of root+fifth energy from the guitar alone, but
+    # only ~0.02 once the bass line is summed in — a 0.2 threshold that
+    # correctly saw the third guitar-only completely misses it in the mix.
+    # Whether a third was *played* is a question about the chord instruments,
+    # not the bass, so the gate looks at them alone. Falls back to the full
+    # mix's raw chroma when there's no separate non-bass stem to isolate.
+    if harmonic_sources:
+        harmonic_len = max(len(y) for y in harmonic_sources)
+        harmonic_mono = np.zeros(harmonic_len, dtype=np.float32)
+        for y in harmonic_sources:
+            harmonic_mono[:len(y)] += y
+        _, gate_chroma_raw, gate_frame_times = _compute_chord_chroma(harmonic_mono, sr)
+        gate_windows_raw = _beat_windowed_chroma(gate_chroma_raw, gate_frame_times, beats)
+    else:
+        gate_windows_raw = _beat_windowed_chroma(chroma_raw, frame_times, beats)
 
     # CD-4: the bass stem states a chord's root more reliably than the full
     # mix — a small per-beat bonus toward whatever root the bass agrees
@@ -815,9 +896,6 @@ def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"]
     # its feature extraction hits an edge case (e.g. a near-silent bass
     # part on a mostly-acoustic passage).
     bass_windows = None
-    bass_paths = _find_stems_fuzzy(
-        out_dir, exact_names=("bass",), hint_words=("bass",),
-        exclude_words=("vocal", "vox", "voice", "drum", "kit", "perc"))
     if bass_paths:
         try:
             bass_y, bass_sr = librosa.load(str(bass_paths[0]), sr=None, mono=True)
@@ -831,7 +909,8 @@ def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"]
         norm = np.linalg.norm(window_chroma)
         normed_chroma = window_chroma / norm if norm > 0 else window_chroma
         scores = CHORD_TEMPLATE_MATRIX @ normed_chroma
-        _gate_power_chord_scores(scores, main_windows_raw[i])  # CD-2 — ratio test needs real, pre-log-compression proportions
+        _gate_power_chord_scores(scores, gate_windows_raw[i])  # CD-2 — non-bass raw ratios (see above)
+        _gate_seventh_chord_scores(scores, gate_windows_raw[i])  # CD-5 real-song fix — phantom-b7 (bass overtone) guard
         if bass_windows is not None:
             _apply_bass_root_bonus(scores, bass_windows[i])  # CD-4
         raw_scores[i] = scores
@@ -971,6 +1050,46 @@ def analyze_track(out_dir: Path) -> dict:
                     result["beats"] = [round(float(t), 3) for t in beat_times]
             except Exception:
                 pass
+        except Exception:
+            pass
+
+    # BT-02 fallback (real-song fix, "Mull of Kintyre" pass): the beat grid —
+    # and therefore the whole chord lane, which is windowed per beat interval
+    # — was derived ONLY from the drums stem. A drumless song (a fingerpicked
+    # acoustic piece, a hymn, the quiet intro before the band comes in) has no
+    # drums.wav worth tracking, so it produced no beats at all and an entirely
+    # empty chord lane — nothing for the Mixer chord ribbon or AI Lab to show.
+    # A plucked/strummed chord is a perfectly good onset source, so when the
+    # drums stem is missing or yielded no beats, fall back to onset tracking on
+    # the pitched stems (bass included — its note onsets help). Same start_bpm
+    # prior as the drums path so the two stay consistent; a separate try so a
+    # fallback failure never costs readings that already succeeded.
+    if "beats" not in result:
+        try:
+            fb_paths = _find_stems_fuzzy(
+                out_dir, exact_names=("other", "guitar", "piano", "bass"),
+                hint_words=("guitar", "piano", "keys", "synth", "organ", "string", "bass"),
+                exclude_words=("vocal", "vox", "voice", "drum", "kit", "perc"))
+            fb_sources = []
+            fb_sr = None
+            for p in fb_paths:
+                fy, fb_sr = librosa.load(str(p), sr=None, mono=True)
+                fb_sources.append(fy)
+            if fb_sources:
+                fb_len = max(len(fy) for fy in fb_sources)
+                fb_mono = np.zeros(fb_len, dtype=np.float32)
+                for fy in fb_sources:
+                    fb_mono[:len(fy)] += fy
+                fb_onset = librosa.onset.onset_strength(y=fb_mono, sr=fb_sr)
+                if "bpm" not in result:
+                    fb_tempo = librosa.feature.rhythm.tempo(onset_envelope=fb_onset, sr=fb_sr, start_bpm=140)
+                    fb_bpm = float(np.asarray(fb_tempo).reshape(-1)[0])
+                    if fb_bpm > 0:
+                        result["bpm"] = round(fb_bpm, 1)
+                _, fb_frames = librosa.beat.beat_track(onset_envelope=fb_onset, sr=fb_sr, start_bpm=140)
+                fb_times = librosa.frames_to_time(fb_frames, sr=fb_sr)
+                if len(fb_times):
+                    result["beats"] = [round(float(t), 3) for t in fb_times]
         except Exception:
             pass
 
