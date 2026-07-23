@@ -10,12 +10,17 @@ release-v5-spec.md had to post-v4-backlog-audit.md.
 (source list for everything picked or declined below),
 [looper-pedal-spec.md](looper-pedal-spec.md) (§1's M0 deliverable — the
 full Looper design, done; build paused pending MIDI hardware),
+[measured-latency-spec.md](measured-latency-spec.md) and
+[social-export-presets-spec.md](social-export-presets-spec.md) (§3's
+M3 deliverables, both done, ready to build),
+[tone3000-unblock-spec.md](tone3000-unblock-spec.md) (§3's M4
+deliverable — research done, a concrete action ready to take),
 [rig-preset-chain-spec.md](rig-preset-chain-spec.md) (GP-14 — the
 already-shipped keyboard half of "hands-free rig," which §2 below
 completes with hardware MIDI), [market-review-2026.md](market-review-2026.md)
-(source for the LAN-mode framing in §4), appstore-plan.md (owns any
-future native-app/distribution reversal — untouched by this doc, same
-separation release-v5-spec.md §9 already established).
+(source for the now-declined LAN-mode framing, §4), appstore-plan.md
+(owns any future native-app/distribution reversal — untouched by this
+doc, same separation release-v5-spec.md §9 already established).
 
 ---
 
@@ -41,11 +46,15 @@ meant to play in v5.
 
 **Explicitly out of scope for v6, and why:**
 
-- **LAN mode build.** Real, and the market review's single biggest
-  structural finding — but it's a distribution-track decision
-  (appstore-plan.md's territory), same reasoning release-v5-spec.md §9
-  used to keep platform work out of a feature release. §4 below keeps it
-  alive as a spec-only spike, same as v5 planned and then didn't get to.
+- **LAN mode, including the spec-only spike (§4 as originally
+  written).** Real, and the market review's single biggest structural
+  finding — but it's a distribution-track decision (appstore-plan.md's
+  territory), same reasoning release-v5-spec.md §9 used to keep platform
+  work out of a feature release. v5 already planned just the spec spike
+  and didn't get to it; rather than carry it forward a third time
+  (post-v5-backlog-audit.md §2 already flagged that pattern as worth
+  noticing), it's moved to straight backlog, out of scope for v6
+  entirely — a deliberate call, made directly, not a silent drop.
 - **Song-section detection (V5-S2).** Real and still a good stretch
   candidate, but v6's committed list is already anchored by one L-sized
   build (the Looper) — adding a second medium build risks neither
@@ -154,6 +163,13 @@ persisted per-user like the cycle keys already are.
 
 ## 3. Small, already-scoped polish — both S, both promoted directly from v5
 
+**Update (2026-07-23): all three design specs done, ready to build/act
+on directly** — see [measured-latency-spec.md](measured-latency-spec.md),
+[social-export-presets-spec.md](social-export-presets-spec.md), and
+[tone3000-unblock-spec.md](tone3000-unblock-spec.md). Unlike the Looper
+(§1), none of these are paused — no hardware or external dependency
+blocks starting any of them.
+
 **V6-B1 = Measured round-trip latency (GP-13, was V5-B5).** Loopback
 ping: play a short click out the current output, capture it back
 through the enabled input, cross-correlate for the true round-trip
@@ -161,33 +177,42 @@ number, shown next to (and shaming) the existing browser-estimate-only
 figure. Needs the interface physically looped or its direct-monitor
 path — the UI must say so plainly, not silently measure the acoustic
 path through the room. Unchanged scope from v5; just never got its turn.
+Full design: measured-latency-spec.md (detection method, precondition
+checks, the "requires a physical loop" honesty note).
 
 **V6-B2 = Social export presets (was VD-07 / V5-B4).** Pure ffmpeg
 presets (9:16, 1:1, normalized web export) over an existing take file —
 cheap, self-contained, the release's low-risk quick win, same role
-BT-01/BT-05 played in v0.4 and V5-B4 was meant to play here.
+BT-01/BT-05 played in v0.4 and V5-B4 was meant to play here. Full
+design: social-export-presets-spec.md (crop math, one new server route
+mirroring `svc_recording_finalize`'s existing pattern, one new button
+per take row).
 
-**V6-B3 = TONE3000 unblock-or-drop (task, not a milestone).** The
-community NAM-capture library is large enough now that "blocked on API
-terms" should be resolved by actually asking, once, this release —
-release-v5-spec.md §11 already said as much and it still didn't happen.
-Outcome either converts `backing-track-tone-match-spec.md` Option A into
-a schedulable item or retires it; both beat carrying it as permanent
-limbo into a third release.
+**V6-B3 = TONE3000 unblock-or-drop (task, not a milestone).** Research
+done (tone3000-unblock-spec.md) rather than left as a vague "someone
+should ask": TONE3000 shipped a real public v1 API since the last spec
+touched this (OAuth 2.0+PKCE, Select/Load Tone/Standard flows, 100
+req/min default), which changes "blocked on API terms" from "does an API
+even exist" to two specific, answerable questions — register for a free
+publishable key (no email needed, doable immediately) and send those two
+questions to support@tone3000.com. Outcome either converts
+`backing-track-tone-match-spec.md` Option A into a schedulable item or
+retires it; both beat carrying it as permanent limbo into a third
+release.
 
 ---
 
-## 4. LAN-mode spec spike (carried forward from v5, still spec-only) — S
+## 4. LAN mode — moved to backlog, out of scope for v6 (direct decision, 2026-07-23)
 
-Unchanged from release-v5-spec.md §11: the market review's top
-structural finding is that mobility is the biggest competitive gap
-(a cloud-native rival's core advantage), and LAN mode converts it into a
-local-first differentiator instead of a cloud concession. v6 writes the
-short spec (auth posture on a LAN, which screens work at phone size,
-whether live-rig audio even makes sense remotely or this is mixer/
-practice-only) — v7 decides whether to build. This didn't get written
-in v5 either; carrying a spec-only item forward twice without ever
-producing the spec is itself worth noticing if it happens a third time.
+Was carried forward from release-v5-spec.md §11 as a spec-only spike
+(v6 writes the short spec, v7 decides whether to build). Explicitly
+pulled out of v6's scope instead — see §0's "Explicitly out of scope"
+list for the reasoning (mainly: this is the second release in a row it
+would've been "spec only, not build," and post-v5-backlog-audit.md §3's
+process point about things going stale when repeatedly deferred applies
+here too). It stays real backlog, not dropped — market-review-2026.md's
+own finding (mobility is the biggest competitive gap) hasn't changed —
+just not a v6 line item, spec or otherwise.
 
 ---
 
@@ -215,9 +240,12 @@ each milestone below, not deferred to a single pass at the very end
 - **M2 — MIDI hands-free control (§2).** Same pause as M1, same reason
   — hardware-gated, not effort-gated.
 - **M3 — Polish: measured latency + social export presets (§3's V6-B1/
-  B2).**
-- **M4 — TONE3000 unblock-or-drop (§3's V6-B3) + LAN-mode spec spike
-  (§4).** Both cheap, both parallelizable with everything else.
+  B2). Design specs done, ready to build** — measured-latency-spec.md,
+  social-export-presets-spec.md.
+- **M4 — TONE3000 unblock-or-drop (§3's V6-B3). Research done, action
+  ready** — tone3000-unblock-spec.md. Cheap, parallelizable with
+  everything else. (LAN mode is no longer part of this milestone — see
+  §4, moved to backlog.)
 - **Ongoing, not a milestone — V6-P1 (§5):** a doc-currency check at the
   close of M1, M2, and M3 each, not saved for the end.
 - **Stretch, time-permitting, not committed:** song-section detection
