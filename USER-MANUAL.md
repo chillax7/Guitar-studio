@@ -1,4 +1,4 @@
-# Orpheus Guitar Studio — User Manual (v4.6)
+# Orpheus Guitar Studio — User Manual (v5)
 
 Everything in this manual exists and works today — nothing here is
 aspirational, and nothing below covers how the app used to work. An
@@ -24,7 +24,8 @@ machine — nothing is uploaded anywhere.
 3. [The Mixer](#3-the-mixer) — import, separate, mix, loop, export.
 4. [Tone Lab](#4-tone-lab) — build and save a guitar rig.
 5. [Play Along](#5-play-along) — practice and record with that rig.
-6. [AI Lab](#6-ai-lab-not-yet-built) — planned for v5, not in this build.
+6. [AI Lab](#6-ai-lab) — scales/theory, Rate My Take scoring, and an
+   opt-in AI Assistant.
 7. [Keyboard shortcuts](#7-keyboard-shortcuts)
 8. [Troubleshooting](#8-troubleshooting)
 9. [Known limitations](#9-known-limitations-by-design-not-oversights)
@@ -354,7 +355,7 @@ Clicking any song, in any group, loads it exactly the same way — a
 playlist is only ever an ordering, never a copy of a song's mix/rig
 settings.
 
-![A playlist group expanded to show its songs with their ▲▼✕ reorder/remove controls. (Screenshot predates the simplified header — it now carries just ⟳ Auto-play, ✎ Rename, ✕ Delete.)](docs/screenshots/playlist-group-controls.jpg)
+![A playlist group expanded to show its header controls (⟳ Auto-play, ✎ Rename, ✕ Delete) and its songs' own ▲▼✕+ reorder/remove/add-to-another-playlist controls.](docs/screenshots/playlist-group-controls.jpg)
 
 ### 3.5 Separating into stems
 
@@ -1216,10 +1217,11 @@ at the time.
 
 A fourth screen alongside Mixer / Tone Lab / Play Along, opened with the
 🧠 **AI Lab** button in the sidebar. A tab bar along the top switches
-between its functions — **Scales** and **Rate My Take** so far, more land
-here over time; see [research/release-v5-spec.md](research/release-v5-spec.md)
-for what else is planned (an opt-in LLM tier for phrasing suggestions and
-a music-theory Q&A panel, gated on its own honesty research spike).
+between its three functions: **Scales** (deterministic music theory, no
+network call), **Rate My Take** (note-by-note scoring against the
+original), and **AI Assistant** (an opt-in LLM tier — lick ideas,
+practice tips, and Q&A about the song/artist — needs a free API key from
+a supported provider; see §6.3).
 
 ### 6.1 Scales
 
