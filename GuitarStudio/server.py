@@ -1317,7 +1317,21 @@ def svc_recording_commit(token: str, track: str, ext: str, prefix: str = "take")
     if prefix not in ("take", "riff", "dry", "loop"):
         raise ApiError(400, f"Unsupported prefix '{prefix}' — use take, riff, dry, or loop")
     tmp_path = _tmp_take_path(token)
+    # A marker written right after a successful commit (below) — makes commit
+    # safe to retry. Without this, a commit that actually succeeded server-side
+    # but whose response the client never received (connection dropped after
+    # the rename, before the reply) would make recorder.js's own Retry button
+    # (finalizeAndUpload) call commit again with the same token; tmp_path is
+    # already gone by then, so it would raise "No recorded data" — a false
+    # failure for a take that in fact saved correctly, just never shown in the
+    # UI. Returning the original result instead makes retry idempotent.
+    marker_path = tmp_path.with_suffix(".committed.json")
     if not tmp_path.exists() or tmp_path.stat().st_size == 0:
+        if marker_path.exists():
+            try:
+                return json.loads(marker_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
         raise ApiError(400, "No recorded data for this token — nothing was uploaded, or it was already committed/discarded")
     track_name = safe_name(track) if track else "_untracked"
     rec_dir = recordings_dir_for(track)
@@ -1339,7 +1353,9 @@ def svc_recording_commit(token: str, track: str, ext: str, prefix: str = "take")
         dry_takes = _read_dry_takes(rec_dir)
         dry_takes.add(filename)
         _write_dry_takes(rec_dir, dry_takes)
-    return {"path": str(path), "filename": filename, "take": n}
+    result = {"path": str(path), "filename": filename, "take": n}
+    marker_path.write_text(json.dumps(result))
+    return result
 
 
 def svc_recording_discard_token(token: str) -> dict:
@@ -1348,6 +1364,7 @@ def svc_recording_discard_token(token: str) -> dict:
     accumulate forever in .tmp_takes."""
     tmp_path = _tmp_take_path(token)
     tmp_path.unlink(missing_ok=True)
+    tmp_path.with_suffix(".committed.json").unlink(missing_ok=True)
     return {"ok": True}
 
 
