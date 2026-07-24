@@ -288,7 +288,25 @@ each milestone below, not deferred to a single pass at the very end
   alongside this same pass).
 - **Stretch, time-permitting, not committed:** song-section detection
   (V5-S2) — first pull-forward candidate if any milestone above finishes
-  early.
+  early. **Built anyway, ahead of schedule** — see SS-1 through SS-4 in
+  the commit log (deterministic part-by-part map, LLM enrichment, This
+  Track cross-links, follow-the-song highlight + "Practise this part").
+- **Post-M1/M3 code review (2026-07-24):** a real user's browser-freeze
+  report (7+GB tab memory during a long Play Along recording session)
+  led to fixing the actual cause (recording used to buffer an entire
+  take in the browser before uploading it — now streams to disk as it
+  records) plus a follow-up idempotency bug in that same fix. Widened
+  into a full review of everything else v6 shipped, which found and
+  fixed four more real issues: a race in the lazy rig-graph builders
+  (ensurePAGraph/ensureLooper/ensureRiffCapture) that could duplicate
+  the entire audio graph if two screens were opened fast enough back to
+  back; the Looper's own recording pass allocating unboundedly on the
+  real-time audio thread instead of using a pre-allocated buffer like
+  Riff Capture already does; MIDI access being requested unconditionally
+  at page load instead of lazily behind Tone Lab opening (inconsistent
+  with how camera/mic/output device are all gated elsewhere); and social
+  export presets silently overwriting a prior same-preset export with no
+  warning. All verified headlessly, not just read-through.
 
 Each milestone ends the same way every release since v4 has: docs
 updated (§5's commitment makes this explicit rather than assumed),

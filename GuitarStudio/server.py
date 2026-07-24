@@ -1812,7 +1812,18 @@ def svc_export_social(path: str, preset: str) -> dict:
         raise ApiError(500, "ffmpeg not found — required to export. Is it installed? (brew install ffmpeg)")
 
     suffix = spec["suffix"] or f"_web{target.suffix}"
+    # Code-review finding: this used to always write the same fixed name, so
+    # re-exporting the same preset for the same take (a second try, or after
+    # a re-record under the same take name) silently clobbered the earlier
+    # export via ffmpeg's own -y flag — no warning, no differently-named
+    # file, same "Exported: <filename>" success message either time.
+    # svc_recording_trim (this file) already solves exactly this for its own
+    # derived output with a "(trimmed N)" disambiguator; mirrors that here.
     dest = target.with_name(target.stem + suffix)
+    n = 2
+    while dest.exists():
+        dest = target.with_name(f"{target.stem} ({n}){suffix}")
+        n += 1
 
     cmd = [ffmpeg, "-y", "-i", str(target)]
     if "vf" in spec:
