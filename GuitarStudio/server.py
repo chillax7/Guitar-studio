@@ -1852,10 +1852,10 @@ def _load_provider_key(provider: str) -> str:
     return (raw.get(LICK_PROVIDERS[provider]["key_field"]) or "").strip()
 
 
-def _call_anthropic(prompt: str, api_key: str) -> str:
+def _call_anthropic(prompt: str, api_key: str, max_tokens: int = 900) -> str:
     body = json.dumps({
         "model": LICK_PROVIDERS["anthropic"]["model"],
-        "max_tokens": 900,
+        "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}],
     }).encode("utf-8")
     req = Request(
@@ -1875,7 +1875,7 @@ def _call_anthropic(prompt: str, api_key: str) -> str:
     return "".join(b.get("text", "") for b in payload.get("content", []) if b.get("type") == "text")
 
 
-def _call_google(prompt: str, api_key: str) -> str:
+def _call_google(prompt: str, api_key: str, max_tokens: int = 2048) -> str:
     model = LICK_PROVIDERS["google"]["model"]
     # Real user report: replies were truncated to a single sentence.
     # gemini-flash-latest is a "thinking" model that spends part of
@@ -1888,7 +1888,7 @@ def _call_google(prompt: str, api_key: str) -> str:
     body = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
-            "maxOutputTokens": 2048,
+            "maxOutputTokens": max_tokens,
             "thinkingConfig": {"thinkingBudget": 1},
         },
     }).encode("utf-8")
@@ -1911,11 +1911,11 @@ def _call_google(prompt: str, api_key: str) -> str:
     return "".join(p.get("text", "") for p in parts)
 
 
-def _call_groq(prompt: str, api_key: str) -> str:
+def _call_groq(prompt: str, api_key: str, max_tokens: int = 900) -> str:
     # OpenAI-compatible chat completions shape.
     body = json.dumps({
         "model": LICK_PROVIDERS["groq"]["model"],
-        "max_tokens": 900,
+        "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}],
     }).encode("utf-8")
     req = Request(
@@ -2205,7 +2205,111 @@ def svc_song_structure(source_path: str, model: str) -> dict:
     if not engine.has_cached_stems(out_dir):
         raise ApiError(400, "Separate this song first — Song Structure maps the parts of its stems.")
     result = engine.song_structure(out_dir)
-    return result if result else {"parts": None}
+    if not result:
+        return {"parts": None}
+    # SS-2: attach a previously-generated LLM annotation when it still matches
+    # the current section count. A re-analysis can change how many sections
+    # were found, which would make the index-keyed annotation stale — so drop
+    # it rather than mis-labelling the wrong parts.
+    cached = _load_ai_assistant_cache_all().get(content_hash_for_track(source_path), {}).get("songstructure")
+    if cached and cached.get("part_count") == len(result.get("parts") or []):
+        result["annotation"] = cached.get("annotation")
+        result["annotation_provider"] = cached.get("provider")
+    return result
+
+
+def _extract_json(text: str):
+    """Best-effort JSON out of an LLM reply: strip any markdown code fence and
+    take the outermost { … }. Raises (caught by the caller) if it still won't
+    parse, so a mangled reply becomes a clean 'try again' rather than a 500."""
+    t = text.strip()
+    if t.startswith("```"):
+        t = re.sub(r"^```(?:json)?\s*", "", t)
+        t = re.sub(r"\s*```$", "", t.strip())
+    a, b = t.find("{"), t.rfind("}")
+    if a >= 0 and b > a:
+        t = t[a:b + 1]
+    return json.loads(t)
+
+
+def svc_song_structure_annotate(source_path: str, model: str, provider: str) -> dict:
+    """SS-2 (ai-lab-song-structure-spec.md §4.2): the LLM enrichment pass over
+    the deterministic Song Structure map. The detected sections (boundaries,
+    chords, keys, dynamics) are given data the model may only *annotate by
+    index* — it names each part, says what the guitar does, rates difficulty,
+    flags signature parts, and suggests a learning order, but must not invent
+    sections/bars/times (same grounding lesson as the Lick Ideas bar-number
+    fix). Result is cached per track (keyed to the section count so a
+    re-analysis invalidates it)."""
+    api_key = _load_provider_key_or_raise(provider)
+    input_path = resolve_source_path(source_path)
+    out_dir = engine.track_stem_dir(input_path, model)
+    if not engine.has_cached_stems(out_dir):
+        raise ApiError(400, "Separate this song first.")
+    structure = engine.song_structure(out_dir)
+    if not structure or not structure.get("parts"):
+        raise ApiError(400, "No detected song structure to annotate for this track.")
+
+    info = svc_load_track_info(source_path)
+    artist, title = info["artist"], info["title"]
+    if not artist and not title:
+        raise ApiError(400, "Add this song's Artist/Title in the AI Assistant tab first — the AI needs to know what "
+                            "song this is to name its parts.")
+
+    parts, song = structure["parts"], structure["song"]
+    song_key = song.get("key")
+    song_key_str = f"{song_key['key']} {song_key['mode']}" if song_key else "unknown"
+    lines = []
+    for p in parts:
+        k = p.get("key")
+        kstr = f"{k['key']} {k['mode']}" if k else "unclear"
+        dyn = p.get("dynamics") or {}
+        stems = ", ".join(dyn.get("active_stems") or []) or "—"
+        lines.append(
+            f"  [{p['index']}] repeats-as={p.get('label')} | {p.get('bars')} bars | "
+            f"chords: {p.get('progression') or '(none detected)'} ({p.get('progression_roman') or '—'}) | "
+            f"tonal centre: {kstr} | playing: {stems} ({dyn.get('loudness')})")
+    sections_text = "\n".join(lines)
+
+    prompt = (
+        "You are a guitar teacher writing a part-by-part learning guide for one specific song. Below are the "
+        "song's sections AS DETECTED FROM THE AUDIO by an analysis tool: the boundaries, bar counts, chords, keys "
+        "and which instruments play are GIVEN DATA. Annotate ONLY these exact sections, by their index number — do "
+        "NOT invent sections, bar numbers or times, do not renumber them, and keep the same count.\n\n"
+        f"Song: {title or '(title unknown)'} by {artist or '(artist unknown)'}\n"
+        f"Detected key: {song_key_str}, tempo {round(song.get('tempo') or 0)} BPM\n"
+        f"Detected sections (sections with repeats-as=X that share a letter are the same part recurring):\n"
+        f"{sections_text}\n\n"
+        "Respond with ONLY a JSON object (no markdown fence, no prose before or after) of exactly this shape:\n"
+        '{"parts":[{"index":<int matching a section above>,'
+        '"name":"<Intro|Verse|Pre-chorus|Chorus|Bridge|Solo|Instrumental|Breakdown|Outro|etc>",'
+        '"guitar_role":"<one short phrase: what the guitar mainly does here — e.g. strummed open chords, '
+        'palm-muted power chords, fingerpicked arpeggio, single-note riff, lead/solo>",'
+        '"technique":"<one short phrase: the key technique or feel to nail here>",'
+        '"difficulty":"<beginner|intermediate|advanced>",'
+        '"signature":<true only if this is an iconic/signature part (main riff, the hook), else false>,'
+        '"variation":"<short note ONLY if this repeat differs from an earlier same-letter part, else empty string>"}],'
+        '"song":{"tuning":"<e.g. E standard, Drop D, Eb standard>","capo":"<fret number or none>",'
+        '"form":"<one line naming the overall form>",'
+        '"learning_order":[<the section indices in a sensible order to learn them, most foundational first>],'
+        '"notes":"<1-2 sentences for a learner; mention here if the real song\'s known structure differs from these '
+        'detected boundaries rather than changing the sections>"}}\n\n'
+        "Base part names on the real song where you know it, cross-checked against the detected chords and repeats; "
+        "if unsure, use a sensible generic name. Keep every string short.\n\n" + _REAL_WORLD_KNOWLEDGE_CAVEAT)
+
+    caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
+    text = caller(prompt, api_key, max_tokens=1600)
+    try:
+        annotation = _extract_json(text)
+    except Exception:
+        raise ApiError(502, "The AI's reply wasn't valid JSON — try again, or a different provider.")
+
+    result = {
+        "annotation": annotation, "part_count": len(parts),
+        "provider": provider, "caveat": _REAL_WORLD_KNOWLEDGE_CAVEAT,
+    }
+    _save_ai_assistant_result(source_path, "songstructure", result)
+    return result
 
 
 def _optional_song_theory(source_path: str, model: str) -> tuple:
@@ -3008,6 +3112,14 @@ class Handler(BaseHTTPRequestHandler):
                 body = self._read_json_body()
                 result = svc_song_structure(
                     body.get("source_path", ""), body.get("model", engine.DEFAULT_MODEL),
+                )
+                return self._send_json(200, result)
+
+            if path == "/api/song_structure/annotate":
+                body = self._read_json_body()
+                result = svc_song_structure_annotate(
+                    body.get("source_path", ""), body.get("model", engine.DEFAULT_MODEL),
+                    body.get("provider", "anthropic"),
                 )
                 return self._send_json(200, result)
 

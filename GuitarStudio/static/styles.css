@@ -1891,6 +1891,25 @@ button:disabled:hover { filter: none; }
 .ss-part-dyn { font-size: 11px; color: var(--text-dim); }
 .ss-part-actions { display: flex; gap: 6px; margin-top: 2px; }
 .ss-part-actions button { font-size: 11px; padding: 3px 8px; }
+/* SS-2 LLM annotation overlay */
+.ss-annotate-row { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; flex-wrap: wrap; }
+.ss-part-name { font-size: 13px; font-weight: 700; color: var(--text); }
+.ss-part-sig { color: var(--solo); font-size: 12px; }
+.ss-diff {
+  margin-left: auto; font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .03em; padding: 1px 6px; border-radius: 8px; border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.ss-diff-beginner { color: var(--success); border-color: var(--success); }
+.ss-diff-intermediate { color: var(--warn); border-color: var(--warn); }
+.ss-diff-advanced { color: var(--danger); border-color: var(--danger); }
+.ss-part-role { font-size: 12px; color: var(--text); }
+.ss-part-variation { font-size: 11px; color: var(--text-dim); font-style: italic; }
+#ailab-ss-song-annotation { display: flex; flex-direction: column; gap: 3px; margin: 6px 0; }
+.ss-song-form { font-size: 12px; font-weight: 600; color: var(--text); }
+.ss-song-setup { font-size: 11px; color: var(--text-dim); }
+.ss-song-order { font-size: 11px; color: var(--accent-2); }
+.ss-song-notes { font-size: 11px; color: var(--text-dim); }
 
 /* Own class rather than reusing the timeline's .chord-chip: that one is
    absolutely positioned within a percentage-wide, zoom/scroll-driven lane

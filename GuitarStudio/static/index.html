@@ -1070,7 +1070,12 @@
           <section class="pa-card" id="ailab-ss-header-card">
             <h3>Song Structure</h3>
             <p class="hint" id="ailab-ss-song-line"></p>
-            <p class="hint">A map of the song's parts, built from the detected sections, chords, key and stems — click a part to jump there, or loop it to drill it. Assistive/approximate: confirm the parts and chords by ear. (Part names, technique and difficulty from the AI are coming in a later update.)</p>
+            <div id="ailab-ss-song-annotation" style="display:none;"></div>
+            <div class="ss-annotate-row">
+              <button id="ailab-ss-annotate-btn">✨ Name the parts with AI</button>
+              <span class="hint" id="ailab-ss-annotate-hint"></span>
+            </div>
+            <p class="hint">A map of the song's parts, built from the detected sections, chords, key and stems — click a part to jump there, or loop it to drill it. Names, playing role and difficulty come from the AI (uses your AI Assistant provider/key and this song's Artist/Title); the parts, chords and timing are detected. Assistive/approximate — confirm by ear.</p>
           </section>
           <div id="ailab-ss-parts"></div>
           <p class="hint" id="ailab-ss-empty" style="display:none;"></p>

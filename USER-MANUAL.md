@@ -1398,13 +1398,23 @@ showing:
   Mixer at that part (Loop also sets the loop region), so you're one click from
   looping it and slowing it down with the Speed Trainer.
 
-Same honesty posture as the chord lane and key: the parts, boundaries and
-chords are assistive and approximate — confirm by ear. The part *names*
-(Intro/Verse/Chorus), playing technique and difficulty from the AI are a
-planned later addition; for now the labels are A/B/C by repetition. Needs the
-song separated first (it maps the parts of its stems); if no clear structure
-was detected — a very short clip or one unbroken texture — it says so rather
-than inventing parts.
+**✨ Name the parts with AI** (optional) layers an AI reading over that
+detected backbone: real part **names** (Intro/Verse/Chorus/Bridge/Solo…), what
+the **guitar does** in each part and the **technique** to nail, a
+**difficulty** chip, a ★ on the **signature** parts (the main riff/hook), a
+note when a repeat **differs** from an earlier one, plus a song-level line —
+overall **form**, likely **tuning/capo**, and a suggested **learning order**.
+It uses the same provider/API key and this song's Artist/Title as the AI
+Assistant (§6.4), so set those there first; the result is remembered per song.
+The AI only *labels* the detected parts — it can't invent or renumber them —
+but names and advice are still its interpretation: assistive, confirm by ear,
+and (like This Track) drawn from general knowledge, not a citation.
+
+Same honesty posture as the chord lane and key throughout: the parts,
+boundaries and chords are assistive and approximate. Needs the song separated
+first (it maps the parts of its stems); if no clear structure was detected — a
+very short clip or one unbroken texture — it says so rather than inventing
+parts.
 
 ### 6.3 Rate My Take
 

@@ -400,17 +400,31 @@ function aiLabSwitchPanel(panel) {
   else aiLabLickOpen();
 }
 
-// SS-1 (ai-lab-song-structure-spec.md): the deterministic part-by-part map.
-// Everything shown here is detected (sections/chords/key/stems) — the LLM
-// naming/technique/difficulty pass is SS-2. Jump/Loop hand the user straight
-// back to the Mixer at that part, wired into the existing loop + transport.
+// SS-1/SS-2 (ai-lab-song-structure-spec.md): the part-by-part map. The
+// backbone is all DETECTED (sections/chords/key/stems). SS-2 layers an
+// optional LLM annotation over it — part names, guitar role, technique,
+// difficulty, signature flag, learning order — clearly the assistive layer,
+// grounded on the detected sections it may only annotate by index (never
+// invent). Jump/Loop hand the user back to the Mixer at that part.
+const AiLabSS = { data: null };
+
 async function aiLabRenderSongStructure() {
   const partsEl = document.getElementById("ailab-ss-parts");
   const emptyEl = document.getElementById("ailab-ss-empty");
   const songLine = document.getElementById("ailab-ss-song-line");
+  const annoBtn = document.getElementById("ailab-ss-annotate-btn");
   if (!partsEl) return;
+  // wire the "Name the parts with AI" button once
+  if (annoBtn && !annoBtn.dataset.wired) {
+    annoBtn.dataset.wired = "1";
+    annoBtn.addEventListener("click", aiLabSSAnnotate);
+  }
   partsEl.innerHTML = "";
   emptyEl.style.display = "none";
+  AiLabSS.data = null;
+  aiLabSSToggleControls(false);
+  document.getElementById("ailab-ss-song-annotation").style.display = "none";
+  document.getElementById("ailab-ss-annotate-hint").textContent = "";
   if (!State.track) {
     songLine.textContent = "";
     emptyEl.textContent = "Load a separated song first — Song Structure maps the parts of its stems.";
@@ -427,44 +441,97 @@ async function aiLabRenderSongStructure() {
     emptyEl.style.display = "";
     return;
   }
-  const parts = data && data.parts;
-  if (!parts || !parts.length) {
+  if (!data || !data.parts || !data.parts.length) {
     songLine.textContent = "";
     emptyEl.textContent = "No clear structure was detected for this track — it may be very short or one unbroken texture.";
     emptyEl.style.display = "";
     return;
   }
+  AiLabSS.data = data;                 // includes any cached annotation
+  aiLabSSToggleControls(true);
+  aiLabSSRenderParts();
+}
+
+function aiLabSSToggleControls(show) {
+  document.getElementById("ailab-ss-annotate-btn").style.display = show ? "" : "none";
+}
+
+// Renders parts from AiLabSS.data, overlaying AiLabSS.data.annotation if set.
+function aiLabSSRenderParts() {
+  const data = AiLabSS.data;
+  if (!data) return;
+  const parts = data.parts;
+  const ann = data.annotation || null;
+  const annByIndex = {};
+  if (ann && Array.isArray(ann.parts)) ann.parts.forEach((a) => { annByIndex[a.index] = a; });
 
   const songKey = data.song && data.song.key;
   const keyStr = songKey ? `${songKey.key} ${songKey.mode}` : "key —";
   const tempoStr = data.song && data.song.tempo ? `${Math.round(data.song.tempo)} BPM` : "";
-  songLine.textContent = `${keyStr}${tempoStr ? " · " + tempoStr : ""} · ${parts.length} parts`;
+  document.getElementById("ailab-ss-song-line").textContent =
+    `${keyStr}${tempoStr ? " · " + tempoStr : ""} · ${parts.length} parts`;
+  document.getElementById("ailab-ss-annotate-btn").textContent =
+    ann ? "✨ Re-name the parts with AI" : "✨ Name the parts with AI";
+
+  aiLabSSRenderSongAnnotation(ann, annByIndex, parts);
 
   const clock = (t) => (typeof fmtClock === "function")
     ? fmtClock(t)
     : `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
   const swatch = (label) => (typeof sectionColor === "function") ? sectionColor(label || "A") : "#4a90d9";
 
+  const partsEl = document.getElementById("ailab-ss-parts");
+  partsEl.innerHTML = "";
   const frag = document.createDocumentFragment();
   parts.forEach((p) => {
+    const a = annByIndex[p.index];
     const color = swatch(p.label);
     const row = document.createElement("div");
     row.className = "ss-part";
     row.style.borderLeft = `4px solid ${color}`;
 
+    // head: [colour letter] + (AI name) + time/bars + difficulty + signature
     const head = document.createElement("div");
     head.className = "ss-part-head";
     const badge = document.createElement("span");
     badge.className = "ss-part-label";
     badge.style.background = color;
     badge.textContent = p.label || "?";
+    head.appendChild(badge);
+    if (a && a.name) {
+      const name = document.createElement("span");
+      name.className = "ss-part-name";
+      name.textContent = a.name;
+      head.appendChild(name);
+      if (a.signature) {
+        const sig = document.createElement("span");
+        sig.className = "ss-part-sig";
+        sig.title = "Signature part — the iconic bit";
+        sig.textContent = "★";
+        head.appendChild(sig);
+      }
+    }
     const time = document.createElement("span");
     time.className = "ss-part-time";
     time.textContent = `${clock(p.start)}–${clock(p.end)} · ${p.bars ? p.bars + " bars" : p.beats + " beats"}`;
-    head.appendChild(badge);
     head.appendChild(time);
+    if (a && a.difficulty) {
+      const diff = document.createElement("span");
+      diff.className = "ss-diff ss-diff-" + String(a.difficulty).toLowerCase();
+      diff.textContent = a.difficulty;
+      head.appendChild(diff);
+    }
     row.appendChild(head);
 
+    // AI role/technique line
+    if (a && (a.guitar_role || a.technique)) {
+      const role = document.createElement("div");
+      role.className = "ss-part-role";
+      role.textContent = "🎸 " + [a.guitar_role, a.technique].filter(Boolean).join(" · ");
+      row.appendChild(role);
+    }
+
+    // per-part key if it differs from the song key
     if (p.key && songKey && (p.key.key !== songKey.key || p.key.mode !== songKey.mode)) {
       const kd = document.createElement("div");
       kd.className = "ss-part-key";
@@ -472,6 +539,7 @@ async function aiLabRenderSongStructure() {
       row.appendChild(kd);
     }
 
+    // chords + roman
     const ch = document.createElement("div");
     ch.className = "ss-part-chords";
     if (p.progression) {
@@ -493,12 +561,21 @@ async function aiLabRenderSongStructure() {
     }
     row.appendChild(ch);
 
+    // dynamics
     const dyn = document.createElement("div");
     dyn.className = "ss-part-dyn";
     const stems = (p.dynamics && p.dynamics.active_stems) || [];
     const loud = p.dynamics && p.dynamics.loudness;
     dyn.textContent = (stems.length ? stems.join(" · ") : "—") + (loud && loud !== "—" ? `  ·  ${loud}` : "");
     row.appendChild(dyn);
+
+    // AI variation note on a repeat
+    if (a && a.variation) {
+      const varEl = document.createElement("div");
+      varEl.className = "ss-part-variation";
+      varEl.textContent = "↺ " + a.variation;
+      row.appendChild(varEl);
+    }
 
     const acts = document.createElement("div");
     acts.className = "ss-part-actions";
@@ -515,6 +592,58 @@ async function aiLabRenderSongStructure() {
     frag.appendChild(row);
   });
   partsEl.appendChild(frag);
+}
+
+// Song-level AI annotation: form, tuning/capo, learning order, notes.
+function aiLabSSRenderSongAnnotation(ann, annByIndex, parts) {
+  const box = document.getElementById("ailab-ss-song-annotation");
+  box.innerHTML = "";
+  if (!ann || !ann.song) { box.style.display = "none"; return; }
+  const s = ann.song;
+  const add = (cls, text) => {
+    if (!text) return;
+    const d = document.createElement("div");
+    d.className = cls;
+    d.textContent = text;
+    box.appendChild(d);
+  };
+  add("ss-song-form", s.form || "");
+  const setup = [s.tuning ? `Tuning: ${s.tuning}` : "", s.capo && String(s.capo).toLowerCase() !== "none" ? `Capo: ${s.capo}` : ""]
+    .filter(Boolean).join("  ·  ");
+  add("ss-song-setup", setup);
+  if (Array.isArray(s.learning_order) && s.learning_order.length) {
+    const names = s.learning_order.map((i) => {
+      const a = annByIndex[i];
+      const p = parts.find((x) => x.index === i);
+      return (a && a.name) || (p && p.label) || `#${i}`;
+    });
+    add("ss-song-order", "Suggested learning order: " + names.join(" → "));
+  }
+  add("ss-song-notes", s.notes || "");
+  box.style.display = box.children.length ? "" : "none";
+}
+
+async function aiLabSSAnnotate() {
+  const btn = document.getElementById("ailab-ss-annotate-btn");
+  const hint = document.getElementById("ailab-ss-annotate-hint");
+  if (!State.track || !AiLabSS.data) return;
+  btn.disabled = true;
+  btn.classList.add("running");
+  hint.textContent = "Analysing the parts…";
+  try {
+    const provider = (typeof aiLabLickCurrentProvider === "function") ? aiLabLickCurrentProvider() : "anthropic";
+    const r = await Api.post("/api/song_structure/annotate", {
+      source_path: State.track, model: State.model, provider,
+    });
+    AiLabSS.data.annotation = r.annotation;
+    hint.textContent = "";
+    aiLabSSRenderParts();
+  } catch (e) {
+    hint.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove("running");
+  }
 }
 
 // Jump / Loop drop you back on the Mixer at that part — the payoff of the map
