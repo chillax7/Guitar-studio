@@ -539,23 +539,52 @@ body {
 #timeline-zoom-slider { width: 90px; }
 #click-volume-slider { width: 70px; }
 
-/* House rule: any button available to click is solid blue with white text
-   (Separate's look, and what Click/Count-in look like whether on or off) —
-   "clickable" is one consistent solid color everywhere, not just on primary
-   CTAs. Disabled buttons drop out of the blue family entirely (not just
-   dimmed) so "unavailable" still reads clearly. The Loop and Tuner toggles
-   are the one override: solid green while active — green = "a transport/
-   monitor state is running", blue = everything else clickable. */
+/* House rule (button state model — one consistent language everywhere):
+     • QUIET at rest — every button is dark (panel-2) with a border. A wall of
+       buttons reads calm; nothing shouts until it means something.
+     • LIT (solid accent) when it's the ACTIVE choice / engaged — the selected
+       option in a group, a toggle that's on. Carried by .active / .on /
+       .selected (see the blanket rule below); a few buttons keep a semantic
+       colour instead (mute = red, solo = yellow).
+     • GREEN when a transport/monitor state is actively RUNNING — loop
+       looping, click/count-in armed, tuner on, a split running (.running).
+     • Hover lights a quiet button up (accent border + faint accent wash) so
+       it still reads as pressable.
+   Disabled drops out of the family entirely (not just dimmed) so
+   "unavailable" still reads clearly. This replaces the old "everything is
+   solid blue" rule — see ui-review-v5-full.md's nav-screen-btn, now the model
+   for the whole app. */
 button {
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  color: #fff;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
   border-radius: 4px;
   padding: 5px 10px;
   cursor: pointer;
   font-size: 12px;
 }
-button:hover { filter: brightness(1.1); }
+button:hover { background: var(--accent-dim); border-color: var(--accent); color: var(--text); filter: none; }
+/* LIT: the active/selected/engaged state, standing out against the quiet
+   default. More specific rules (green transports, red mute, yellow solo)
+   override this by specificity, not order. */
+button.active, button.on, button.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+button.active:hover, button.on:hover, button.selected:hover { background: var(--accent); filter: brightness(1.1); }
+/* RUNNING: a transport/monitor process actively in progress (a split
+   crunching, etc.) — same green as the loop/tuner "running" toggles. */
+button.running {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+button.running:hover { background: var(--success); filter: brightness(1.1); }
+/* PRIMARY: the main action in its area (Separate, Run split, Export, Record).
+   Stays quiet at rest per the house rule, but an accent-coloured border marks
+   it as the primary thing to do without the loud fill of an active state. */
+button.primary { border-color: var(--accent); }
 button:disabled {
   opacity: 0.5;
   cursor: default;
@@ -1195,12 +1224,14 @@ button:disabled:hover { filter: none; }
 #inspector .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
 #split-methods { display: flex; gap: 6px; margin: 6px 0; }
 #split-methods button { flex: 1; }
-/* Same idiom as .nav-screen-btn.active / #compare-listen-a-btn.active —
-   every button here is already solid blue by the house rule, so a same-
-   color background is invisible; brightness + inset ring is what actually
-   reads as "selected." */
+/* The selected split method lights up (accent) against its now-quiet
+   siblings — same idiom as .nav-screen-btn.active, with the inset ring for
+   an extra "this is the current choice" cue. Spectral carries .active by
+   default (index.html) so one method always reads as chosen. */
 #split-methods button.active {
-  filter: brightness(1.15);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4);
 }
 #export-result { margin-top: 8px; font-size: 11px; color: var(--text-dim); }

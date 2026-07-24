@@ -2559,6 +2559,10 @@ function wireZoomControls() {
   document.getElementById("zoom-to-loop-btn").addEventListener("click", () => {
     if (!State.ui.loop || !Audio.duration) return; // nothing to zoom to without a loop set (§6)
     zoomWindow = { start: State.ui.loop.start, end: State.ui.loop.end };
+    // Drop the playhead at the loop start so playback begins where you're now
+    // looking, instead of leaving it wherever it happened to be (often outside
+    // the zoomed-in window entirely).
+    seekTo(State.ui.loop.start);
     document.getElementById("zoom-to-loop-btn").style.display = "none";
     document.getElementById("zoom-out-btn").style.display = "inline-block";
     // "Zoom to loop" is its own complete, always-fits-the-viewport view —
@@ -2982,6 +2986,7 @@ function wireSplitPanel() {
   document.getElementById("run-split-btn").addEventListener("click", async () => {
     const btn = document.getElementById("run-split-btn");
     btn.disabled = true;
+    btn.classList.add("running"); // green while the split crunches (button state model)
     try {
       const r = await Api.post("/api/split_guitar", {
         source_path: State.track, model: State.model, stem: "guitar", method: splitMethod,
@@ -2994,6 +2999,7 @@ function wireSplitPanel() {
       alert("Split failed: " + e.message);
     } finally {
       btn.disabled = false;
+      btn.classList.remove("running");
     }
   });
 }
