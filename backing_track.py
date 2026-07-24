@@ -1498,6 +1498,24 @@ def _section_progression(section_chords: list, key_root_pc) -> tuple:
     return letters, roman
 
 
+STRUCTURE_FILE = "structure.json"
+
+
+def _read_song_structure_cache(out_dir: Path) -> dict:
+    f = out_dir / STRUCTURE_FILE
+    if not f.exists():
+        return {}
+    try:
+        return json.loads(f.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _write_song_structure_cache(out_dir: Path, analysis_version, section_count: int, result: dict) -> None:
+    (out_dir / STRUCTURE_FILE).write_text(json.dumps(
+        {"analysis_version": analysis_version, "section_count": section_count, "result": result}))
+
+
 def song_structure(out_dir: Path) -> dict | None:
     """SS-1: a part-by-part structural summary for a guitarist learning the
     song. One entry per detected section (BT-20) with its timing, length in
@@ -1505,7 +1523,19 @@ def song_structure(out_dir: Path) -> dict | None:
     and which stems are playing + how loud — all sliced straight from the
     cached analysis and the stems. Returns None when there are no confident
     sections to describe (the UI then falls back to the LLM's general knowledge
-    of the song, clearly labelled)."""
+    of the song, clearly labelled).
+
+    Real user report (a several-minute ripped song, multiple stems, freeze
+    reported after repeatedly opening/leaving the AI Lab Song Structure mode):
+    this function used to fully re-decode EVERY stem's audio via librosa on
+    every single call, with no caching at all — unlike ensure_analysis, which
+    is cached. Re-opening Song Structure re-triggered that full per-stem
+    decode-and-RMS pass from scratch every time, real, avoidable server load
+    and latency that only gets worse the longer/more-multi-stem the song is.
+    Cached the same way ensure_analysis caches (a JSON file next to it),
+    invalidated whenever the underlying analysis version or section count
+    changes — both of which only change when analyze_track itself reruns, the
+    same contract ensure_analysis already relies on."""
     import numpy as np
     import librosa
 
@@ -1513,6 +1543,11 @@ def song_structure(out_dir: Path) -> dict | None:
     sections = analysis.get("sections")
     if not sections:
         return None
+
+    cached = _read_song_structure_cache(out_dir)
+    if cached.get("analysis_version") == analysis.get("version") and cached.get("section_count") == len(sections):
+        return cached.get("result")
+
     chords = analysis.get("chords") or []
     beats = analysis.get("beats") or []
     song_key = analysis.get("key")
@@ -1574,7 +1609,9 @@ def song_structure(out_dir: Path) -> dict | None:
             },
         })
 
-    return {"song": {"key": song_key, "tempo": analysis.get("bpm")}, "parts": parts}
+    result = {"song": {"key": song_key, "tempo": analysis.get("bpm")}, "parts": parts}
+    _write_song_structure_cache(out_dir, analysis.get("version"), len(sections), result)
+    return result
 
 
 # V4-R1a (rate-my-take-spec.md §3/§6): the research spike's scoring core.

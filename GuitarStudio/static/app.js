@@ -2664,6 +2664,13 @@ function correctKey(root, mode) {
   State.keyOverride = { key: root, mode };
   updateKeyHint();
   refreshKeyCorrectionControls();
+  // Real user report: AI Lab's Scales tab kept suggesting scales for the OLD
+  // detected key after correcting it here. renderAiLab() already no-ops
+  // unless AI Lab is open and showing the Scales panel, so this is a safe,
+  // cheap call regardless of what screen is currently visible — it just
+  // makes an already-open Scales view agree with the new key immediately
+  // instead of only catching up the next time AI Lab is reopened.
+  if (typeof renderAiLab === "function") renderAiLab();
   saveProjectDebounced();
 }
 
@@ -2671,6 +2678,7 @@ function resetKeyCorrection() {
   State.keyOverride = null;
   updateKeyHint();
   refreshKeyCorrectionControls();
+  if (typeof renderAiLab === "function") renderAiLab();
   saveProjectDebounced();
 }
 

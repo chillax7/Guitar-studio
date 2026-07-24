@@ -259,7 +259,11 @@ function aiLabRenderChordMode() {
   const run = runs[AiLab.selectedIndex];
   const semitones = aiLabSemitones();
   const symbol = chordSymbol(run, semitones);
-  const key = (State.analysis || {}).key;
+  // Real user report: correcting the key on the Mixer (§ correctKey, app.js)
+  // left the Scales tab still suggesting scales for the OLD detected key —
+  // same "prefer the manual override, fall back to the raw detection" rule
+  // updateKeyHint() already uses, mirrored here so the two never disagree.
+  const key = State.keyOverride || (State.analysis || {}).key;
 
   document.getElementById("ailab-chordname").textContent = symbol || "?";
   document.getElementById("ailab-keyname").textContent = key
@@ -308,7 +312,8 @@ function aiLabRenderSongMode() {
   document.getElementById("ailab-scale-heading").textContent = "Scales for the whole song";
   const emptyHint = document.getElementById("ailab-empty-hint");
 
-  const key = (State.analysis || {}).key;
+  // Same override-first rule as aiLabRenderChordMode/updateKeyHint above.
+  const key = State.keyOverride || (State.analysis || {}).key;
   if (!key) {
     document.getElementById("ailab-jumprow").innerHTML = "";
     document.getElementById("ailab-scale-stack").innerHTML = "";

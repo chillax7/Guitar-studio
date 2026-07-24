@@ -484,7 +484,10 @@ bar** below it has the playback essentials:
   a **Set** button — pick the real key and click Set. A **Reset** button
   appears once you've done this, in case you want to go back to whatever
   was actually detected. The correction is remembered for that song from
-  then on.
+  then on, and AI Lab's Scales tab (§6.1) picks it up immediately too —
+  "Whole song" scale suggestions and the per-chord "Song key" readout both
+  follow the corrected key, not the original detection, whether AI Lab is
+  already open or you open it afterward.
 - **Volume** — an overall listening-level slider for the backing track.
 
 And the two toolbar click features:
@@ -1714,6 +1717,7 @@ current song has attached.
 | Trimming a take fails with "file not found" | Only possible if you renamed the take in another app while it was loaded in the player — reload the take from the Takes list and trim again. |
 | Hardware volume keys/menu-bar slider stop working | Your Mac's default output is set to BlackHole or a Multi-Output Device containing it (§1.7/§3.2) — switch back to your normal speakers/headphones when you're done ripping. |
 | A long unattended action (e.g. a several-minute Rip) seemed to freeze or crash the tab right when it finished | Fixed — naming a rip (or any rename dialog: tracks, playlists, stems, takes, markers) used to use the browser's native `prompt()`, which blocks the entire tab until dismissed and is easy to miss if the tab wasn't focused when it appeared. All of these now use an in-app dialog instead, so they can't freeze the tab even if it's in the background when they pop up. |
+| Browser tab (or the whole browser) becomes completely unresponsive during normal use — clicks/tab-switching stop working, only the OS window itself can still be moved | **Under active investigation — two real user reports, not yet root-caused.** One report happened muting/unmuting stems then soloing the guitar stem on a ripped song; a second happened after using AI Lab's Song Structure mode, switching away, then back. A real, related performance bug *was* found and fixed in the second case (Song Structure used to fully re-decode every stem's audio from scratch on every visit, with no caching — now cached, near-instant on repeat visits), but that isn't confirmed as the actual freeze cause, just a genuine cost removed from the same code path. A thorough code review of the mute/solo path (listener leaks, audio-graph node leaks, blocking dialogs, runaway loops) didn't turn up a definitive cause either. **If this recurs, the most useful things to capture are:** Chrome's Task Manager (Shift+Esc) reading for the tab right before/as it locks up (climbing memory = a leak; pegged CPU with flat memory = a runaway loop); whether it happens on a normal (non-ripped) imported song too; and roughly how long you'd been interacting (many rapid mute/solo toggles vs. just a couple) before it hit. |
 
 ## 9. Known limitations (by design, not oversights)
 

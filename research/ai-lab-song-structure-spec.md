@@ -197,6 +197,21 @@ reused here instead. Optional later: a compact read-only strip of this map
 back on the Mixer once the naming is trusted — but the interactive map lives
 in AI Lab, which is where "learning the parts" work already happens.
 
+### 4.5 `song_structure` result caching (real user report)
+`song_structure` (backing_track.py) fully re-decodes every stem's audio via
+librosa for its per-section RMS/dynamics pass — unlike `ensure_analysis`,
+this had no caching at all, so re-opening or re-visiting Song Structure mode
+re-ran that full decode from scratch every time. Reported alongside a real
+browser freeze (a several-minute ripped song, freeze after loading Song
+Structure, clicking away, and coming back) — not confirmed as the actual
+freeze cause, but a genuine, repeated, avoidable cost on exactly that code
+path regardless, so fixed either way: the result is now cached to
+`structure.json` next to `analysis.json`, invalidated whenever the analysis
+version or section count changes (the same contract `ensure_analysis`
+already uses for the data this derives from). Measured on a short synthetic
+test track: first call ~9s (mostly a cold `ensure_analysis`), every call
+after that ~0.2ms.
+
 ## 5. Plan
 
 | # | Milestone | Notes |
