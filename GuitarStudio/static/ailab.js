@@ -388,14 +388,12 @@ function closeAiLab() {
 function aiLabSwitchPanel(panel) {
   AiLab.panel = panel;
   document.getElementById("ailab-scales-panel").style.display = panel === "scales" ? "" : "none";
-  document.getElementById("ailab-songstructure-panel").style.display = panel === "songstructure" ? "" : "none";
   document.getElementById("ailab-ratemytake-panel").style.display = panel === "ratemytake" ? "" : "none";
   document.getElementById("ailab-lickideas-panel").style.display = panel === "lickideas" ? "" : "none";
   document.querySelectorAll(".ailab-tab-btn").forEach((btn) => {
     btn.classList.toggle("on", btn.dataset.panel === panel);
   });
   if (panel === "scales") renderAiLab();
-  else if (panel === "songstructure") aiLabRenderSongStructure();
   else if (panel === "ratemytake") aiLabRmtOpen();
   else aiLabLickOpen();
 }
@@ -1082,14 +1080,19 @@ async function aiLabLickOpen() {
   await aiLabTrackInfoOpen();
   await aiLabAssistantRefreshCache();
   if (AiLab.amode === "practicetips") await aiLabTipsRefreshTakes();
+  // Song Structure isn't a "restore a cached text result" mode like the
+  // others (aiLabAssistantRestoreMode doesn't handle it) — it always
+  // (re)builds the detected map itself, attaching any cached AI annotation
+  // the backend already has for this track.
+  if (AiLab.amode === "songstructure") await aiLabRenderSongStructure();
   aiLabAssistantRestoreMode(AiLab.amode);
 }
 
 // Mode selector for the AI Assistant panel (release-v5-spec.md §4's "one
 // panel, not two more tabs" — Lick Ideas / Ask AI / Practice Tips / This
-// Track / This Artist share the provider/API-key card (and, for the last
-// three, the Artist/Title card) above; only the mode-specific card and its
-// own result card toggle visibility).
+// Track / Song Structure / This Artist share the provider/API-key card (and,
+// for This Track/Song Structure/This Artist, the Artist/Title card) above;
+// only the mode-specific card and its own result card toggle visibility).
 function aiLabAssistantSetMode(mode) {
   AiLab.amode = mode;
   document.getElementById("ailab-assistant-mode-toggle").querySelectorAll("button").forEach((b) => {
@@ -1103,9 +1106,11 @@ function aiLabAssistantSetMode(mode) {
   document.getElementById("ailab-tips-result-card").style.display = "none";
   document.getElementById("ailab-track-mode-card").style.display = mode === "thistrack" ? "" : "none";
   document.getElementById("ailab-track-result-card").style.display = "none";
+  document.getElementById("ailab-ss-mode-card").style.display = mode === "songstructure" ? "" : "none";
   document.getElementById("ailab-artist-mode-card").style.display = mode === "thisartist" ? "" : "none";
   document.getElementById("ailab-artist-result-card").style.display = "none";
   if (mode === "practicetips") aiLabTipsRefreshTakes().then(() => aiLabAssistantRestoreMode(mode));
+  else if (mode === "songstructure") aiLabRenderSongStructure();
   else aiLabAssistantRestoreMode(mode);
 }
 

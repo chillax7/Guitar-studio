@@ -1052,7 +1052,7 @@ Speed, Tune, Volume, and a scrub timeline — is mirrored here too, so you
 never need to leave Play Along to control the backing track (or find a
 particular spot in the song) while you're actually playing. It's the exact
 same state as the main transport; adjusting either one updates both, and
-the same mirrored timeline shows up on AI Lab's Rate My Take screen (§6.3)
+the same mirrored timeline shows up on AI Lab's Rate My Take screen (§6.2)
 too.
 
 ### 5.1 Tuner (top strip)
@@ -1096,7 +1096,7 @@ record yourself playing along — the exact audio mix you're hearing
    takes as `.mp4`/`.webm`.
 
 A link on this card jumps to AI Lab's Rate My Take screen and its own dry-
-take recorder (§6.3 has the same link back here) — for going back and forth
+take recorder (§6.2 has the same link back here) — for going back and forth
 between a normal take here and a dry take for scoring, without hunting for
 the right screen each time.
 
@@ -1314,7 +1314,7 @@ between its three functions: **Scales** (deterministic music theory, no
 network call), **Rate My Take** (note-by-note scoring against the
 original), and **AI Assistant** (an opt-in LLM tier — lick ideas,
 practice tips, and Q&A about the song/artist — needs a free API key from
-a supported provider; see §6.4).
+a supported provider; see §6.3).
 
 ### 6.1 Scales
 
@@ -1377,46 +1377,7 @@ detection are both assistive, best on pop/rock, and worth confirming by
 ear — a scale suggestion is only as good as the chord/key read it's
 built on.
 
-### 6.2 Song Structure
-
-A part-by-part **map of the song** for learning it a piece at a time. Built
-entirely from the app's own detected analysis of *this* separated track — no
-AI, no API key, nothing made up — it lists the song's parts in order, each
-showing:
-
-- a **colour + letter** (A/B/C…) that repeats when the part does, so you can
-  see at a glance where the verse comes back;
-- its **time range and length in bars**;
-- the **chords** for that part, with **Roman numerals** underneath (so the
-  shape is transferable to any key);
-- the **tonal centre** of the part when it differs from the song's key — the
-  "this bit lifts to F# minor" moment;
-- **what's playing and how loud** — e.g. *bass · other · medium* for a stripped
-  verse vs *bass · drums · other · full* for the chorus, read straight from the
-  stems;
-- **▶ Jump here** and **⟳ Loop this part** — either one drops you back on the
-  Mixer at that part (Loop also sets the loop region), so you're one click from
-  looping it and slowing it down with the Speed Trainer.
-
-**✨ Name the parts with AI** (optional) layers an AI reading over that
-detected backbone: real part **names** (Intro/Verse/Chorus/Bridge/Solo…), what
-the **guitar does** in each part and the **technique** to nail, a
-**difficulty** chip, a ★ on the **signature** parts (the main riff/hook), a
-note when a repeat **differs** from an earlier one, plus a song-level line —
-overall **form**, likely **tuning/capo**, and a suggested **learning order**.
-It uses the same provider/API key and this song's Artist/Title as the AI
-Assistant (§6.4), so set those there first; the result is remembered per song.
-The AI only *labels* the detected parts — it can't invent or renumber them —
-but names and advice are still its interpretation: assistive, confirm by ear,
-and (like This Track) drawn from general knowledge, not a citation.
-
-Same honesty posture as the chord lane and key throughout: the parts,
-boundaries and chords are assistive and approximate. Needs the song separated
-first (it maps the parts of its stems); if no clear structure was detected — a
-very short clip or one unbroken texture — it says so rather than inventing
-parts.
-
-### 6.3 Rate My Take
+### 6.2 Rate My Take
 
 Scores a recorded solo/riff against the song's own guitar performance —
 per-beat pitch and timing agreement, an overall closeness percentage, and
@@ -1518,14 +1479,17 @@ Same honesty framing as everywhere else: this is a heuristic, not a
 verdict — judge it against what your own ears say happened, especially on
 a first pass with a new song.
 
-### 6.4 AI Assistant
+### 6.3 AI Assistant
 
 An experimental research feature, and the **only part of this app that
-makes a network call** — everything else works fully offline. Five modes
-share one tab, one saved API key, and (for the last three) one Artist/
-Title field, since they're all the same underlying idea (send text — never
+makes a network call** — everything else works fully offline. Six modes
+share one tab, one saved API key, and (for most of them) one Artist/Title
+field, since they're all the same underlying idea (send text — never
 audio — to a text LLM and ask something useful). A mode-toggle row at the
-top of the tab switches between them.
+top of the tab switches between them. The one exception is **Song
+Structure**: its part-by-part map is fully detected and works with no API
+key at all — only its optional "Name the parts with AI" button inside it
+makes a network call, same as the other modes.
 
 **This song (Artist/Title).** This Track, This Artist, and Ask AI (for
 context) need to know what song this actually is, and the app has no other
@@ -1544,7 +1508,7 @@ yanks it shut on you mid-task. Click the summary line to expand it back
 open any time.
 
 **Choosing a provider.** A dropdown at the top of the tab picks which LLM
-answers, shared across all five modes below:
+answers, shared across all six modes below:
 
 - **Claude (Anthropic)** — get a key at **console.anthropic.com**
   (Settings → API Keys) and add a little billing credit; realistic
@@ -1623,29 +1587,69 @@ notes, the writing process and lyrical meaning where publicly known
 worth hearing, and similar songs/solos to check out. Needs the Artist/
 Title above filled in first.
 
+**Mode: Song Structure.** A different kind of mode — a part-by-part **map
+of the song** for learning it a piece at a time, sitting right between This
+Track and This Artist since it's the "how is this song built, how do I play
+it" counterpart to This Track's "what's this song's story." Its map is
+**fully detected from this separated track**, not the LLM — no API key
+needed just to see it. Lists the song's parts in order, each showing:
+
+- a **colour + letter** (A/B/C…) that repeats when the part does, so you
+  can see at a glance where the verse comes back;
+- its **time range and length in bars**;
+- the **chords** for that part, with **Roman numerals** underneath (so the
+  shape is transferable to any key);
+- the **tonal centre** of the part when it differs from the song's key —
+  the "this bit lifts to F# minor" moment;
+- **what's playing and how loud** — e.g. *bass · other · medium* for a
+  stripped verse vs *bass · drums · other · full* for the chorus, read
+  straight from the stems;
+- **▶ Jump here** and **⟳ Loop this part** — either one drops you back on
+  the Mixer at that part (Loop also sets the loop region), one click from
+  looping it and slowing it down with the Speed Trainer.
+
+**✨ Name the parts with AI** (optional, needs the provider/key and Artist/
+Title above) layers an AI reading over that detected backbone: real part
+**names** (Intro/Verse/Chorus/Bridge/Solo…), what the **guitar does** in
+each part and the **technique** to nail, a **difficulty** chip, a ★ on the
+**signature** parts (the main riff/hook), a note when a repeat **differs**
+from an earlier one, plus a song-level line — overall **form**, likely
+**tuning/capo**, and a suggested **learning order**. The result is
+remembered per song. The AI only *labels* the detected parts — it can't
+invent or renumber them — but names and advice are still its
+interpretation: assistive, confirm by ear, and (like This Track) drawn from
+general knowledge, not a citation. Needs the song separated first (it maps
+the parts of its stems); if no clear structure was detected — a very short
+clip or one unbroken texture — it says so rather than inventing parts.
+
 **Mode: This Artist.** Same one-click idiom, scoped to this song's
 guitarist: general gear and playing style, signature sound and licks, and
 gear hints specific enough to point toward a NAM capture worth trying —
 not a promise of exact tone-matching, just a more informed starting point
 than guessing blind. Needs the Artist above filled in first.
 
-**A different kind of caveat for This Track/This Artist.** Every other
-mode on this screen reasons over data the app itself already computed —
-if a suggestion feels off, that's a musical judgment call you can make
-immediately. This Track and This Artist instead pull the model's own
-general knowledge about a real band/guitarist, which means genuine facts
-(dates, gear, quotes, credits) can simply be wrong in a way you often
-can't check just by listening. Both carry a standing disclaimer for
-exactly this reason — treat specifics as a starting point to verify, not
-a citation.
+**A different kind of caveat for This Track/This Artist (and Song
+Structure's naming).** Every other mode on this screen reasons over data
+the app itself already computed — if a suggestion feels off, that's a
+musical judgment call you can make immediately. This Track, This Artist,
+and Song Structure's part-naming instead pull the model's own general
+knowledge about a real band/song, which means genuine facts (dates, gear,
+quotes, credits, what the real song's parts are actually called) can
+simply be wrong in a way you often can't check just by listening. All
+three carry a standing disclaimer for exactly this reason — treat
+specifics as a starting point to verify, not a citation. Song Structure's
+underlying *map* (the parts, boundaries, chords) is the one exception —
+that part is detected from your own audio, not the model's knowledge, so
+it doesn't carry this particular caveat.
 
 **Judge it honestly.** This is explicitly a research spike, not a
-finished feature, across all five modes — for Lick Ideas/Ask AI/Practice
+finished feature, across all six modes — for Lick Ideas/Ask AI/Practice
 Tips, the question is whether the output feels genuinely specific or like
 generic advice any lookup table could have said; for This Track/This
-Artist, the question is narrower and more concrete — are the checkable
-facts actually accurate. If it's not earning its keep, that's a real,
-useful answer, not a failure to report.
+Artist/Song Structure's naming, the question is narrower and more
+concrete — are the checkable facts (or the part names) actually accurate.
+If it's not earning its keep, that's a real, useful answer, not a failure
+to report.
 
 ---
 

@@ -1009,7 +1009,6 @@
       <div id="ailab-header" class="screen-header ailab-header">
         <div class="ailab-tabs" id="ailab-tabs">
           <button id="ailab-tab-scales" class="ailab-tab-btn on" data-panel="scales">Scales</button>
-          <button id="ailab-tab-songstructure" class="ailab-tab-btn" data-panel="songstructure">Song Structure</button>
           <button id="ailab-tab-ratemytake" class="ailab-tab-btn" data-panel="ratemytake">Rate My Take</button>
           <button id="ailab-tab-lickideas" class="ailab-tab-btn" data-panel="lickideas">AI Assistant</button>
         </div>
@@ -1061,26 +1060,6 @@
              This panel only works from "dry" recordings (guitar rig only,
              no backing track) — hence its own dedicated record button
              rather than reusing the Play Along Takes list. -->
-        <!-- SS-1 (ai-lab-song-structure-spec.md): a part-by-part map of the
-             song for a player learning its parts. Deterministic-only for now
-             (order, bars, per-part chords/key/dynamics + jump/loop) — the LLM
-             naming/technique pass is SS-2. Rendered by aiLabRenderSongStructure
-             (ailab.js) from /api/song_structure. -->
-        <div id="ailab-songstructure-panel" class="ailab-column" style="display:none;">
-          <section class="pa-card" id="ailab-ss-header-card">
-            <h3>Song Structure</h3>
-            <p class="hint" id="ailab-ss-song-line"></p>
-            <div id="ailab-ss-song-annotation" style="display:none;"></div>
-            <div class="ss-annotate-row">
-              <button id="ailab-ss-annotate-btn">✨ Name the parts with AI</button>
-              <span class="hint" id="ailab-ss-annotate-hint"></span>
-            </div>
-            <p class="hint">A map of the song's parts, built from the detected sections, chords, key and stems — click a part to jump there, or loop it to drill it. Names, playing role and difficulty come from the AI (uses your AI Assistant provider/key and this song's Artist/Title); the parts, chords and timing are detected. Assistive/approximate — confirm by ear.</p>
-          </section>
-          <div id="ailab-ss-parts"></div>
-          <p class="hint" id="ailab-ss-empty" style="display:none;"></p>
-        </div>
-
         <div id="ailab-ratemytake-panel" class="ailab-column" style="display:none;">
 
           <!-- Same mirrored-transport idiom as Play Along's own Backing
@@ -1204,6 +1183,7 @@
               <button data-amode="practicetips">Practice Tips</button>
               <button data-amode="lickideas" class="on">Lick Ideas</button>
               <button data-amode="thistrack">This Track</button>
+              <button data-amode="songstructure">Song Structure</button>
               <button data-amode="thisartist">This Artist</button>
               <button data-amode="askai">Ask AI</button>
             </div>
@@ -1282,6 +1262,29 @@
             <p class="hint" id="ailab-track-caveat"></p>
             <div id="ailab-track-info"></div>
           </section>
+
+          <!-- SS-1/SS-2 (ai-lab-song-structure-spec.md): a part-by-part map of
+               the song for a player learning its parts. The base map (order,
+               bars, per-part chords/key/dynamics + jump/loop) is fully
+               detected, no AI needed; "Name the parts with AI" layers on real
+               part names/role/technique/difficulty, grounded on these exact
+               detected sections. Rendered by aiLabRenderSongStructure
+               (ailab.js) from /api/song_structure (+ /annotate). Lives here,
+               between This Track/This Artist, as its own AI Assistant mode. -->
+          <div id="ailab-ss-mode-card" class="ailab-column" style="display:none;">
+            <section class="pa-card" id="ailab-ss-header-card">
+              <h3>Song Structure</h3>
+              <p class="hint" id="ailab-ss-song-line"></p>
+              <div id="ailab-ss-song-annotation" style="display:none;"></div>
+              <div class="ss-annotate-row">
+                <button id="ailab-ss-annotate-btn">✨ Name the parts with AI</button>
+                <span class="hint" id="ailab-ss-annotate-hint"></span>
+              </div>
+              <p class="hint">A map of the song's parts, built from the detected sections, chords, key and stems — click a part to jump there, or loop it to drill it. Names, playing role and difficulty come from the AI (uses the provider/key and Artist/Title above); the parts, chords and timing are detected. Assistive/approximate — confirm by ear.</p>
+            </section>
+            <div id="ailab-ss-parts"></div>
+            <p class="hint" id="ailab-ss-empty" style="display:none;"></p>
+          </div>
 
           <section class="pa-card" id="ailab-artist-mode-card" style="display:none;">
             <h3>This Artist</h3>

@@ -1942,7 +1942,7 @@ button:disabled:hover { filter: none; }
 .ailab-follow-btn:hover { filter: brightness(1.2); }
 .ailab-follow-btn.active { background: var(--success); border-color: var(--success); color: #fff; }
 
-.ailab-mode-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; margin-bottom: 12px; }
+.ailab-mode-toggle { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; margin-bottom: 12px; }
 .ailab-mode-toggle button {
   border: none; background: var(--panel-2); color: var(--text-dim); font-size: 11.5px; font-weight: 600;
   padding: 7px 14px; cursor: pointer;

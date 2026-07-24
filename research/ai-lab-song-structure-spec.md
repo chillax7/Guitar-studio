@@ -144,11 +144,28 @@ overriding the detected map. Merge deterministic facts (authoritative) with
 LLM annotations (assistive) into one payload for the UI.
 
 ### 4.3 UI — the interactive part map
-Recommended home: a **new AI Lab tab "Song Structure"** (peer to Scales /
-Rate My Take / AI Assistant), reusing the AI Assistant's Artist/Title +
-provider cards. (Alternative: a 6th AI Assistant *mode* — lighter to build,
-shares the mode toggle, but its interactivity/loop actions strain the
-"type → prose" pattern the other modes share. Recommend the tab; see §6.)
+
+> **Update after real use:** SS-1 shipped as a new top-level AI Lab tab (the
+> original recommendation below). After trying it, the home was moved to the
+> alternative instead — **Song Structure is now a 6th AI Assistant mode**,
+> sitting in the mode-toggle row between **This Track** and **This Artist**
+> (not a separate tab). This fits the user's own mental model better: This
+> Track answers "what's this song's story," Song Structure answers "how is it
+> built / how do I play it" — the natural neighbour, not a peer of Scales/Rate
+> My Take. The interactivity concern below (loop actions inside a "type →
+> prose" mode) turned out not to be a problem in practice — the part list and
+> its Jump/Loop buttons sit comfortably as their own mode card, reusing the
+> shared provider/Artist-Title cards above it for the annotate step, with the
+> base detected map needing neither. Implementation: `#ailab-ss-mode-card`
+> inside `#ailab-lickideas-panel`, toggled by the existing generic
+> `data-amode` click-wiring — zero new event-handling code needed.
+
+Recommended home *(original write-up, superseded by the above)*: a **new AI
+Lab tab "Song Structure"** (peer to Scales / Rate My Take / AI Assistant),
+reusing the AI Assistant's Artist/Title + provider cards. (Alternative: a 6th
+AI Assistant *mode* — lighter to build, shares the mode toggle, but its
+interactivity/loop actions strain the "type → prose" pattern the other modes
+share. Recommend the tab; see §6.)
 
 - **Song header:** key · tempo · tuning/capo (LLM) · overall form (LLM) · a
   one-line "learning order" ribbon. A "🔎 This Track" link for the story.
@@ -187,17 +204,17 @@ in AI Lab, which is where "learning the parts" work already happens.
 | SS-0 | This spec — **shipped** | — |
 | SS-1 | `svc_song_structure` deterministic summary + the part-map UI (no LLM): order, bars, per-part chords/key/dynamics, Jump/Loop actions — **shipped** | Independently useful; ships value with zero API-key dependency and zero hallucination surface |
 | SS-2 | `svc_song_structure_annotate` LLM pass (names, guitar role, technique, difficulty, signature, learning order, tuning/capo) merged over SS-1 — **shipped** | Reuses provider/key/cache plumbing; JSON-out grounded on the detected sections by index; cached per track keyed to the section count |
+| — | Relocated from its own tab to an AI Assistant mode (between This Track/This Artist) — **shipped** | See §4.3's update note; resolves §6's "home" decision |
 | SS-3 | Trim This Track's structure bullet + cross-link both ways | Removes the overlap |
 | SS-4 | Follow-the-song highlight; per-part "practise this" hooking Speed Trainer | Polish |
 | Backlog | Compact read-only map back on the Mixer; export the roadmap to a practice-plan; per-part difficulty auto-tuned against Rate My Take history | — |
 
-## 6. Decisions for you
-- **Home:** new **tab** (recommended — room for the interactive map + loop
-  actions) vs a 6th **AI Assistant mode** (cheaper, shares the toggle). 
-- **LLM dependency:** ship SS-1 (detected-only map, no key needed) first so
-  the feature is useful offline, then layer SS-2? (Recommended.) Or hold until
-  the LLM enrichment is in so the first cut already names parts?
-- **Semantic names:** trust LLM part-names (Intro/Verse/Chorus) as the primary
-  label with A/B/C secondary, or keep A/B/C primary and names as annotation?
-  (Recommend LLM name primary once SS-2 lands, since that's what a learner
-  reads for.)
+## 6. Decisions — resolved
+- **Home:** ~~new tab~~ → **AI Assistant mode**, between This Track and This
+  Artist (moved after real use — see §4.3's update note).
+- **LLM dependency:** shipped SS-1 (detected-only, no key needed) first, then
+  layered SS-2's LLM naming on top. Confirmed the right call — the base map is
+  useful with zero setup.
+- **Semantic names:** LLM name is primary once generated (Verse/Chorus/…),
+  with the A/B/C colour badge kept as a secondary "which repeat is this" cue —
+  as recommended.
