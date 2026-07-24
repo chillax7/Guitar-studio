@@ -505,6 +505,28 @@ Norwegian Wood → E major). This is a `key_from_chords` (BT-03) change; chord
 recognition itself was untouched — Hotel California was a chord-lane *pass*
 that happened to expose the key heuristic.
 
+**BT-03b addendum, "Holiday" pass — margin-aware key confidence;
+`ANALYSIS_VERSION` 14→15.** Stepping back up the tempo, Green Day's Holiday
+was the "did the acoustic work break rock?" regression check — and it held:
+fast (~145bpm) distorted power chords still read as `5` (F5/Ab5/Eb5/Bb5,
+100% power-chord quality), tempo tracked, roots correct. But its *key* read a
+confident "Eb major" for an F-minor song. This is not a bug the profile
+correlation can fix: a power-chord-only progression has no thirds, so its
+pitch content (F, C, Ab, Eb, Bb) fits F minor, Ab major and Eb major almost
+identically — the winning profile scores high but with a razor-thin margin
+over the runners-up. A first/last-chord tonic bonus was tried and rejected (a
+bonus small enough to be safe didn't close Holiday's 0.19 gap; one large
+enough would corrupt clear cases). The honest fix is on the *confidence*, not
+the answer: scale it by the margin between the top two key profiles
+(`KEY_MARGIN_FULL_CONF`), so an inherently-ambiguous power-chord key reports
+low confidence ("check / correct this") instead of a confident wrong answer.
+Measured: Holiday's key confidence dropped from ~0.79 to ~0.39 while Hotel
+California (clear tonal centre, wide margin) stayed ~0.82 and the acoustic
+songs kept healthy confidence. Resolving the actual tonic of a thirdless
+progression needs cues the chord list doesn't carry (riff/bass emphasis on
+the tonic) and is left to the manual key-correction control plus, later,
+possibly a bass-root tonic bias validated on real audio.
+
 Test protocol for CD-5 (goes into TEST-PLAN.md when CD-1 lands):
 1. Re-run analysis on the test song (version bump forces it).
 2. Count chips in one verse+chorus: **expect roughly the chord-event

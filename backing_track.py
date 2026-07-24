@@ -162,7 +162,15 @@ ANALYSIS_FILE = "analysis.json"
 # correlation gets B minor (and also settled a two-chord vamp's tonic that
 # root-counting left tied). Mode still uses the CD-2 direct-chroma third check
 # so power-chord-heavy rock/metal keeps reading minor when it is.
-ANALYSIS_VERSION = 14
+# v14 ("Holiday" pass): key confidence is now margin-aware — a song built only
+# from power chords (no thirds) fits its relative/parallel/neighbouring keys
+# almost equally, so the winning profile can score high with a thin margin;
+# scaling confidence by that margin reports honestly LOW confidence on such
+# inherently-ambiguous keys (Holiday's F-minor power chords also fit Ab/Eb
+# major) instead of a confident wrong answer, rather than pretending a
+# thirdless progression pins one key. Chord recognition itself unchanged;
+# power chords still read "5", fast tempo still tracks.
+ANALYSIS_VERSION = 15
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -467,6 +475,16 @@ def run_audio_separator_backend(input_path: Path, model: str, out_dir: Path, pro
 KEY_MAJOR_PROFILE = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
 KEY_MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
 KEY_NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+# key_from_chords (BT-03b) margin at which the winning key profile is trusted
+# completely. A song built only from power chords (root+fifth, no thirds — a
+# lot of punk/metal) fits its relative-major, parallel, and neighbouring keys
+# almost equally, so the top profile can win with a high absolute correlation
+# but a razor-thin margin; scaling confidence by margin/this makes those
+# genuinely-ambiguous keys report honestly low confidence instead of a
+# confident wrong answer (Green Day's "Holiday" — F-minor power chords that
+# also fit Ab/Eb major — was the motivating case).
+KEY_MARGIN_FULL_CONF = 0.2
 
 
 def detect_key(y: "np.ndarray", sr: int) -> dict | None:
@@ -1018,16 +1036,26 @@ def key_from_chords(chords: list, chroma_mean: "np.ndarray" = None) -> dict | No
     if hist.sum() <= 0:
         return None
 
-    best = None  # (corr, root_pc, mode)
+    scored = []  # (corr, root_pc, mode)
     for mode_name, profile in (("major", KEY_MAJOR_PROFILE), ("minor", KEY_MINOR_PROFILE)):
         profile_norm = profile / profile.sum()
         for root_pc in range(12):
             corr = float(np.corrcoef(hist, np.roll(profile_norm, root_pc))[0, 1])
-            if best is None or corr > best[0]:
-                best = (corr, root_pc, mode_name)
-    corr, root_pc, mode_krum = best
+            scored.append((corr, root_pc, mode_name))
+    scored.sort(key=lambda t: t[0], reverse=True)
+    best_corr, root_pc, mode_krum = scored[0]
+    runner_corr = scored[1][0] if len(scored) > 1 else 0.0
     root = KEY_NOTE_NAMES[root_pc]
-    confidence = round(max(0.0, corr), 3)
+
+    # Margin-aware confidence (BT-03b): a high correlation isn't enough on its
+    # own. A power-chord-only song fits several relative/parallel/neighbouring
+    # keys almost equally, so the winner can post a high absolute score with a
+    # thin margin over the next key — a confident-looking wrong answer. Scaling
+    # by the margin makes those genuinely-ambiguous keys report honestly low
+    # confidence ("check / correct this"), while a clear tonal centre (wide
+    # margin) keeps its full score. See KEY_MARGIN_FULL_CONF.
+    margin = best_corr - runner_corr
+    confidence = round(max(0.0, best_corr) * min(1.0, margin / KEY_MARGIN_FULL_CONF), 3)
 
     # Mode: keep the CD-2-era direct chroma check (minor-3rd vs major-3rd
     # energy at the chosen tonic) when chroma is available — it's what makes
