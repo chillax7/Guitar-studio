@@ -355,6 +355,11 @@ const Audio = {
   masterMute: null,
   analyser: null,
   buffers: {},
+  // Per-stem amplitude envelope (small max-abs downsample, ~1ms/point),
+  // built at load alongside each buffer. Backs the waveform lanes so the
+  // full-resolution AudioBuffers can be freed while processed (Speed/Tune)
+  // mode owns the audio — see freeProcessedRedundantBuffers.
+  envelopes: {},
   gains: {},
   stemFx: {}, // BT-11 — per-stem { bass, mid, treble, panner } nodes, keyed by stem name
   sources: {},
@@ -462,6 +467,57 @@ function teardownStretchNodes() {
   Audio.stretchNodes = {};
 }
 
+// Once processed mode's worklet nodes exist, each holds its own PCM copy —
+// so the main-thread AudioBuffers for the plain stems are redundant and can
+// be freed, which is the whole memory fix: a long multi-stem song was
+// holding its full PCM twice (main-thread buffers + worklet copies, ~2GB
+// for a 7-min 6-stem track), enough to OOM-crash the tab. Waveforms fall
+// back to the per-stem envelope; direct playback re-decodes on return
+// (ensureDirectBuffers). Custom stems are deliberately kept: they're small,
+// and their offset-aware waveform path (computeOffsetPeaks) needs the real
+// buffer.
+function freeProcessedRedundantBuffers() {
+  const custom = new Set((State.stems || []).filter((s) => s.is_custom).map((s) => s.name));
+  for (const name in Audio.buffers) {
+    if (custom.has(name)) continue;
+    delete Audio.buffers[name]; // envelope (Audio.envelopes[name]) stays for the lanes
+  }
+}
+
+// Restore the buffers freed above when returning to direct mode. Audio.gains
+// / stemFx were kept alive through processed mode, so only the raw
+// AudioBuffers need re-decoding, not the whole per-stem node chain. Guarded
+// by stemLoadGeneration so a track switch racing this re-decode can't commit
+// stale buffers over the newer track's.
+async function ensureDirectBuffers() {
+  const missing = (State.stems || []).filter((s) => !s.is_custom && !Audio.buffers[s.name]);
+  if (!missing.length) return;
+  const generation = ++stemLoadGeneration;
+  const entries = await Promise.all(missing.map(async (stem) => {
+    const url = `/api/stem?source_path=${encodeURIComponent(State.track)}` +
+      `&model=${encodeURIComponent(State.model)}&stem=${encodeURIComponent(stem.name)}`;
+    const resp = await fetch(url);
+    const audioBuf = await Audio.ctx.decodeAudioData(await resp.arrayBuffer());
+    return [stem.name, audioBuf];
+  }));
+  if (generation !== stemLoadGeneration) return; // superseded by a track switch
+  for (const [name, buf] of entries) {
+    Audio.buffers[name] = buf;
+    if (!Audio.envelopes[name]) Audio.envelopes[name] = buildEnvelope(buf);
+  }
+}
+
+// Sustained memory processed mode will hold: the worklet stores 2 channels
+// of Float32 per stem regardless of source channel count (mono is
+// duplicated). Used by the pre-switch guard below to warn before a song big
+// enough to exhaust the tab's memory is loaded into the pitch-shift path.
+const PROCESSED_MEMORY_WARN_BYTES = 1.6 * 1024 * 1024 * 1024; // 1.6 GB
+function estimateProcessedBytes() {
+  let bytes = 0;
+  for (const name in Audio.buffers) bytes += Audio.buffers[name].length * 2 * 4;
+  return bytes;
+}
+
 // Guards against overlapping loads (e.g. two quick model switches): decode
 // is async, so without this the FIRST load's entries could finish last and
 // silently repoint Audio.gains/buffers at the stale stem set — leaving the
@@ -492,11 +548,13 @@ async function loadStemBuffers(stems) {
     if (fx) for (const key in fx) { try { fx[key].disconnect(); } catch (e) { /* already gone */ } }
   }
   Audio.buffers = {};
+  Audio.envelopes = {};
   Audio.gains = {};
   Audio.stemFx = {};
   Audio.duration = 0;
   for (const [name, buf] of entries) {
     Audio.buffers[name] = buf;
+    Audio.envelopes[name] = buildEnvelope(buf);
     // GP-15: a custom stem's own clip may start partway through the song
     // (State.mix.offset) — its actual end, for duration purposes, is that
     // offset plus its own length, not just its length alone.
@@ -518,7 +576,14 @@ async function loadStemBuffers(stems) {
     Audio.stemFx[name] = { bass: eqBass, mid: eqMid, treble: eqTreble, panner };
   }
   applyMixToGains();
-  if (Audio.mode === "processed") await ensureStretchNodes();
+  // Track switched while Speed/Tune was active: rebuild the worklet nodes
+  // for the new stems, then free the redundant main-thread copies just like
+  // the initial direct→processed switch does (otherwise a track switch in
+  // processed mode would hold every stem's PCM twice again).
+  if (Audio.mode === "processed") {
+    await ensureStretchNodes();
+    freeProcessedRedundantBuffers();
+  }
 }
 
 function currentPosition() {
@@ -638,6 +703,32 @@ async function setSpeedTune(speed, pitchRatio) {
   const newMode = wantProcessed ? "processed" : "direct";
   if (newMode === Audio.mode) return;
 
+  // Fix-2 guard: warn before loading a song big enough to exhaust the tab's
+  // memory into the pitch-shift path. freeProcessedRedundantBuffers keeps
+  // the sustained cost to ~1x the song's PCM, so this only trips on genuinely
+  // huge cases (very long multi-stem songs), not ordinary ones.
+  if (newMode === "processed" && estimateProcessedBytes() > PROCESSED_MEMORY_WARN_BYTES) {
+    const gb = (estimateProcessedBytes() / (1024 * 1024 * 1024)).toFixed(1);
+    const stemN = Object.keys(Audio.buffers).length;
+    if (!window.confirm(
+      `Speed/Tune pitch-shifts every stem, which holds this whole song in memory ` +
+      `(~${gb} GB for ${stemN} stems this long). On a machine low on free memory that ` +
+      `can crash the browser tab.\n\nApply it anyway?`)) {
+      // Declined: revert to unity so the sliders don't claim an unapplied
+      // effect. Direct playback was never touched, so nothing else to undo.
+      Audio.speed = 1.0;
+      Audio.pitchRatio = 1.0;
+      setTransportValue("speed-slider", "1");
+      setTransportValue("tune-slider", "0");
+      setTransportText("speed-display", "1.00×");
+      setTransportText("tune-display", "+0¢");
+      updateBpmDisplay();
+      updateKeyHint();
+      renderChordLane();
+      return;
+    }
+  }
+
   const pos = currentPosition();
   const wasPlaying = Audio.playing;
   if (Audio.mode === "direct") stopSources();
@@ -651,6 +742,9 @@ async function setSpeedTune(speed, pitchRatio) {
   if (newMode === "processed") {
     try {
       await ensureStretchNodes();
+      // Worklets now hold their own PCM — drop the redundant main-thread
+      // copies so a long multi-stem song isn't held in memory twice.
+      freeProcessedRedundantBuffers();
     } catch (e) {
       // A transient failure here (worklet module fetch hiccup, a single
       // AudioWorkletNode construction error) used to leave Audio.mode
@@ -660,7 +754,9 @@ async function setSpeedTune(speed, pitchRatio) {
       // recoverable only by reloading the page. Fall back to unmodified
       // direct playback instead of leaving the graph half-built, and
       // reset Speed/Tune's own UI so it doesn't keep claiming an effect
-      // that silently isn't applied anymore.
+      // that silently isn't applied anymore. (Buffers aren't freed until
+      // AFTER ensureStretchNodes succeeds, so the direct path still has
+      // them here.)
       teardownStretchNodes();
       Audio.mode = "direct";
       Audio.speed = 1.0;
@@ -673,6 +769,20 @@ async function setSpeedTune(speed, pitchRatio) {
       updateKeyHint();
       renderChordLane();
       alert("Speed/Tune couldn't be applied (" + e.message + ") — reverted to normal playback.");
+    }
+  } else {
+    // Returning to direct: free the worklet PCM copies, then re-decode the
+    // main-thread buffers the direct path plays from (freed on the way in).
+    teardownStretchNodes();
+    try {
+      await ensureDirectBuffers();
+    } catch (e) {
+      // A failed re-decode would leave the direct path with no buffers to
+      // play — silent until the next action. Rare on localhost, but it's
+      // the same "stuck silent" class the processed-path guard above
+      // defends against, so surface it instead of failing quietly.
+      alert("Couldn't reload the audio after turning Speed/Tune off (" + e.message +
+        "). Reselect the track to recover.");
     }
   }
   if (wasPlaying) startPlaybackAt(pos);
@@ -784,6 +894,52 @@ function computeOffsetPeaks(buffer, buckets, viewStart, viewEnd, stemStart) {
     peaks[i] = max;
   }
   byWindow.set(key, peaks);
+  return peaks;
+}
+
+// Per-stem amplitude envelope: a max-abs downsample at ENVELOPE_RATE
+// points/sec, built once per buffer. ~1ms/point is finer than any
+// on-screen zoom bucket the app can produce (finest bucket at max zoom is
+// several ms wide), so waveforms drawn from this are visually identical
+// to ones drawn from the raw PCM — while costing ~1.6MB/stem instead of
+// ~160MB, which is what lets the full buffers be freed in processed mode.
+const ENVELOPE_RATE = 1000;
+function buildEnvelope(buf) {
+  const data = buf.getChannelData(0);
+  const step = Math.max(1, Math.round(buf.sampleRate / ENVELOPE_RATE));
+  const n = Math.ceil(data.length / step);
+  const mono = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let max = 0;
+    const a = i * step, b = Math.min(a + step, data.length);
+    for (let j = a; j < b; j++) { const v = Math.abs(data[j]); if (v > max) max = v; }
+    mono[i] = max;
+  }
+  return { mono, envRate: buf.sampleRate / step, duration: buf.duration };
+}
+
+// Waveform peaks from an envelope instead of the raw buffer (same output
+// shape as computePeaks — a Float32Array of per-bucket max amplitude). Used
+// for the plain, non-offset stems whose full buffers were freed for
+// processed mode; the envelope is already max-abs so there's no per-sample
+// abs() here. Not window-cached (computePeaks is): a freed-buffer stem
+// re-renders rarely enough and this loop is already ~1000x cheaper.
+function peaksFromEnvelope(env, buckets, startSec, endSec) {
+  const s = startSec ?? 0;
+  const e = endSec ?? env.duration;
+  const data = env.mono;
+  const startIdx = Math.max(0, Math.floor(s * env.envRate));
+  const endIdx = Math.min(data.length, Math.ceil(e * env.envRate));
+  const span = Math.max(1, endIdx - startIdx);
+  const peaks = new Float32Array(buckets);
+  const perBucket = Math.max(1, Math.floor(span / buckets));
+  for (let i = 0; i < buckets; i++) {
+    let max = 0;
+    const bstart = startIdx + i * perBucket;
+    const bend = Math.min(bstart + perBucket, endIdx);
+    for (let j = bstart; j < bend; j++) { if (data[j] > max) max = data[j]; }
+    peaks[i] = max;
+  }
   return peaks;
 }
 
@@ -1889,16 +2045,26 @@ function renderLanes() {
     }
 
     const buf = Audio.buffers[name];
-    if (buf) {
+    const env = Audio.envelopes[name];
+    if (buf || env) {
       // BT-17: waveform zoom — slicing peaks to the current view window
       // (instead of always the whole buffer) is what makes zooming in
       // actually show more DETAIL rather than the same fixed bucket count
       // stretched; bucketCount (computed above) is the continuous-zoom
       // half of that same idea.
       const { start, end } = viewWindow();
-      const peaks = stem.is_custom
-        ? computeOffsetPeaks(buf, bucketCount, start, end, State.mix.offset[name] || 0)
-        : computePeaks(buf, bucketCount, start, end);
+      let peaks;
+      if (stem.is_custom && buf) {
+        // Custom stems keep their real buffer through processed mode, so
+        // their offset-aware waveform is always available.
+        peaks = computeOffsetPeaks(buf, bucketCount, start, end, State.mix.offset[name] || 0);
+      } else if (buf) {
+        peaks = computePeaks(buf, bucketCount, start, end);
+      } else {
+        // Plain stem whose full buffer was freed for processed mode — draw
+        // from the envelope instead (visually identical at any real zoom).
+        peaks = peaksFromEnvelope(env, bucketCount, start, end);
+      }
       requestAnimationFrame(() => drawWaveform(canvas, peaks));
     }
   }
