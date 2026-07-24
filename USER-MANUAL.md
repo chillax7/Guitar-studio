@@ -1747,7 +1747,10 @@ current song has attached.
   may be refused on slower machines rather than glitch your audio (§4.9).
 - The tone-suggestion feature is a cheap heuristic, explicitly not a
   guaranteed match — always finish tone-matching by ear.
-- The latency figure in Play Along is an estimate, not a measurement.
+- Tone Lab's Output-card latency figure (§4.8) is a browser-reported
+  estimate, not a measurement — for a real round-trip number, use
+  **Measure round-trip latency** (§4.1) instead, which needs a physical
+  loop (interface direct-out → direct-in, or its own direct-monitor path).
 - The Click and beat grid assume 4/4 time — there's no time-signature
   detection, so the downbeat accent will be wrong in 3/4 or odd meters.
 - The chord lane is a maj/min/7/5 heuristic (§3.7) — still assistive,
