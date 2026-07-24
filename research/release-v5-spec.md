@@ -998,6 +998,25 @@ played in the v0.4 picklist.
   change" vs. normal harmonic wandering) — logged here rather than
   blocking V5-F2's ship, since Whole-song mode degrades honestly to "one
   region" without it.
+- **Reduce separation peak memory (new 2026-07-24, v6 candidate)** — on a
+  16 GB Mac, a real BS-RoFormer separation was measured dropping
+  system-wide free memory from 83% to ~21% (a ~10 GB transient spike). The
+  Python process RSS stays under ~1 GB; the rest is **MPS unified memory**
+  (Apple GPU), invisible to `ps` but sharing the browser's RAM pool — so a
+  long separation can get the browser tab OOM-killed by macOS. Not a code
+  bug (the job completes server-side and the browser recovers cached stems
+  on reopen — commit 3a5cc6b added an honest UI note about this). The real
+  fix is forcing smaller processing chunks via audio-separator's
+  `mdxc_params` (`override_model_segment_size: True` + a smaller
+  `segment_size`; BS-RoFormer is an MDXC-arch model — see
+  `run_audio_separator_backend` in `backing_track.py`, which currently
+  passes no arch config, so the model's large native segment is used).
+  **Gate before shipping:** must measure the actual peak-memory reduction
+  AND A/B the output quality by ear — smaller roformer segments risk
+  chunk-boundary seams, so this is a test spike, not a blind config change.
+  Deferred to v6 because it needs that quality verification and the v5 list
+  is full; the shipped UI note + graceful recovery make the crash a
+  tolerable annoyance until then.
 
 ## 10. Unified v5 milestones (supersedes §8's ordering — §8's content is
 unchanged, this just sequences it against §9)
