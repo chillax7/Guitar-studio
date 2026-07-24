@@ -175,11 +175,11 @@ async function startRecording() {
 // each loop pass without re-running count-in/playback-start — those only
 // make sense for the very first take, not an auto-retake mid-loop.
 //
-// chunks/mimeType/audioOnly are local to this pass (closed over by
+// upload/mimeType/audioOnly are local to this pass (closed over by
 // ondataavailable/onstop) rather than shared Recorder fields: practice mode
 // starts the next pass's recorder before the previous pass's onstop has
 // necessarily fired, and shared mutable fields would let the new pass's
-// resets corrupt the previous pass's still-in-flight blob.
+// resets corrupt the previous pass's still-in-flight upload.
 function beginRecordingPass(withPlayback) {
   // GP-08: no camera enabled is no longer a hard stop — record audio-only
   // instead of blocking the take entirely. Camera enabled = video+audio,
@@ -198,11 +198,15 @@ function beginRecordingPass(withPlayback) {
     ? new MediaStream([audioTrack])
     : new MediaStream([Recorder.camStream.getVideoTracks()[0], audioTrack]);
 
-  const chunks = [];
+  // GP-mem: each chunk streams to the server as it arrives (see
+  // makeChunkedRecordingUpload in app.js) instead of piling up in a JS array
+  // for the whole take — a several-hour take used to hold every chunk in
+  // memory until Stop, which is exactly what ran one real tab up to 7+GB.
+  const upload = makeChunkedRecordingUpload();
   const recorder = new MediaRecorder(combined, audioOnly
     ? { mimeType, audioBitsPerSecond: 192_000 }
     : { mimeType, videoBitsPerSecond: 5_000_000, audioBitsPerSecond: 192_000 });
-  recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+  recorder.ondataavailable = (e) => upload.push(e.data);
   recorder.onerror = (e) => {
     console.error("MediaRecorder error", e.error);
     document.getElementById("rec-result").textContent = "Recorder error — take ended early, salvaging what was captured.";
@@ -211,7 +215,7 @@ function beginRecordingPass(withPlayback) {
   // Identity check at the end of finalizeAndUpload (via `recorder`) is what
   // stops a fast-finishing later pass's "idle" reset from being clobbered
   // by an earlier pass's finalize resolving after it.
-  recorder.onstop = () => finalizeAndUpload(recorder, chunks, mimeType, audioOnly);
+  recorder.onstop = () => finalizeAndUpload(recorder, upload, mimeType, audioOnly);
 
   Recorder.mediaRecorder = recorder;
   Recorder.state = "recording";
@@ -264,8 +268,7 @@ function recTick() {
 // Save + finalize
 // ---------------------------------------------------------------------------
 
-async function finalizeAndUpload(sourceRecorder, chunks, mimeType, audioOnly) {
-  const blob = new Blob(chunks, { type: mimeType });
+async function finalizeAndUpload(sourceRecorder, upload, mimeType, audioOnly) {
   // GP-08: audio-only containers get their own extension — ".m4a" rather
   // than ".mp4" so a take without video reads as what it is, even though
   // both are technically the same MPEG-4 container.
@@ -277,11 +280,11 @@ async function finalizeAndUpload(sourceRecorder, chunks, mimeType, audioOnly) {
   resultEl.textContent = "Saving take…";
 
   try {
-    const saveResp = await fetch(`/api/recording/save?track=${encodeURIComponent(track)}&ext=${ext}`, {
-      method: "POST", body: blob,
-    });
-    const saveJson = await saveResp.json();
-    if (!saveResp.ok) throw new Error(saveJson.error || `HTTP ${saveResp.status}`);
+    // GP-mem: every chunk already streamed to the server as it was
+    // produced (see beginRecordingPass) — commit just renames that temp
+    // file into place under this take's real filename, no matter how much
+    // was recorded.
+    const saveJson = await upload.commit(track, ext, "take");
 
     const finalizeResp = await fetch("/api/recording/finalize", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -293,11 +296,14 @@ async function finalizeAndUpload(sourceRecorder, chunks, mimeType, audioOnly) {
     refreshTakesList();
     if (typeof questMarkDone === "function") questMarkDone("capture");
   } catch (e) {
-    // Rescue: the blob is still in memory even though the upload failed —
-    // offer a direct browser download instead of losing the take.
-    const url = URL.createObjectURL(blob);
-    resultEl.innerHTML = `Upload failed (${escapeHtml(e.message)}) — ` +
-      `<a href="${url}" download="take.${ext}">click to download the take</a> instead.`;
+    // The recorded chunks are already safe on the server under this take's
+    // token (uploaded incrementally, not held in the tab) — a failure here
+    // means the commit call itself didn't go through, so retrying it is
+    // enough to recover the take, no re-recording needed.
+    resultEl.innerHTML = `Save failed (${escapeHtml(e.message)}) — ` +
+      `<button id="rec-retry-commit-btn">Retry</button>`;
+    const retryBtn = document.getElementById("rec-retry-commit-btn");
+    if (retryBtn) retryBtn.addEventListener("click", () => finalizeAndUpload(sourceRecorder, upload, mimeType, audioOnly));
   }
 
   // Only this pass's own recorder instance is allowed to clear "recording"
