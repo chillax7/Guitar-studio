@@ -82,6 +82,17 @@ win) barely matters for section-scale structure.
 (§5) will dial in.
 
 ## 4. UI — the section ribbon (`renderSectionLane`, `app.js`)
+
+> **Status: the Mixer ribbon is currently disabled** (`SECTION_RIBBON_ON_MIXER
+> = false` in app.js). The detection, data, renderer, markup and CSS are all
+> kept intact — only the on-screen ribbon is hidden — while we reconsider where
+> section data belongs. The likely home is a new **AI Lab "song structure"
+> panel** that pairs these detected sections (boundaries + repetition labels)
+> with an LLM pass over the song to produce a fuller structural analysis of the
+> parts, rather than a bare ribbon on the Mixer timeline. Flip the flag to put
+> the ribbon back. The rest of this section describes that (still-present)
+> ribbon implementation.
+
 A new `#section-lane` row in the sticky timeline header, one row above the
 chord ribbon, same `viewWindow()`/`timeToPct()` layout model. One
 `.section-block` per section, positioned/widthed by time, colored by a fixed

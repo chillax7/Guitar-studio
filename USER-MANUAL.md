@@ -585,21 +585,6 @@ a strip above the ruler:
 
 Markers are saved per-song, same as everything else in this section.
 
-**Section ribbon:** above the chord ribbon, a row of colored blocks
-labeled "Sections" — a coarse map of the song's structure, computed
-automatically alongside the rest of the analysis (so older tracks pick it
-up next time they're selected). Each block is one detected section; **click
-it to jump there.** Repeated parts share a letter *and* a color — both
-verses are **A** (and the same color), both choruses **B**, a bridge **C**
-— so you can see at a glance where a part comes back and jump straight to
-the bit you want to drill. These are **A/B/C by repetition, not
-verse/chorus names**: it's marking "the same kind of part again," not
-claiming to know which is the chorus. Like the chord lane and key, it's
-**assistive and approximate** — boundaries can be a second or two off and a
-song with subtle section contrast may under- or over-split; trust your ears
-over the letters. Doesn't appear if the analysis found no clear structure
-(a very short clip, or one unbroken texture).
-
 **Chord lane:** a row of chord chips above the ruler, labeled "Chord
 ribbon" (only appears once chord analysis exists — it's computed
 automatically alongside BPM/beats/key, so older tracks pick it up the

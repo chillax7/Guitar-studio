@@ -2842,6 +2842,15 @@ function fmtClock(t) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// BT-20 song-section detection is intentionally NOT surfaced on the Mixer
+// timeline for now — the detection (detect_sections, backing_track.py), the
+// `sections` analysis data, this renderer, the #section-lane markup and its
+// CSS are all kept intact, but the ribbon stays hidden while we reconsider
+// where this belongs (a planned AI Lab "song structure" panel that pairs the
+// detected sections with an LLM analysis of the song's parts). Flip this one
+// flag to true to put the ribbon back on the Mixer.
+const SECTION_RIBBON_ON_MIXER = false;
+
 // Coarse song structure (BT-20, detect_sections in backing_track.py) — same
 // sticky-header/timeToPct layout as renderChordLane, one row up. Unlike chords
 // these don't transpose, so it's re-rendered on zoom/scroll/select but not on
@@ -2850,7 +2859,7 @@ function renderSectionLane() {
   const outer = document.getElementById("section-lane");
   const row = document.getElementById("section-lane-content");
   if (!outer || !row) return;
-  const sections = (State.analysis || {}).sections;
+  const sections = SECTION_RIBBON_ON_MIXER ? (State.analysis || {}).sections : null;
   if (!sections || !sections.length || !Audio.duration) {
     outer.style.display = "none";
     row.innerHTML = "";

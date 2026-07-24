@@ -383,17 +383,13 @@ two different songs.
   show an empty chord ribbon because the beat grid came only from a drum
   stem; it now falls back to tracking guitar/piano onsets, so the lane
   populates. Confirm it appears and roughly lines up with what you hear.
-- [ ] **Section ribbon (BT-20):** above the chord ribbon, a "Sections" row
-  of colored labeled blocks maps the song's structure. On a song with clear
-  verse/chorus (or drums-in/drums-out) contrast, confirm the blocks span the
-  whole song, clicking one jumps there, and — the key thing — **repeated
-  parts share a letter and a color** (both verses one color, both choruses
-  another). Assistive/approximate: boundaries a second or two off, or a
-  spurious little outro block, are expected first-cut edges, not fails.
-  Labels are A/B/C by repetition, not verse/chorus names. Absent (cleanly,
-  not broken) on a very short or single-texture clip. Report only genuinely
-  wrong structure (whole song one block, or a wall of tiny blocks) with a
-  rough description of the real structure.
+- [ ] **Section detection (BT-20) — hidden from the Mixer for now.** The
+  "Sections" ribbon is intentionally not shown on the Mixer timeline (feature
+  flag `SECTION_RIBBON_ON_MIXER = false`) while its home is reconsidered (a
+  planned AI Lab "song structure" panel). Detection still runs and the
+  `sections` data is still in the analysis — just confirm the Mixer shows no
+  Sections row and the rest of the timeline (markers/chord ribbon/click track)
+  is unaffected.
 - [ ] **Root accuracy:** sanity-check the chord lane's actual root names
   against what you'd call out by ear on a song you know — not just
   stability/quality, the specific note names. Confirm it still works (just
