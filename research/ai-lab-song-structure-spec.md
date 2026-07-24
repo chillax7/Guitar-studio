@@ -184,8 +184,8 @@ in AI Lab, which is where "learning the parts" work already happens.
 
 | # | Milestone | Notes |
 |---|-----------|-------|
-| SS-0 | This spec | — |
-| SS-1 | `svc_song_structure` deterministic summary + the part-map UI (no LLM): order, bars, per-part chords/key/dynamics, Jump/Loop actions | Independently useful; ships value with zero API-key dependency and zero hallucination surface |
+| SS-0 | This spec — **shipped** | — |
+| SS-1 | `svc_song_structure` deterministic summary + the part-map UI (no LLM): order, bars, per-part chords/key/dynamics, Jump/Loop actions — **shipped** | Independently useful; ships value with zero API-key dependency and zero hallucination surface |
 | SS-2 | `svc_song_structure_annotate` LLM pass (names, guitar role, technique, difficulty, signature, learning order, tuning/capo) merged over SS-1 | Reuses provider/key/cache plumbing |
 | SS-3 | Trim This Track's structure bullet + cross-link both ways | Removes the overlap |
 | SS-4 | Follow-the-song highlight; per-part "practise this" hooking Speed Trainer | Polish |

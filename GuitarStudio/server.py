@@ -2193,6 +2193,21 @@ def svc_practice_tips(source_path: str, take_path: str, model: str, stem: str,
     return result
 
 
+def svc_song_structure(source_path: str, model: str) -> dict:
+    """SS-1 (ai-lab-song-structure-spec.md): the deterministic part-by-part
+    structural summary for the AI Lab Song Structure tab. No LLM, no key
+    needed — pure function of the cached analysis + stems. Requires the song to
+    be separated (it's about *this* audio's detected structure); returns
+    {"parts": None} when there were no confident sections to describe, which
+    the UI shows as "no clear structure detected" rather than an error."""
+    input_path = resolve_source_path(source_path)
+    out_dir = engine.track_stem_dir(input_path, model)
+    if not engine.has_cached_stems(out_dir):
+        raise ApiError(400, "Separate this song first — Song Structure maps the parts of its stems.")
+    result = engine.song_structure(out_dir)
+    return result if result else {"parts": None}
+
+
 def _optional_song_theory(source_path: str, model: str) -> tuple:
     """Same data as _song_theory_or_raise, but never raises — This Track/
     This Artist/Ask AI (release-v5-spec.md §4a) are useful even for a song
@@ -2987,6 +3002,13 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/trackinfo":
                 body = self._read_json_body()
                 result = svc_save_track_info(body.get("track", ""), body.get("artist", ""), body.get("title", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/song_structure":
+                body = self._read_json_body()
+                result = svc_song_structure(
+                    body.get("source_path", ""), body.get("model", engine.DEFAULT_MODEL),
+                )
                 return self._send_json(200, result)
 
             if path == "/api/thistrack/info":

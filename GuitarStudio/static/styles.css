@@ -1863,6 +1863,35 @@ button:disabled:hover { filter: none; }
 
 .ailab-column { display: flex; flex-direction: column; gap: 14px; }
 
+/* SS-1 Song Structure — the part-by-part map. Each part is a card with a
+   colour-coded left edge (reusing SECTION_COLORS so a repeated part keeps its
+   colour), its chords + Roman numerals, what's playing, and Jump/Loop. */
+#ailab-ss-parts { display: flex; flex-direction: column; gap: 8px; }
+.ss-part {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ss-part-head { display: flex; align-items: center; gap: 8px; }
+.ss-part-label {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 18px; padding: 0 6px;
+  border-radius: 3px; color: #fff; font-size: 11px; font-weight: 700;
+}
+.ss-part-time { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.ss-part-key { font-size: 11px; color: var(--accent-2); }
+.ss-part-chords { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.ss-chords-letters { font-size: 13px; font-weight: 600; color: var(--text); }
+.ss-chords-roman { font-size: 11px; color: var(--text-dim); font-style: italic; }
+.ss-chords-none { font-size: 11px; color: var(--text-dim); font-style: italic; }
+.ss-part-dyn { font-size: 11px; color: var(--text-dim); }
+.ss-part-actions { display: flex; gap: 6px; margin-top: 2px; }
+.ss-part-actions button { font-size: 11px; padding: 3px 8px; }
+
 /* Own class rather than reusing the timeline's .chord-chip: that one is
    absolutely positioned within a percentage-wide, zoom/scroll-driven lane
    (see #chord-lane-content) — a different layout model than this simple

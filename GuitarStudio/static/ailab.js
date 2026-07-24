@@ -388,14 +388,150 @@ function closeAiLab() {
 function aiLabSwitchPanel(panel) {
   AiLab.panel = panel;
   document.getElementById("ailab-scales-panel").style.display = panel === "scales" ? "" : "none";
+  document.getElementById("ailab-songstructure-panel").style.display = panel === "songstructure" ? "" : "none";
   document.getElementById("ailab-ratemytake-panel").style.display = panel === "ratemytake" ? "" : "none";
   document.getElementById("ailab-lickideas-panel").style.display = panel === "lickideas" ? "" : "none";
   document.querySelectorAll(".ailab-tab-btn").forEach((btn) => {
     btn.classList.toggle("on", btn.dataset.panel === panel);
   });
   if (panel === "scales") renderAiLab();
+  else if (panel === "songstructure") aiLabRenderSongStructure();
   else if (panel === "ratemytake") aiLabRmtOpen();
   else aiLabLickOpen();
+}
+
+// SS-1 (ai-lab-song-structure-spec.md): the deterministic part-by-part map.
+// Everything shown here is detected (sections/chords/key/stems) — the LLM
+// naming/technique/difficulty pass is SS-2. Jump/Loop hand the user straight
+// back to the Mixer at that part, wired into the existing loop + transport.
+async function aiLabRenderSongStructure() {
+  const partsEl = document.getElementById("ailab-ss-parts");
+  const emptyEl = document.getElementById("ailab-ss-empty");
+  const songLine = document.getElementById("ailab-ss-song-line");
+  if (!partsEl) return;
+  partsEl.innerHTML = "";
+  emptyEl.style.display = "none";
+  if (!State.track) {
+    songLine.textContent = "";
+    emptyEl.textContent = "Load a separated song first — Song Structure maps the parts of its stems.";
+    emptyEl.style.display = "";
+    return;
+  }
+  songLine.textContent = "Reading the song's structure…";
+  let data;
+  try {
+    data = await Api.post("/api/song_structure", { source_path: State.track, model: State.model });
+  } catch (e) {
+    songLine.textContent = "";
+    emptyEl.textContent = "Couldn't build song structure: " + e.message;
+    emptyEl.style.display = "";
+    return;
+  }
+  const parts = data && data.parts;
+  if (!parts || !parts.length) {
+    songLine.textContent = "";
+    emptyEl.textContent = "No clear structure was detected for this track — it may be very short or one unbroken texture.";
+    emptyEl.style.display = "";
+    return;
+  }
+
+  const songKey = data.song && data.song.key;
+  const keyStr = songKey ? `${songKey.key} ${songKey.mode}` : "key —";
+  const tempoStr = data.song && data.song.tempo ? `${Math.round(data.song.tempo)} BPM` : "";
+  songLine.textContent = `${keyStr}${tempoStr ? " · " + tempoStr : ""} · ${parts.length} parts`;
+
+  const clock = (t) => (typeof fmtClock === "function")
+    ? fmtClock(t)
+    : `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+  const swatch = (label) => (typeof sectionColor === "function") ? sectionColor(label || "A") : "#4a90d9";
+
+  const frag = document.createDocumentFragment();
+  parts.forEach((p) => {
+    const color = swatch(p.label);
+    const row = document.createElement("div");
+    row.className = "ss-part";
+    row.style.borderLeft = `4px solid ${color}`;
+
+    const head = document.createElement("div");
+    head.className = "ss-part-head";
+    const badge = document.createElement("span");
+    badge.className = "ss-part-label";
+    badge.style.background = color;
+    badge.textContent = p.label || "?";
+    const time = document.createElement("span");
+    time.className = "ss-part-time";
+    time.textContent = `${clock(p.start)}–${clock(p.end)} · ${p.bars ? p.bars + " bars" : p.beats + " beats"}`;
+    head.appendChild(badge);
+    head.appendChild(time);
+    row.appendChild(head);
+
+    if (p.key && songKey && (p.key.key !== songKey.key || p.key.mode !== songKey.mode)) {
+      const kd = document.createElement("div");
+      kd.className = "ss-part-key";
+      kd.textContent = `↳ this part centres on ${p.key.key} ${p.key.mode}`;
+      row.appendChild(kd);
+    }
+
+    const ch = document.createElement("div");
+    ch.className = "ss-part-chords";
+    if (p.progression) {
+      const letters = document.createElement("span");
+      letters.className = "ss-chords-letters";
+      letters.textContent = p.progression;
+      ch.appendChild(letters);
+      if (p.progression_roman) {
+        const roman = document.createElement("span");
+        roman.className = "ss-chords-roman";
+        roman.textContent = p.progression_roman;
+        ch.appendChild(roman);
+      }
+    } else {
+      const none = document.createElement("span");
+      none.className = "ss-chords-none";
+      none.textContent = "No chords detected for this part";
+      ch.appendChild(none);
+    }
+    row.appendChild(ch);
+
+    const dyn = document.createElement("div");
+    dyn.className = "ss-part-dyn";
+    const stems = (p.dynamics && p.dynamics.active_stems) || [];
+    const loud = p.dynamics && p.dynamics.loudness;
+    dyn.textContent = (stems.length ? stems.join(" · ") : "—") + (loud && loud !== "—" ? `  ·  ${loud}` : "");
+    row.appendChild(dyn);
+
+    const acts = document.createElement("div");
+    acts.className = "ss-part-actions";
+    const jump = document.createElement("button");
+    jump.textContent = "▶ Jump here";
+    jump.addEventListener("click", () => aiLabGoToSection(p.start));
+    const loop = document.createElement("button");
+    loop.textContent = "⟳ Loop this part";
+    loop.addEventListener("click", () => aiLabLoopSection(p.start, p.end));
+    acts.appendChild(jump);
+    acts.appendChild(loop);
+    row.appendChild(acts);
+
+    frag.appendChild(row);
+  });
+  partsEl.appendChild(frag);
+}
+
+// Jump / Loop drop you back on the Mixer at that part — the payoff of the map
+// is one click into the loop + Speed Trainer tools already built.
+function aiLabGoToSection(start) {
+  if (typeof seekTo === "function") seekTo(start);
+  closeAiLab();
+}
+function aiLabLoopSection(start, end) {
+  if (!Audio.duration) return;
+  State.ui.loop = { start, end };
+  State.ui.loopEnabled = true;
+  if (typeof toggleTransportClass === "function") toggleTransportClass("loop-toggle-btn", "active", true);
+  if (typeof updateLoopVisual === "function") updateLoopVisual();
+  if (typeof seekTo === "function") seekTo(start);
+  if (typeof saveProjectDebounced === "function") saveProjectDebounced();
+  closeAiLab();
 }
 
 // ---------------------------------------------------------------------------

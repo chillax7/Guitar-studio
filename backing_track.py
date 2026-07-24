@@ -1449,6 +1449,134 @@ def ensure_analysis(out_dir: Path) -> dict:
     return existing
 
 
+# --- AI Lab "Song Structure" (SS-1, ai-lab-song-structure-spec.md) ---------
+# A deterministic, per-section structural summary built entirely from the
+# cached analysis + the stems — the trustworthy backbone the (later) LLM pass
+# annotates. No LLM here, no network, nothing to hallucinate: just "what the
+# detector already found, sliced per section and made legible for a player."
+
+_ROMAN_BY_SEMITONE = ["I", "bII", "II", "bIII", "III", "IV", "#IV", "V", "bVI", "VI", "bVII", "VII"]
+
+
+def _roman_numeral(root_pc: int, quality: str, key_root_pc: int) -> str:
+    """A chord's Roman numeral relative to the song's tonic, by semitone
+    degree: uppercase for major/dominant/power, lowercase for minor, with a
+    flat/sharp accidental for chromatic degrees. Deliberately simple (assistive
+    theory, like everything else here) but it spells the common cases the
+    conventional way — in A minor, Am/F/C/G/Dm/Em read i/bVI/bIII/bVII/iv/v;
+    Hotel California's Bm/F#/A/E/G/D/Em read i/V/bVII/IV/bVI/bIII/iv."""
+    deg = (root_pc - key_root_pc) % 12
+    num = _ROMAN_BY_SEMITONE[deg]
+    if quality == "min":
+        return num.lower()
+    if quality in ("7", "5"):
+        return num + quality
+    return num
+
+
+def _chord_display_name(root: str, quality: str) -> str:
+    return root + ("" if quality == "maj" else "m" if quality == "min" else quality)
+
+
+def _section_progression(section_chords: list, key_root_pc) -> tuple:
+    """Collapse a section's per-beat chords into a compact run string of chord
+    names (consecutive repeats merged) plus the parallel Roman-numeral string
+    when a song tonic is known. Returns ("Am – F – C – G", "i – bVI – bIII – bVII")."""
+    runs = []
+    for c in section_chords:
+        if not c.get("root") or c.get("quality") == "N":
+            continue
+        pair = (c["root"], c["quality"])
+        if not runs or runs[-1] != pair:
+            runs.append(pair)
+    letters = " – ".join(_chord_display_name(r, q) for r, q in runs)
+    roman = ""
+    if key_root_pc is not None and runs:
+        roman = " – ".join(
+            _roman_numeral(KEY_NOTE_NAMES.index(r), q, key_root_pc)
+            for r, q in runs if r in KEY_NOTE_NAMES)
+    return letters, roman
+
+
+def song_structure(out_dir: Path) -> dict | None:
+    """SS-1: a part-by-part structural summary for a guitarist learning the
+    song. One entry per detected section (BT-20) with its timing, length in
+    bars, chord progression (letters + Roman numerals), its own tonal centre,
+    and which stems are playing + how loud — all sliced straight from the
+    cached analysis and the stems. Returns None when there are no confident
+    sections to describe (the UI then falls back to the LLM's general knowledge
+    of the song, clearly labelled)."""
+    import numpy as np
+    import librosa
+
+    analysis = ensure_analysis(out_dir)
+    sections = analysis.get("sections")
+    if not sections:
+        return None
+    chords = analysis.get("chords") or []
+    beats = analysis.get("beats") or []
+    song_key = analysis.get("key")
+    key_root_pc = (KEY_NOTE_NAMES.index(song_key["key"])
+                   if song_key and song_key.get("key") in KEY_NOTE_NAMES else None)
+
+    # Per-stem RMS per section — the "what's playing here / how loud is it"
+    # signal, ours for free from the stems the separation already produced.
+    wavs = [w for w in sorted(out_dir.glob("*.wav"))
+            if w.stem.lower() not in ("click", "beat", "beats", "metronome")]
+    stem_rms = {}  # display name -> per-section RMS list
+    for w in wavs:
+        try:
+            y, sr = librosa.load(str(w), sr=None, mono=True)
+        except Exception:
+            continue
+        per = []
+        for sec in sections:
+            a, b = int(sec["start"] * sr), int(sec["end"] * sr)
+            seg = y[max(0, a):max(0, b)]
+            per.append(float(np.sqrt(np.mean(seg ** 2))) if len(seg) else 0.0)
+        stem_rms[w.stem.replace("_", " ")] = per
+
+    # A stem is "active" in a section if it's a decent fraction of that stem's
+    # own loudest section (so a stem that's silent here but loud elsewhere
+    # reads as out); section loudness is the summed energy vs the peak section.
+    stem_active = {}
+    for name, per in stem_rms.items():
+        mx = max(per) if per else 0.0
+        stem_active[name] = [(mx > 0 and r > 0.18 * mx and r > 1e-4) for r in per]
+    total_per = [sum(stem_rms[n][i] for n in stem_rms) for i in range(len(sections))]
+    mx_total = max(total_per) if total_per else 0.0
+
+    def _loudness(i):
+        if mx_total <= 0:
+            return "—"
+        r = total_per[i] / mx_total
+        return "full" if r >= 0.75 else "medium" if r >= 0.4 else "quiet"
+
+    parts = []
+    for i, sec in enumerate(sections):
+        s, e = sec["start"], sec["end"]
+        sec_chords = [c for c in chords if s <= c["time"] < e]
+        letters, roman = _section_progression(sec_chords, key_root_pc)
+        n_beats = sum(1 for t in beats if s <= t < e)
+        parts.append({
+            "index": i,
+            "label": sec.get("label"),
+            "start": round(float(s), 3),
+            "end": round(float(e), 3),
+            "bars": round(n_beats / 4) if n_beats else 0,   # assumes 4/4 — no time-sig detection yet
+            "beats": n_beats,
+            "key": key_from_chords(sec_chords) if sec_chords else None,
+            "progression": letters,
+            "progression_roman": roman,
+            "dynamics": {
+                "active_stems": [n for n in stem_rms if stem_active[n][i]],
+                "loudness": _loudness(i),
+            },
+        })
+
+    return {"song": {"key": song_key, "tempo": analysis.get("bpm")}, "parts": parts}
+
+
 # V4-R1a (rate-my-take-spec.md §3/§6): the research spike's scoring core.
 # Confidence-weighted per-beat agreement between a dry take and the
 # isolated guitar stem it's meant to match — pitch via chroma cosine

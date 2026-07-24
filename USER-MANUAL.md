@@ -1052,7 +1052,7 @@ Speed, Tune, Volume, and a scrub timeline — is mirrored here too, so you
 never need to leave Play Along to control the backing track (or find a
 particular spot in the song) while you're actually playing. It's the exact
 same state as the main transport; adjusting either one updates both, and
-the same mirrored timeline shows up on AI Lab's Rate My Take screen (§6.2)
+the same mirrored timeline shows up on AI Lab's Rate My Take screen (§6.3)
 too.
 
 ### 5.1 Tuner (top strip)
@@ -1096,7 +1096,7 @@ record yourself playing along — the exact audio mix you're hearing
    takes as `.mp4`/`.webm`.
 
 A link on this card jumps to AI Lab's Rate My Take screen and its own dry-
-take recorder (§6.2 has the same link back here) — for going back and forth
+take recorder (§6.3 has the same link back here) — for going back and forth
 between a normal take here and a dry take for scoring, without hunting for
 the right screen each time.
 
@@ -1314,7 +1314,7 @@ between its three functions: **Scales** (deterministic music theory, no
 network call), **Rate My Take** (note-by-note scoring against the
 original), and **AI Assistant** (an opt-in LLM tier — lick ideas,
 practice tips, and Q&A about the song/artist — needs a free API key from
-a supported provider; see §6.3).
+a supported provider; see §6.4).
 
 ### 6.1 Scales
 
@@ -1377,7 +1377,36 @@ detection are both assistive, best on pop/rock, and worth confirming by
 ear — a scale suggestion is only as good as the chord/key read it's
 built on.
 
-### 6.2 Rate My Take
+### 6.2 Song Structure
+
+A part-by-part **map of the song** for learning it a piece at a time. Built
+entirely from the app's own detected analysis of *this* separated track — no
+AI, no API key, nothing made up — it lists the song's parts in order, each
+showing:
+
+- a **colour + letter** (A/B/C…) that repeats when the part does, so you can
+  see at a glance where the verse comes back;
+- its **time range and length in bars**;
+- the **chords** for that part, with **Roman numerals** underneath (so the
+  shape is transferable to any key);
+- the **tonal centre** of the part when it differs from the song's key — the
+  "this bit lifts to F# minor" moment;
+- **what's playing and how loud** — e.g. *bass · other · medium* for a stripped
+  verse vs *bass · drums · other · full* for the chorus, read straight from the
+  stems;
+- **▶ Jump here** and **⟳ Loop this part** — either one drops you back on the
+  Mixer at that part (Loop also sets the loop region), so you're one click from
+  looping it and slowing it down with the Speed Trainer.
+
+Same honesty posture as the chord lane and key: the parts, boundaries and
+chords are assistive and approximate — confirm by ear. The part *names*
+(Intro/Verse/Chorus), playing technique and difficulty from the AI are a
+planned later addition; for now the labels are A/B/C by repetition. Needs the
+song separated first (it maps the parts of its stems); if no clear structure
+was detected — a very short clip or one unbroken texture — it says so rather
+than inventing parts.
+
+### 6.3 Rate My Take
 
 Scores a recorded solo/riff against the song's own guitar performance —
 per-beat pitch and timing agreement, an overall closeness percentage, and
@@ -1479,7 +1508,7 @@ Same honesty framing as everywhere else: this is a heuristic, not a
 verdict — judge it against what your own ears say happened, especially on
 a first pass with a new song.
 
-### 6.3 AI Assistant
+### 6.4 AI Assistant
 
 An experimental research feature, and the **only part of this app that
 makes a network call** — everything else works fully offline. Five modes

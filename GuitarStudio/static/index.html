@@ -1009,6 +1009,7 @@
       <div id="ailab-header" class="screen-header ailab-header">
         <div class="ailab-tabs" id="ailab-tabs">
           <button id="ailab-tab-scales" class="ailab-tab-btn on" data-panel="scales">Scales</button>
+          <button id="ailab-tab-songstructure" class="ailab-tab-btn" data-panel="songstructure">Song Structure</button>
           <button id="ailab-tab-ratemytake" class="ailab-tab-btn" data-panel="ratemytake">Rate My Take</button>
           <button id="ailab-tab-lickideas" class="ailab-tab-btn" data-panel="lickideas">AI Assistant</button>
         </div>
@@ -1060,6 +1061,21 @@
              This panel only works from "dry" recordings (guitar rig only,
              no backing track) — hence its own dedicated record button
              rather than reusing the Play Along Takes list. -->
+        <!-- SS-1 (ai-lab-song-structure-spec.md): a part-by-part map of the
+             song for a player learning its parts. Deterministic-only for now
+             (order, bars, per-part chords/key/dynamics + jump/loop) — the LLM
+             naming/technique pass is SS-2. Rendered by aiLabRenderSongStructure
+             (ailab.js) from /api/song_structure. -->
+        <div id="ailab-songstructure-panel" class="ailab-column" style="display:none;">
+          <section class="pa-card" id="ailab-ss-header-card">
+            <h3>Song Structure</h3>
+            <p class="hint" id="ailab-ss-song-line"></p>
+            <p class="hint">A map of the song's parts, built from the detected sections, chords, key and stems — click a part to jump there, or loop it to drill it. Assistive/approximate: confirm the parts and chords by ear. (Part names, technique and difficulty from the AI are coming in a later update.)</p>
+          </section>
+          <div id="ailab-ss-parts"></div>
+          <p class="hint" id="ailab-ss-empty" style="display:none;"></p>
+        </div>
+
         <div id="ailab-ratemytake-panel" class="ailab-column" style="display:none;">
 
           <!-- Same mirrored-transport idiom as Play Along's own Backing
