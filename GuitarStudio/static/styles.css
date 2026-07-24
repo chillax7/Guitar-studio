@@ -719,8 +719,13 @@ button:disabled:hover { filter: none; }
   flex: 1;
   overflow: auto;
   /* Top padding deliberately NOT here — see #sticky-timeline-header's own
-     padding-top for why. */
-  padding: 0 14px 10px;
+     padding-top for why. LEFT padding is deliberately 0 (real user request):
+     .lane-header / .timeline-gutter are position:sticky left:0, which pins
+     to the scrollport's PADDING edge — any left padding here leaves a gap
+     between the sidebar and the frozen label column that the horizontally
+     scrolling waveform shows through. Zero keeps that column flush to the
+     Library sidebar. Right/bottom padding stay for breathing room. */
+  padding: 0 14px 10px 0;
   min-height: 0; /* same grid/flex shrink issue as #sidebar — otherwise a
     6-stem track grows #workspace past the viewport instead of scrolling. */
   position: relative; /* anchors #custom-stem-dropzone's overlay below */
