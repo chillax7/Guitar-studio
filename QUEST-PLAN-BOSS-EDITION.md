@@ -612,7 +612,11 @@ heard — the real point of this boss, not just that the UI didn't crash.
 ## Boss 9 — The Sage (AI Assistant)
 
 *Guards the only network call in the whole app — and the honesty
-disclaimers that come with it.*
+disclaimers that come with it. Six modes share this screen now (Lick
+Ideas, Ask AI, Practice Tips, This Track, Song Structure, This Artist) —
+Song Structure is the one exception to "network call": its part-by-part
+map is fully detected, no API key needed, and only its optional AI-naming
+layer makes a request.*
 
 - [ ] **This song card:** confirm the prefilled Artist/Title guess from
   the filename, correct it if wrong, **Save** — stored per-song.
@@ -644,6 +648,37 @@ disclaimers that come with it.*
   filled in first) — confirm both carry the standing "verify checkable
   facts yourself" disclaimer, and spot-check at least one factual claim
   each against something you can actually verify.
+- [ ] **Song Structure (SS-1/SS-2) — the detected map:** open this mode on
+  a separated song with **no API key set at all** — confirm the
+  part-by-part map still renders (colour+letter per part, time range,
+  bars, chords + Roman numerals, tonal centre when it differs from the
+  song key, which stems are playing and how loud) with zero network calls.
+  On a song with no clear structure (very short/one unbroken texture),
+  confirm it says so honestly instead of inventing parts.
+- [ ] **✨ Name the parts with AI:** with a provider key + Artist/Title set,
+  run it — confirm real part names (Intro/Verse/Chorus/etc.), guitar
+  role/technique, a difficulty chip, a ★ on at least one signature part,
+  and a song-level form/tuning/learning-order line all appear; the AI
+  must label the EXACT sections already shown, never renumber or invent
+  one. Re-run it ("Re-name the parts with AI") and confirm it replaces the
+  cached annotation rather than duplicating it.
+- [ ] **SS-3 cross-links:** from This Track's answer, click **🗺️ See Song
+  Structure** — lands on the Song Structure mode. From Song Structure,
+  click **🔎 Want the story behind this song?** — lands back on This
+  Track. Both directions work without re-fetching anything already cached.
+- [ ] **SS-4 follow-the-song + Practise this part:** with the song playing
+  and Song Structure open, confirm the part containing the playhead
+  highlights automatically as playback crosses part boundaries, no toggle
+  needed. Click **▶ Jump here** and **⟳ Loop this part** on two different
+  parts and confirm each does what it says; click **🎯 Practise this
+  part** and confirm it both loops that part AND drops Speed Trainer's
+  Start % to the value in the Speed Trainer field — one click, not two
+  separate trips.
+- [ ] **Cache survives a re-analysis check:** reopen Song Structure on the
+  same song a second time in this session — the map (and any AI
+  annotation) should render instantly, not re-run the underlying
+  analysis from scratch (this was a real, fixed performance bug — see
+  USER-MANUAL.md's Troubleshooting table).
 - [ ] **Answers persist per song:** switch modes, close AI Lab, reload the
   entire app, come back to this song — every mode's last answer redisplays
   with no new request spent. Only re-running a mode replaces its cached
@@ -920,10 +955,30 @@ Boss will actually play through.
   you hear without breaking sync or restarting either; shared seek bar
   scrubs both; a third checkbox is refused until one of the first two is
   unchecked; the card is full-width, not squeezed narrow.
+- [ ] **Streamed recording (memory fix — real user report, 7+GB tab
+  memory):** with Chrome's Task Manager (Shift+Esc) open on the tab,
+  record a take at least several minutes long (video on, if you can spare
+  the time — that's the worst case) and watch the memory column: it
+  should stay roughly flat, not climb steadily with elapsed recording
+  time. Stop it normally and confirm the take saved and plays back
+  correctly end to end (no missing audio/video at the start, middle, or
+  end — a real risk if a chunk went missing in the streaming handoff).
+  Do the same once for a Rate My Take dry take (§Boss 8), same flat-memory
+  expectation.
+- [ ] **Commit retry (idempotency fix):** if you can force it — kill the
+  Wi-Fi/network for a moment right as you hit Stop, or use dev tools to
+  throttle to "Offline" for a couple seconds at that exact moment — confirm
+  a **Retry** button appears instead of the take being lost, and clicking
+  it recovers the take correctly (check the filename/content match what
+  you actually played) rather than erroring a second time. If you can't
+  force a real drop, at minimum confirm `output/<song>/.tmp_takes/` is
+  empty again after every normal take/dry-take finalizes in this boss —
+  a leftover `.part` file there would mean a take got stuck mid-stream.
 
 **Loot:** at least one video take with correct A/V sync, one practice-mode
-session with 3+ auto-saved passes, and a Compare Takes session run between
-two of them.
+session with 3+ auto-saved passes, a Compare Takes session run between two
+of them, and one longer take watched live in Task Manager with flat
+memory throughout.
 
 ---
 
@@ -1056,6 +1111,57 @@ just a clean empty-state demo.
 
 ---
 
+## Boss 17 — The Reckoning (the v6 batch + its own code review)
+
+*The newest boss in the game now — v6's headline features (Looper, MIDI
+footswitch, measured latency, social export, Song Structure) plus a
+follow-up code review that found and fixed five more real issues on top
+of them. Fought once more here, together, now that everything above has
+been exercised for real — same role Boss 16 played for the v5 batch.*
+
+- [ ] **Rig-graph race (fixed):** right after a fresh launch (or a full
+  reload — the fix only matters on the FIRST build of the rig graph this
+  session), click rapidly back and forth between **Play Along**, **Tone
+  Lab**, and **AI Lab** several times in under a second, before anything's
+  had time to fully settle. Confirm the guitar signal never doubles up,
+  echoes, or sounds like two amps/pedalboards are running at once —
+  before this fix, hitting this race could silently build the entire rig
+  graph twice. Hard to force deliberately (the race window is narrow), so
+  a clean result here is a good sign, not proof of absence — if anything
+  ever sounds phased/doubled/echoey right after rapid nav clicks, that's
+  exactly this bug, worth reporting precisely.
+- [ ] **Looper buffer rewrite (fixed):** re-run the Looper trials from
+  Boss 10 (record, overdub, undo, quantized bar length) — everything
+  should sound and behave identically to before; this was a memory/
+  allocation fix underneath, not a feature change. Specifically try one
+  **long free-running record pass** (no song loaded, so no natural bar to
+  stop at) — 30+ seconds — and confirm no glitch, click, or stutter right
+  as it crosses that length (that's the buffer's internal growth point).
+- [ ] **MIDI access is lazy (fixed):** clear this site's permissions (or
+  use a fresh browser profile) and launch the app fresh — confirm **no**
+  MIDI permission prompt appears just from loading the Mixer or opening
+  Play Along. Open **Tone Lab** for the first time this session — the
+  prompt (or silent grant, if already decided) should happen now, not
+  before. Reopen Tone Lab again — no second prompt.
+- [ ] **Social export no longer overwrites (fixed):** on the same take,
+  pick the same export preset (e.g. **9:16**) twice in a row — confirm
+  you get two distinct files (e.g. "..._9x16.mp4" and "... (2)_9x16.mp4"),
+  not one silently overwriting the other. Do it a third time and confirm
+  a third distinct file.
+- [ ] **Full Looper/MIDI/latency/export/Song Structure re-run:** with
+  everything above confirmed fixed, do one normal, unhurried pass through
+  Boss 9's Song Structure trials, Boss 10's Looper trials, Boss 11's
+  Measure-latency and MIDI trials, and Boss 12's social-export and
+  streamed-recording trials, back to back, in this same session — the
+  point is confirming they all still hold up together, not in isolation
+  bosses fought hours apart.
+
+**Loot:** confirmation that this round's fixes actually fixed what they
+claimed to, without quietly breaking the features they touched — the same
+bar Boss 16 set for the v5 batch, now met for v6.
+
+---
+
 ## FINAL BOSS — The Grand Session
 
 *One sitting. No restart. Every system at once. This is the fight the
@@ -1077,11 +1183,15 @@ above), play the entire app end to end in one unbroken session:
   video take with count-in and backing track auto-start, then run a
   practice-mode session (2+ auto-retake passes) on a looped section, then
   save a Riff Capture from something unplanned you played in between.
+  Lay down a quick Looper part too — record, overdub once, Stop (auto-
+  saves) — and confirm a Take recorded afterward with the loop playing
+  actually contains it.
 - [ ] Compare two of the takes you just made side by side.
 - [ ] In AI Lab: check Scales in Follow mode while the song plays, then
-  pin a chord manually; record a dry take and score it in Rate My Take;
-  ask for Practice Tips grounded in that score; run at least one of Lick
-  Ideas/Ask AI/This Track/This Artist.
+  pin a chord manually; open Song Structure and Jump/Loop into one part;
+  record a dry take and score it in Rate My Take; ask for Practice Tips
+  grounded in that score; run at least one of Lick Ideas/Ask AI/This
+  Track/This Artist.
 - [ ] Back in the Mixer, export the final mix (WAV or MP3, a real output
   name, Normalize on).
 - [ ] Toggle the Molten Obsidian theme on mid-session and keep going —
