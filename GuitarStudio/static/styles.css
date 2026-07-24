@@ -790,6 +790,11 @@ button:disabled:hover { filter: none; }
   flex-direction: column;
   gap: 4px;
   justify-content: center;
+  /* Small left inset so the stem name/controls don't butt right up against
+     the Library sidebar now that the column is flush to it (box-sizing is
+     border-box, so this stays within the 150px column and keeps the gutter
+     labels above lined up — see .timeline-gutter's matching padding). */
+  padding-left: 8px;
   /* Continuous zoom: once .lane is wider than the viewport (see
      applyZoomWidth in app.js), this keeps the label/controls column
      pinned to the left edge of #workspace's scrolling viewport instead
@@ -912,6 +917,9 @@ button:disabled:hover { filter: none; }
   background: var(--bg);
   display: flex;
   align-items: center;
+  /* Matches .lane-header's left inset so "Sections/Chord ribbon/Click Track"
+     line up with the stem names below, both a touch off the sidebar. */
+  padding-left: 8px;
   font-size: 11px;
   color: var(--text-dim);
 }
