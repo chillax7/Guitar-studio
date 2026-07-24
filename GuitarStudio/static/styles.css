@@ -126,9 +126,15 @@
   --border: #ddd7c8;
   --text: #201d16;
   --text-dim: #6b6455;
-  --accent: #e08e00;
-  --accent-dim: #fce8bd;
-  --waveform: #e08e00;
+  /* Real user request: brightspark is deliberately MONOCHROMATIC — the accent
+     (and the waveform/chord-ribbon colour that tracks it) is a warm neutral
+     grey, not the amber it used to share with Molten Obsidian, so the whole
+     theme reads as one calm greyscale. Active-fill greys stay dark enough for
+     white button text; hover/selected washes are a pale warm grey. Status
+     colours (danger/success/solo) keep their meaning and are left alone. */
+  --accent: #6f6858;
+  --accent-dim: #e8e3d8;
+  --waveform: #7e7768;
   /* Real user feedback: the chord ribbon's color should match the
      waveform color used for the stems. See the base :root block's
      --accent-2 comment for the full history. */
@@ -170,6 +176,15 @@
 }
 :root[data-theme="brightspark"] .pa-chain-icon.pa-chain-open {
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 85%, transparent);
+}
+/* Real user request: the per-stem mute ribbon (.mute-lane) has a hard-coded
+   near-black background (#1a1c22) that reads fine on the two dark themes but
+   slams against brightspark's light panels. On this theme only, make it a
+   light warm grey so it reads as a quiet paintable strip; the red hatch of an
+   actual painted mute region (.mute-region) still stands out clearly on top. */
+:root[data-theme="brightspark"] .mute-lane {
+  background: #e6e1d5;
+  border: 1px solid var(--border);
 }
 
 /* Real gap the theme work surfaced: sliders never set accent-color, so
