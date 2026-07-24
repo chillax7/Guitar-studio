@@ -2572,12 +2572,13 @@ def svc_this_track(source_path: str, model: str, provider: str) -> dict:
     prompt = (
         "You are a knowledgeable music historian and guitar teacher. Give background on this specific song.\n\n"
         f"{known_line}{analysis_line}\n"
-        "Cover, briefly: band/release background; the song's structure and feel from a listener's perspective; "
-        "technical notes (tie these to the detected key/tempo/progression above if given); the writing process "
-        "and lyrical meaning where it's actually publicly known and not disputed (do NOT quote full lyrics "
-        "verbatim); one or two notable performances/recordings worth hearing; and a couple of similar songs or "
-        "solos worth checking out. Go into real detail on each of these rather than a one-line mention — "
-        "aim for roughly 350-500 words total.\n\n"
+        "Cover, briefly: band/release background; technical notes (tie these to the detected key/tempo/progression "
+        "above if given); the writing process and lyrical meaning where it's actually publicly known and not "
+        "disputed (do NOT quote full lyrics verbatim); one or two notable performances/recordings worth hearing; "
+        "and a couple of similar songs or solos worth checking out. Go into real detail on each of these rather "
+        "than a one-line mention — aim for roughly 350-500 words total. For the song's structure and feel, give "
+        "ONE SENTENCE only (a listener's-eye overview, not a part-by-part breakdown) — a separate feature already "
+        "maps the song's actual parts in detail from its own audio, so don't spend length duplicating that here.\n\n"
         f"{_REAL_WORLD_KNOWLEDGE_CAVEAT}\n\n{_FORMATTING_INSTRUCTION}"
     )
 

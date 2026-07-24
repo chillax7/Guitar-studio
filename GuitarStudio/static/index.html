@@ -1252,7 +1252,7 @@
                cards below show a standing disclaimer, not just the answer. -->
           <section class="pa-card" id="ailab-track-mode-card" style="display:none;">
             <h3>This Track</h3>
-            <p class="hint">Background on this specific song — band/release info, structure and feel, technical notes, the writing process and lyrical meaning where publicly known, notable performances, and similar songs/solos worth checking out. Needs the Artist/Title above filled in first.</p>
+            <p class="hint">Background on this specific song — band/release info, technical notes, the writing process and lyrical meaning where publicly known, notable performances, and similar songs/solos worth checking out. For a part-by-part map of how the song is actually built, see the <b>Song Structure</b> mode instead. Needs the Artist/Title above filled in first.</p>
             <button id="ailab-track-info-btn" class="primary">Get track info</button>
             <p class="hint" id="ailab-track-hint"></p>
           </section>
@@ -1261,6 +1261,9 @@
             <h3>This Track</h3>
             <p class="hint" id="ailab-track-caveat"></p>
             <div id="ailab-track-info"></div>
+            <!-- SS-3 cross-link: This Track is the song's story; Song Structure
+                 is how it's built / how to play it — point each way. -->
+            <button class="ailab-crosslink-btn" id="ailab-track-to-ss-btn">🗺️ See Song Structure for the part-by-part playing map →</button>
           </section>
 
           <!-- SS-1/SS-2 (ai-lab-song-structure-spec.md): a part-by-part map of
@@ -1281,6 +1284,8 @@
                 <span class="hint" id="ailab-ss-annotate-hint"></span>
               </div>
               <p class="hint">A map of the song's parts, built from the detected sections, chords, key and stems — click a part to jump there, or loop it to drill it. Names, playing role and difficulty come from the AI (uses the provider/key and Artist/Title above); the parts, chords and timing are detected. Assistive/approximate — confirm by ear.</p>
+              <!-- SS-3 cross-link: the reverse direction of This Track's own link. -->
+              <button class="ailab-crosslink-btn" id="ailab-ss-to-track-btn">🔎 Want the story behind this song? → This Track</button>
             </section>
             <div id="ailab-ss-parts"></div>
             <p class="hint" id="ailab-ss-empty" style="display:none;"></p>

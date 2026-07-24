@@ -374,6 +374,29 @@ function aiLabFollowTick(pos) {
   }
 }
 
+// SS-4 follow-the-song: highlights the part the playhead is currently in,
+// same self-throttled idiom as aiLabFollowTick above. Simpler than the
+// Scales-tab version — there's no "click to pin, follow to resume" toggle
+// here (nothing to override; a part just IS whichever one the playhead is
+// in), so this always runs while Song Structure mode is open, no separate
+// Follow button. Toggles a class on the existing row via its data-start/
+// data-end attributes rather than a full re-render every tick.
+let aiLabSSFollowLastCheck = 0;
+function aiLabSSFollowTick(pos) {
+  if (AiLab.amode !== "songstructure") return;
+  if (!document.getElementById("ailab-overlay").classList.contains("show")) return;
+  const partsEl = document.getElementById("ailab-ss-parts");
+  if (!partsEl) return;
+  const now = performance.now();
+  if (now - aiLabSSFollowLastCheck < 250) return;
+  aiLabSSFollowLastCheck = now;
+  const rows = partsEl.querySelectorAll(".ss-part");
+  rows.forEach((row) => {
+    const isCurrent = pos >= parseFloat(row.dataset.start) && pos < parseFloat(row.dataset.end);
+    row.classList.toggle("current", isCurrent);
+  });
+}
+
 function openAiLab() {
   document.getElementById("ailab-overlay").classList.add("show");
   document.getElementById("tonelab-overlay").classList.remove("show");
@@ -492,6 +515,10 @@ function aiLabSSRenderParts() {
     const row = document.createElement("div");
     row.className = "ss-part";
     row.style.borderLeft = `4px solid ${color}`;
+    // SS-4 follow-the-song: lets aiLabSSFollowTick find/highlight this row by
+    // part start/end without needing a full re-render every tick.
+    row.dataset.start = p.start;
+    row.dataset.end = p.end;
 
     // head: [colour letter] + (AI name) + time/bars + difficulty + signature
     const head = document.createElement("div");
@@ -588,8 +615,13 @@ function aiLabSSRenderParts() {
     const loop = document.createElement("button");
     loop.textContent = "⟳ Loop this part";
     loop.addEventListener("click", () => aiLabLoopSection(p.start, p.end));
+    const practise = document.createElement("button");
+    practise.textContent = "🎯 Practise this part";
+    practise.title = "Loop this part AND drop to Speed Trainer's Start speed — one click into the loop + slow-it-down tools";
+    practise.addEventListener("click", () => aiLabPractiseSection(p.start, p.end));
     acts.appendChild(jump);
     acts.appendChild(loop);
+    acts.appendChild(practise);
     row.appendChild(acts);
 
     frag.appendChild(row);
@@ -664,6 +696,25 @@ function aiLabLoopSection(start, end) {
   if (typeof seekTo === "function") seekTo(start);
   if (typeof saveProjectDebounced === "function") saveProjectDebounced();
   closeAiLab();
+}
+
+// SS-4: "Practise this part" — everything Loop does, PLUS drops straight
+// into the Speed Trainer's own practice speed, so a part you want to drill
+// is one click from being both looped AND slowed down, instead of two
+// separate trips (loop it here, then go set Speed Trainer's Start yourself).
+// Reuses Speed Trainer's own Start % field/mechanism (setSpeedFromPercent,
+// app.js) rather than inventing a separate speed control.
+function aiLabPractiseSection(start, end) {
+  aiLabLoopSection(start, end);
+  const startPctEl = document.getElementById("trainer-start-pct");
+  if (startPctEl && typeof setSpeedFromPercent === "function") {
+    const startPct = parseFloat(startPctEl.value) || 100;
+    setSpeedFromPercent(startPct);
+    const statusEl = document.getElementById("trainer-status");
+    if (statusEl) {
+      statusEl.textContent = `Speed set to ${startPct}% for this part — Step up (Speed Trainer, inspector) once it's clean.`;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1586,6 +1637,10 @@ function wireAiLab() {
   document.getElementById("ailab-trackinfo-save-btn").addEventListener("click", aiLabTrackInfoSave);
   document.getElementById("ailab-track-info-btn").addEventListener("click", aiLabThisTrackInfo);
   document.getElementById("ailab-artist-info-btn").addEventListener("click", aiLabThisArtistInfo);
+  // SS-3 cross-links: This Track (the song's story) <-> Song Structure (how
+  // it's built/how to play it) point at each other, both ways.
+  document.getElementById("ailab-track-to-ss-btn").addEventListener("click", () => aiLabAssistantSetMode("songstructure"));
+  document.getElementById("ailab-ss-to-track-btn").addEventListener("click", () => aiLabAssistantSetMode("thistrack"));
 }
 
 wireAiLab();

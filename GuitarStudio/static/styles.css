@@ -1876,6 +1876,14 @@ button:disabled:hover { filter: none; }
   flex-direction: column;
   gap: 5px;
 }
+/* SS-4 follow-the-song: the part the playhead is currently inside, kept in
+   sync by aiLabSSFollowTick. Accent border + faint wash — same "this is the
+   live one" language the app already uses elsewhere (e.g. .lane.solo-active),
+   not a new idiom. */
+.ss-part.current {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
 .ss-part-head { display: flex; align-items: center; gap: 8px; }
 .ss-part-label {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1891,6 +1899,19 @@ button:disabled:hover { filter: none; }
 .ss-part-dyn { font-size: 11px; color: var(--text-dim); }
 .ss-part-actions { display: flex; gap: 6px; margin-top: 2px; }
 .ss-part-actions button { font-size: 11px; padding: 3px 8px; }
+/* SS-3 cross-links (This Track <-> Song Structure) — read as an understated
+   text link, not a normal button, since it's a "go elsewhere in this panel"
+   nudge rather than an action on the current card. */
+.ailab-crosslink-btn {
+  background: none;
+  border: none;
+  color: var(--accent-2);
+  font-size: 11px;
+  padding: 4px 0 0;
+  text-align: left;
+  cursor: pointer;
+}
+.ailab-crosslink-btn:hover { text-decoration: underline; background: none; }
 /* SS-2 LLM annotation overlay */
 .ss-annotate-row { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; flex-wrap: wrap; }
 .ss-part-name { font-size: 13px; font-weight: 700; color: var(--text); }

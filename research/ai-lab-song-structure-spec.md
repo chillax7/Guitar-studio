@@ -212,6 +212,46 @@ already uses for the data this derives from). Measured on a short synthetic
 test track: first call ~9s (mostly a cold `ensure_analysis`), every call
 after that ~0.2ms.
 
+### 4.6 SS-3 shipped: the This Track / Song Structure cross-links
+`svc_this_track`'s prompt now asks for the song's "structure and feel" in
+**one sentence** (a listener's-eye overview) instead of one of several things
+to cover at length, explicitly told a separate feature already maps the
+song's real parts from its own audio — removing the duplication §2 flagged.
+Both mode cards got a matching cross-link button (`.ailab-crosslink-btn`,
+styled as an understated text link rather than a normal button): This
+Track's result card → "🗺️ See Song Structure for the part-by-part playing
+map →" (`ailab-track-to-ss-btn`); Song Structure's header → "🔎 Want the
+story behind this song? → This Track" (`ailab-ss-to-track-btn`). Both just
+call `aiLabAssistantSetMode(...)` — no new navigation machinery, since
+they're already sibling modes in the same toggle.
+
+### 4.7 SS-4 shipped: follow-the-song highlight + "Practise this part"
+**Follow-the-song:** simpler than the Scales tab's version — there's nothing
+to *pin* here (a part just is whichever one the playhead is in, no per-chord
+override to disambiguate from), so it's always on while Song Structure mode
+is open, no separate Follow button. `aiLabSSFollowTick` (same self-throttled,
+250ms-floor idiom as `aiLabFollowTick`) toggles a `.current` class on the
+matching `.ss-part` row via `data-start`/`data-end` attributes already on
+each row — no re-render needed, just a class toggle. Hooked into the main
+`tick()` loop (app.js) right next to the existing Scales-tab follow call.
+
+**Practise this part:** a third per-part action alongside Jump/Loop.
+`aiLabPractiseSection` does everything `aiLabLoopSection` does (set the loop
+region, enable it, seek, close AI Lab) *and* drops the Speed slider to
+whatever percentage Speed Trainer's own Start field is set to — reusing
+`setSpeedFromPercent` (app.js) directly rather than inventing a parallel
+speed control, so it's wired straight into the practice tool that already
+exists instead of being its own thing. Loop stays as a separate, lighter
+action for anyone who just wants repetition without a speed change.
+
+Verified headlessly (stubbed structure + a real `AudioContext` via
+`ensureCtx()` so the speed-slider's `currentTime` reads work the way they
+would with a loaded track): both cross-links switch modes correctly; the
+follow highlight correctly moves from part 0 to part 1 as `pos` crosses the
+boundary; Practise sets the loop to the clicked part's exact bounds, sets
+the speed slider to the Start-field percentage (70% in the test), and
+updates the Speed Trainer status line — no console errors.
+
 ## 5. Plan
 
 | # | Milestone | Notes |
@@ -221,8 +261,8 @@ after that ~0.2ms.
 | SS-2 | `svc_song_structure_annotate` LLM pass (names, guitar role, technique, difficulty, signature, learning order, tuning/capo) merged over SS-1 — **shipped** | Reuses provider/key/cache plumbing; JSON-out grounded on the detected sections by index; cached per track keyed to the section count |
 | — | **Real user report, Claude-specific:** "The AI's reply wasn't valid JSON" — succeeded on Google/Groq, failed on Claude for the same song. Claude tends to be the most verbose of the three and/or adds closing commentary despite instructions not to; either could have (a) run the reply past the 1600-token budget, truncating the JSON mid-object with no closing brace to recover, or (b) confused the original naive "first `{` to last `}`" extraction once trailing prose itself contained a brace. Fixed both: `max_tokens` raised to 4000 (cheap, on-demand only); `_extract_json` now walks brace-depth from the first `{` (correctly ignoring braces inside quoted strings) to find the true end of the outermost object, then only falls back to repairing smart-quotes/trailing-commas if a strict parse of that still fails — never mutates a reply that already parsed cleanly. A genuinely truncated reply still correctly raises (no silent partial-data success) — **shipped** | Verified directly against the extraction function with six synthetic cases: plain JSON, Claude-style trailing prose containing a brace, smart-quote delimiters, a trailing comma, a genuinely truncated object (must still raise), and a code-fenced reply — all handled correctly |
 | — | Relocated from its own tab to an AI Assistant mode (between This Track/This Artist) — **shipped** | See §4.3's update note; resolves §6's "home" decision |
-| SS-3 | Trim This Track's structure bullet + cross-link both ways | Removes the overlap |
-| SS-4 | Follow-the-song highlight; per-part "practise this" hooking Speed Trainer | Polish |
+| SS-3 | Trim This Track's structure bullet + cross-link both ways — **shipped** | Removes the overlap |
+| SS-4 | Follow-the-song highlight; per-part "practise this" hooking Speed Trainer — **shipped** | Polish |
 | Backlog | Compact read-only map back on the Mixer; export the roadmap to a practice-plan; per-part difficulty auto-tuned against Rate My Take history | — |
 
 ## 6. Decisions — resolved

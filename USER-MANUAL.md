@@ -1603,11 +1603,14 @@ for the current song; the button stays disabled with an explanation until
 one exists.
 
 **Mode: This Track.** One click, no question to type — background on
-this specific song: band/release info, structure and feel, technical
-notes, the writing process and lyrical meaning where publicly known
-(never full lyrics reproduced verbatim), notable performances/recordings
-worth hearing, and similar songs/solos to check out. Needs the Artist/
-Title above filled in first.
+this specific song: band/release info, a one-sentence overview of its feel,
+technical notes, the writing process and lyrical meaning where publicly
+known (never full lyrics reproduced verbatim), notable performances/
+recordings worth hearing, and similar songs/solos to check out. Needs the
+Artist/Title above filled in first. For an actual part-by-part breakdown of
+the song's structure, a **🗺️ See Song Structure** link at the bottom of the
+answer jumps straight to that mode instead — This Track deliberately keeps
+the structure summary to one sentence rather than duplicating it.
 
 **Mode: Song Structure.** A different kind of mode — a part-by-part **map
 of the song** for learning it a piece at a time, sitting right between This
@@ -1626,9 +1629,20 @@ needed just to see it. Lists the song's parts in order, each showing:
 - **what's playing and how loud** — e.g. *bass · other · medium* for a
   stripped verse vs *bass · drums · other · full* for the chorus, read
   straight from the stems;
-- **▶ Jump here** and **⟳ Loop this part** — either one drops you back on
-  the Mixer at that part (Loop also sets the loop region), one click from
-  looping it and slowing it down with the Speed Trainer.
+- **▶ Jump here**, **⟳ Loop this part**, and **🎯 Practise this part** —
+  Jump seeks there; Loop also sets the loop region so playback repeats just
+  that part; Practise does everything Loop does *and* drops the Speed
+  slider straight to Speed Trainer's own Start percentage, so a part you
+  want to drill is one click from being both looped and slowed down,
+  instead of a separate trip to the Speed Trainer card afterward. All three
+  drop you back on the Mixer.
+
+While the song plays, whichever part the playhead is currently in
+highlights automatically (an accent border/tint) — no separate toggle,
+since there's nothing to pin here the way Scales' per-chord Follow can be.
+
+A **🔎 Want the story behind this song?** link at the top jumps to This
+Track for the band/history/meaning side of things.
 
 **✨ Name the parts with AI** (optional, needs the provider/key and Artist/
 Title above) layers an AI reading over that detected backbone: real part

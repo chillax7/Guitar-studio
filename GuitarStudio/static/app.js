@@ -2350,6 +2350,9 @@ function tick() {
     // ailab.js (loads after this file) — self-throttled, no-ops unless AI
     // Lab is open in follow mode.
     if (typeof aiLabFollowTick === "function") aiLabFollowTick(pos);
+    // SS-4: Song Structure's own follow-the-song part highlight — same
+    // self-throttled, no-op-unless-relevant contract as aiLabFollowTick.
+    if (typeof aiLabSSFollowTick === "function") aiLabSSFollowTick(pos);
     if (Audio.playing) autoScrollToPlayhead(pos);
   }
   requestAnimationFrame(tick);
