@@ -480,6 +480,31 @@ be tuned against a synthetic drone that's likely harsher than a real sitar —
 so it waits for real drone-heavy audio to validate against, exactly the way
 CD-5 waited for real distorted stems.
 
+**BT-03b, "Hotel California" pass — key by profile correlation, not root
+count; `ANALYSIS_VERSION` 13→14.** The user's journey back toward rock/metal
+started with Hotel California, and its chords decoded flawlessly
+(`Bm F# A E G D Em F#` — every one right, minors minor, majors major, on a
+full-band mix) — but the *key* came out **E minor** for a plainly **B minor**
+song. Root cause was `key_from_chords`' tonic rule: "most frequent chord root
+is the tonic". That progression plays its tonic Bm *least* of all (once per
+loop) while E (E major + Em both count toward root E) and F# each appear
+twice, so root-counting ranked B nearly last and returned a confident wrong
+answer — the exact failure the function's own docstring had flagged as
+possible. Fixed by finding the tonic the way key-finding actually works:
+Krumhansl-Schmuckler correlation of a chord-content histogram (each chord's
+pitch classes, beat-weighted) against the 24 rotated major/minor key
+profiles. That weighs the whole tonal hierarchy, so B minor wins even though
+B is barely played. Verified: Hotel California now reads **B minor** (0.82),
+and it also settled "That's Entertainment"'s I-IV two-chord vamp on **C
+major** where root-counting had left C and F tied and picked F. Mode still
+runs through the CD-2-era direct chroma third-energy check at the chosen
+tonic, so power-chord-heavy rock/metal (no thirds in the chords to profile)
+keeps reading minor when it is minor — the whole point of the v5 mode work.
+Regressions all held (Mull → A major, a minor triad progression → A minor,
+Norwegian Wood → E major). This is a `key_from_chords` (BT-03) change; chord
+recognition itself was untouched — Hotel California was a chord-lane *pass*
+that happened to expose the key heuristic.
+
 Test protocol for CD-5 (goes into TEST-PLAN.md when CD-1 lands):
 1. Re-run analysis on the test song (version bump forces it).
 2. Count chips in one verse+chorus: **expect roughly the chord-event

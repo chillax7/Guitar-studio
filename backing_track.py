@@ -154,7 +154,15 @@ ANALYSIS_FILE = "analysis.json"
 # {start, end, label} regions (A/B/C… by repetition), for a section ribbon you
 # can jump to / loop. Assistive, first-cut, best-effort — same framing as the
 # chord lane and key detection; simply omitted when there's no confident read.
-ANALYSIS_VERSION = 13
+# v13 ("Hotel California" pass): key_from_chords finds the tonic by
+# Krumhansl-Schmuckler key-profile correlation over the chord histogram, not
+# "most frequent chord root" — a minor-key song whose tonic is played least of
+# all (Hotel California is B minor, but B is the rarest chord in
+# Bm-F#-A-E-G-D-Em-F#) was returning a confident wrong "E minor"; the profile
+# correlation gets B minor (and also settled a two-chord vamp's tonic that
+# root-counting left tied). Mode still uses the CD-2 direct-chroma third check
+# so power-chord-heavy rock/metal keeps reading minor when it is.
+ANALYSIS_VERSION = 14
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -956,14 +964,17 @@ def key_from_chords(chords: list, chroma_mean: "np.ndarray" = None) -> dict | No
     harmony poorly to begin with, where this song's chords are a much
     more direct signal.
 
-    Root is picked by total beats on that root regardless of quality
-    (fixed from an earlier version that counted (root, quality) pairs
-    separately — that split a single ambiguous tonic's beats across two
-    buckets and let a less-common but unambiguous non-tonic chord win by
-    default). 'Most frequent confident root is the tonic' is still a naive
-    heuristic (a real song can spend more beats on IV or bVII than I), but
-    it's the same kind of standard, defensible starting point as every
-    other heuristic here.
+    Tonic is found by Krumhansl-Schmuckler key-profile correlation over the
+    chord-content histogram (BT-03b, "Hotel California" pass), replacing an
+    earlier "most frequent chord root is the tonic" rule. That rule's own
+    caveat — "a real song can spend more beats on IV or bVII than I" — turned
+    out to be Hotel California exactly: Bm-F#-A-E-G-D-Em-F# is plainly B minor,
+    yet root-counting ranks E and F# highest and B nearly lowest and returns a
+    confident "E minor". Correlating the whole pitch-class content against the
+    24 rotated major/minor profiles weighs the tonal hierarchy properly and
+    finds B minor even though B is the least-played chord in the loop (it also
+    resolved a I-IV two-chord vamp — "That's Entertainment" — that
+    root-counting left tied between the two chords).
 
     Mode is judged directly from minor-3rd vs major-3rd chroma energy at
     that root (whole-song mean, same chroma detect_chords already
@@ -985,28 +996,51 @@ def key_from_chords(chords: list, chroma_mean: "np.ndarray" = None) -> dict | No
     quality-label rule if no chroma_mean is available (keeps this function
     usable
     without a re-run for any old caller)."""
-    root_counts = {}
+    # Tonic via Krumhansl-Schmuckler key-profile correlation over a
+    # chord-content histogram — NOT "most frequent root" (BT-03b, "Hotel
+    # California" pass). A real song can play its tonic chord LEAST of all
+    # while sitting on the dominant, relative major, or a bVII/bVI far more:
+    # Hotel California's Bm-F#-A-E-G-D-Em-F# is plainly B minor, but counting
+    # roots ranks E and F# highest and B nearly lowest, giving a confidently
+    # wrong "E minor". Correlating the whole pitch-class content against the 24
+    # rotated major/minor key profiles weighs the tonal hierarchy the way
+    # key-finding actually works and finds B minor even though B is barely
+    # played. The chord lane is a cleaner input for this than raw audio chroma
+    # (no timbre, no drone, no bleed), which is exactly why key_from_chords
+    # beats detect_key's audio-chroma correlation on chord-rich material.
+    hist = np.zeros(12)
     for c in chords:
         if not c.get("root") or c.get("quality") == "N":
             continue
-        root_counts[c["root"]] = root_counts.get(c["root"], 0) + 1
-    if not root_counts:
+        root_pc = KEY_NOTE_NAMES.index(c["root"])
+        for interval in CHORD_QUALITY_INTERVALS.get(c["quality"], (0,)):
+            hist[(root_pc + interval) % 12] += 1.0
+    if hist.sum() <= 0:
         return None
-    root, count = max(root_counts.items(), key=lambda kv: kv[1])
-    confidence = round(count / sum(root_counts.values()), 3)
 
+    best = None  # (corr, root_pc, mode)
+    for mode_name, profile in (("major", KEY_MAJOR_PROFILE), ("minor", KEY_MINOR_PROFILE)):
+        profile_norm = profile / profile.sum()
+        for root_pc in range(12):
+            corr = float(np.corrcoef(hist, np.roll(profile_norm, root_pc))[0, 1])
+            if best is None or corr > best[0]:
+                best = (corr, root_pc, mode_name)
+    corr, root_pc, mode_krum = best
+    root = KEY_NOTE_NAMES[root_pc]
+    confidence = round(max(0.0, corr), 3)
+
+    # Mode: keep the CD-2-era direct chroma check (minor-3rd vs major-3rd
+    # energy at the chosen tonic) when chroma is available — it's what makes
+    # power-chord-heavy rock/metal read minor when it is minor (a power chord
+    # carries no third, so the chord histogram alone can't tell the mode and
+    # the profile correlation is a near-coin-flip there). Falls back to the
+    # profile-correlation's own mode when there's no chroma to check.
     if chroma_mean is not None:
-        root_pc = KEY_NOTE_NAMES.index(root)
         minor3 = float(chroma_mean[(root_pc + 3) % 12])
         major3 = float(chroma_mean[(root_pc + 4) % 12])
         mode = "minor" if minor3 >= major3 else "major"
     else:
-        quality_counts = {}
-        for c in chords:
-            if c.get("root") == root and c.get("quality") != "N":
-                quality_counts[c["quality"]] = quality_counts.get(c["quality"], 0) + 1
-        quality, _ = max(quality_counts.items(), key=lambda kv: kv[1])
-        mode = "minor" if quality == "min" else "major"
+        mode = mode_krum
 
     return {"key": root, "mode": mode, "confidence": confidence}
 
