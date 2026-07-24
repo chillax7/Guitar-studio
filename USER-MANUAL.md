@@ -115,6 +115,23 @@ to the app.
 **Starting it again later:** just double-click **Guitar Studio.app**.
 None of the setup steps need repeating.
 
+**Closing the tab/window quits the server too.** A few seconds after the
+last browser tab or window showing the app closes, the server shuts itself
+down on its own — no need to separately quit it from a terminal or Activity
+Monitor. Merely **switching to another tab** or minimizing the window
+doesn't count as closing it — the app keeps running in the background
+exactly as before, so leaving it open while you do something else for a
+while is fine. **Reloading the page** (⌘R) also doesn't quit it — the
+few-second grace period is specifically there to survive a refresh.
+**Note:** if you double-click **Guitar Studio.app** again while a server
+from an earlier launch is still running (nothing has closed it yet), the
+launcher just reopens the browser to that same still-running process
+rather than starting a fresh one — this matters if you've just updated the
+app itself, since the older process won't have your changes until it's
+actually been shut down (close every tab/window to it, wait a few seconds,
+then relaunch). Pass `--no-auto-shutdown` to `server.py` (see below) if
+you'd rather it always run until you stop it by hand.
+
 **Running it by hand instead** (e.g. to watch the server's own log while
 it runs):
 
@@ -125,7 +142,9 @@ python3 GuitarStudio/server.py --port 8765
 
 then open `http://127.0.0.1:8765/` yourself. The server only listens on
 `127.0.0.1` (loopback) — nothing outside your Mac can reach it, and
-nothing you do in the app is ever uploaded anywhere.
+nothing you do in the app is ever uploaded anywhere. Add `--no-auto-shutdown`
+to keep it running after every tab/window closes, instead of the default
+auto-shutdown behavior described above.
 
 ### 1.7 Optional: setting up Rip (system-audio capture)
 
@@ -1690,6 +1709,7 @@ current song has attached.
 | Tuner works but I can't hear anything | Expected — the tuner mutes the backing track and your amp tone while it's on (§5.1); turn the tuner off to hear audio again. |
 | Camera/mic permission denied | System Settings → Privacy & Security → Camera / Microphone → enable for your browser. |
 | Guitar Studio.app won't open | Right-click → Open once, to get past Gatekeeper (it's unsigned). If that's not it, run the server by hand (§1.6) to see the actual error. |
+| A feature that should exist (or a fix that should already be in) seems to be missing, or a request errors with "Unknown route" | The app's launcher only starts a fresh server if none is already running (§1.6) — if one from before the update is still up, relaunching just reopens the browser to that same stale process. Close every tab/window to the app, wait a few seconds for it to auto-shut-down, then reopen it. |
 | Recording didn't finalize / "not remuxed" note | `ffmpeg` isn't installed, or the remux itself failed — the raw take is still saved either way, just not container-fixed. |
 | Trimming a take fails with "file not found" | Only possible if you renamed the take in another app while it was loaded in the player — reload the take from the Takes list and trim again. |
 | Hardware volume keys/menu-bar slider stop working | Your Mac's default output is set to BlackHole or a Multi-Output Device containing it (§1.7/§3.2) — switch back to your normal speakers/headphones when you're done ripping. |

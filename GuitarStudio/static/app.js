@@ -3888,7 +3888,24 @@ function wireKeyboardShortcuts() {
   });
 }
 
+// Real user request: closing this tab/window shuts the local server down,
+// instead of it running invisibly forever until manually stopped. Server-side
+// design (session counting, why pagehide+sendBeacon and not a periodic
+// heartbeat) is documented next to _open_sessions in server.py — the short
+// version: pagehide fires on an actual close/navigate-away only, never on a
+// mere tab-switch/backgrounding, so leaving this tab open in the background
+// while working elsewhere never trips it; a same-tab reload also fires
+// pagehide, but the reloaded page's own session/open call lands well within
+// the server's few-second grace window and cancels the pending shutdown.
+function wireAutoShutdownSession() {
+  fetch("/api/session/open", { method: "POST", keepalive: true }).catch(() => {});
+  window.addEventListener("pagehide", () => {
+    navigator.sendBeacon("/api/session/close");
+  });
+}
+
 async function init() {
+  wireAutoShutdownSession();
   initRuler();
   wireTransport();
   wireModelBadge();

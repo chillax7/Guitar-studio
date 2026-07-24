@@ -23,6 +23,7 @@ import argparse
 import io
 import json
 import mimetypes
+import os
 import re
 import shutil
 import subprocess
@@ -63,6 +64,77 @@ AUDIO_EXTS = {".wav", ".wave", ".mp3", ".flac", ".m4a", ".aiff", ".aif"}
 
 SAFE_NAME_RE = re.compile(r"[\x00/]+")
 DEFAULT_PORT = 8765
+
+# Real user request: closing the browser tab/window should shut down this
+# local server, rather than leaving it running invisibly until the user
+# remembers to quit it themselves. The obvious approach — a periodic
+# JS-side heartbeat the server watches for gaps in — was rejected: modern
+# browsers (Chrome especially) throttle setInterval/setTimeout hard in
+# BACKGROUNDED tabs (down to roughly once a minute after a few minutes) even
+# though the tab is still genuinely open, which would false-positive-shutdown
+# the server just from switching to another tab/app for a while — a very
+# normal thing to do while practising with this open.
+#
+# Instead this counts open sessions and only arms a shutdown when that count
+# hits zero: the client calls /api/session/open once on page load (JS
+# `fetch`, keepalive) and /api/session/close from a `pagehide` listener via
+# `navigator.sendBeacon` (guaranteed to still fire during an actual unload,
+# unlike a normal fetch). Critically, `pagehide` fires on a REAL close or
+# navigate-away — never merely on tab-switch/minimize/backgrounding (that's
+# `visibilitychange`, deliberately not used here) — so a backgrounded-but-
+# still-open tab never trips this at all, no throttling risk. A same-tab
+# reload also fires pagehide, but the new page's own session/open call lands
+# within the grace window below and cancels the pending shutdown, so
+# refreshing never kills the server out from under you. Multiple tabs/
+# windows open to the app are each their own session — the server only
+# actually shuts down once every one of them has closed.
+#
+# Known limitation, accepted: a hard crash/force-quit of the browser (not a
+# normal close) never fires `pagehide`, so that session is never marked
+# closed and auto-shutdown never triggers for it — same as today's "runs
+# until you stop it" behavior, just not improved by this feature. Not fixed
+# further; the overwhelmingly common case (deliberately closing the tab) is
+# what this targets.
+AUTO_SHUTDOWN_GRACE_SECONDS = 4
+_open_sessions = 0
+_sessions_lock = threading.Lock()
+_shutdown_timer = None
+AUTO_SHUTDOWN_ENABLED = True  # set from --no-auto-shutdown in main(), read here at request time
+
+
+def _cancel_shutdown_timer_locked() -> None:
+    global _shutdown_timer
+    if _shutdown_timer is not None:
+        _shutdown_timer.cancel()
+        _shutdown_timer = None
+
+
+def _do_auto_shutdown() -> None:
+    print("Guitar Studio: last browser tab/window closed — shutting down.")
+    os._exit(0)  # a plain server.shutdown() would deadlock: this fires from
+    # the timer's own thread, and shutdown() blocks until serve_forever's
+    # loop (on the main thread) notices — fine normally, but not from inside
+    # a background timer thread the main thread isn't polling for.
+
+
+def svc_session_open() -> dict:
+    global _open_sessions
+    with _sessions_lock:
+        _open_sessions += 1
+        _cancel_shutdown_timer_locked()
+    return {"ok": True}
+
+
+def svc_session_close() -> dict:
+    global _open_sessions, _shutdown_timer
+    with _sessions_lock:
+        _open_sessions = max(0, _open_sessions - 1)
+        if _open_sessions == 0 and AUTO_SHUTDOWN_ENABLED:
+            _cancel_shutdown_timer_locked()
+            _shutdown_timer = threading.Timer(AUTO_SHUTDOWN_GRACE_SECONDS, _do_auto_shutdown)
+            _shutdown_timer.daemon = True
+            _shutdown_timer.start()
+    return {"ok": True}
 
 # Demucs and audio-separator both use PyTorch/MPS + ONNXRuntime/CoreML
 # under the hood, neither of which is safe to drive concurrently from two
@@ -2218,18 +2290,67 @@ def svc_song_structure(source_path: str, model: str) -> dict:
     return result
 
 
+def _find_balanced_json_object(t: str) -> str:
+    """Real user report (Claude specifically failing where Google/Groq
+    succeeded): the naive 'first { to last }' extraction breaks the moment a
+    reply has ANY trailing prose that itself contains a brace (Claude is more
+    prone to add closing commentary despite being told not to) — the last '}'
+    then belongs to that trailing text, not the JSON object, so the sliced
+    string is garbage. This instead walks from the first '{' counting brace
+    depth (correctly ignoring braces inside quoted strings, including escaped
+    quotes) until depth returns to zero — the true end of the outermost
+    object — and simply returns the original text if no complete object is
+    found (e.g. genuinely truncated mid-generation), so json.loads still fails
+    with a clear parse error rather than silently mis-slicing."""
+    start = t.find("{")
+    if start < 0:
+        return t
+    depth = 0
+    in_string = False
+    escaped = False
+    for i in range(start, len(t)):
+        ch = t[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return t[start:i + 1]
+    return t  # unbalanced (likely truncated) — let json.loads report it
+
+
 def _extract_json(text: str):
-    """Best-effort JSON out of an LLM reply: strip any markdown code fence and
-    take the outermost { … }. Raises (caught by the caller) if it still won't
-    parse, so a mangled reply becomes a clean 'try again' rather than a 500."""
+    """Best-effort JSON out of an LLM reply: strip any markdown code fence,
+    isolate the outermost {…} by brace-depth (see _find_balanced_json_object),
+    then try a strict parse first. Only if THAT fails does it retry with two
+    repairs for LLM JSON quirks seen in practice — curly/smart quotes swapped
+    in for straight ones (Claude does this in prose fields more than Google/
+    Groq did) and trailing commas before a closing bracket — kept as a
+    fallback rather than always-applied so they can never corrupt a reply
+    that already parsed correctly. Raises (caught by the caller) if it still
+    won't parse, so a mangled reply becomes a clean 'try again' rather than a
+    500."""
     t = text.strip()
     if t.startswith("```"):
         t = re.sub(r"^```(?:json)?\s*", "", t)
         t = re.sub(r"\s*```$", "", t.strip())
-    a, b = t.find("{"), t.rfind("}")
-    if a >= 0 and b > a:
-        t = t[a:b + 1]
-    return json.loads(t)
+    t = _find_balanced_json_object(t)
+    try:
+        return json.loads(t)
+    except json.JSONDecodeError:
+        repaired = t.translate({0x2018: "'", 0x2019: "'", 0x201C: '"', 0x201D: '"'})
+        repaired = re.sub(r",(\s*[}\]])", r"\1", repaired)
+        return json.loads(repaired)
 
 
 def svc_song_structure_annotate(source_path: str, model: str, provider: str) -> dict:
@@ -2280,7 +2401,11 @@ def svc_song_structure_annotate(source_path: str, model: str, provider: str) -> 
         f"Detected key: {song_key_str}, tempo {round(song.get('tempo') or 0)} BPM\n"
         f"Detected sections (sections with repeats-as=X that share a letter are the same part recurring):\n"
         f"{sections_text}\n\n"
-        "Respond with ONLY a JSON object (no markdown fence, no prose before or after) of exactly this shape:\n"
+        "Respond with ONLY a JSON object of exactly this shape — your entire reply must be nothing but this JSON, "
+        "starting with { and ending with }: no markdown code fence, no preamble like \"Here is the JSON\", no "
+        "closing remarks or explanation after it. The JSON must be strictly valid: use straight double-quote "
+        "characters only (never curly/smart quotes), escape any double-quote that appears inside a string value "
+        "(e.g. when naming a lyric or nicknamed section), and never leave a trailing comma before a closing } or ].\n"
         '{"parts":[{"index":<int matching a section above>,'
         '"name":"<Intro|Verse|Pre-chorus|Chorus|Bridge|Solo|Instrumental|Breakdown|Outro|etc>",'
         '"guitar_role":"<one short phrase: what the guitar mainly does here — e.g. strummed open chords, '
@@ -2298,11 +2423,21 @@ def svc_song_structure_annotate(source_path: str, model: str, provider: str) -> 
         "if unsure, use a sensible generic name. Keep every string short.\n\n" + _REAL_WORLD_KNOWLEDGE_CAVEAT)
 
     caller = {"anthropic": _call_anthropic, "google": _call_google, "groq": _call_groq}[provider]
-    text = caller(prompt, api_key, max_tokens=1600)
+    # Real user report: Claude's reply failed to parse where Google/Groq's
+    # didn't, for the same prompt/song. Claude tends to be the most verbose of
+    # the three, and 1600 tokens is tight for 6+ parts each with a name, role,
+    # technique and variation note plus the song-level fields — a reply that
+    # runs long enough gets cut off mid-JSON, which no amount of parsing
+    # cleverness can recover (there's no closing brace to find). Raised well
+    # past what even a wordy reply for a long song needs, cheap for an
+    # on-demand feature.
+    text = caller(prompt, api_key, max_tokens=4000)
     try:
         annotation = _extract_json(text)
     except Exception:
-        raise ApiError(502, "The AI's reply wasn't valid JSON — try again, or a different provider.")
+        snippet = text.strip()[:160].replace("\n", " ")
+        raise ApiError(502, "The AI's reply wasn't valid JSON — try again, or a different provider. "
+                             f"(reply started: {snippet!r})")
 
     result = {
         "annotation": annotation, "part_count": len(parts),
@@ -3166,6 +3301,22 @@ class Handler(BaseHTTPRequestHandler):
                 result = svc_track_delete(body.get("track", ""))
                 return self._send_json(200, result)
 
+            # Real user request: shut down the server when the browser tab/
+            # window closes. See the _open_sessions block near DEFAULT_PORT
+            # for the full design (why pagehide+sendBeacon, not a heartbeat).
+            if path == "/api/session/open":
+                return self._send_json(200, svc_session_open())
+
+            if path == "/api/session/close":
+                # navigator.sendBeacon's body arrives as raw bytes (no
+                # Content-Type JSON to parse) — this route needs none of it,
+                # so just drain the body (if any) and act; not
+                # _read_json_body(), which would 400 on an empty/non-JSON
+                # beacon body and the browser doesn't wait for the response
+                # anyway (fire-and-forget by design).
+                self._read_body()
+                return self._send_json(200, svc_session_close())
+
             return self._send_json(404, {"error": f"Unknown route: {path}"})
         except ApiError as exc:
             self._send_json(exc.status, {"error": exc.message})
@@ -3185,9 +3336,14 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    global AUTO_SHUTDOWN_ENABLED
     parser = argparse.ArgumentParser(description="Guitar Studio local server")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--no-auto-shutdown", action="store_true",
+                         help="Keep the server running after every browser tab/window to it closes "
+                              "(default: it shuts itself down a few seconds after the last one does).")
     args = parser.parse_args()
+    AUTO_SHUTDOWN_ENABLED = not args.no_auto_shutdown
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Guitar Studio server running at http://127.0.0.1:{args.port}/ (Ctrl+C to stop)")
