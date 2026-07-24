@@ -9,11 +9,26 @@
 // States: idle -> recording -> playing <-> overdubbing, plus "stopped"
 // (has a committed loop, but playback paused). See looper-pedal-spec.md
 // §3 for the full design this mirrors.
+// GP-mem (code review finding): recording used to push a fresh Float32Array
+// pair into a plain array every render quantum (~128 frames, ~2.9ms),
+// concatenated only at stop_and_loop. Allocating inside process() risks
+// GC-induced glitches on this real-time thread, and had no upper bound if a
+// recording pass ran long — the same shape of bug just fixed for
+// MediaRecorder's own chunk buffering elsewhere, just relocated to the
+// worklet thread. RECORD_INITIAL_SECONDS/_ensureRecordCapacity below give
+// recording pre-allocated, amortized-growth buffers instead — one
+// allocation (doubling capacity, like a growable array) only when actually
+// needed, not one every quantum — matching the pre-allocated-buffer
+// approach riff-capture-processor.js already uses for the same reason.
+const RECORD_INITIAL_SECONDS = 30;
+
 class LooperProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.state = "idle";
-    this.recordChunks = []; // Float32Array pairs [L, R] while recording pass 1, one per render quantum — concatenated at stop
+    this.recordL = null; // pre-allocated, grown by doubling — see _growRecordCapacity
+    this.recordR = null;
+    this.recordLen = 0; // samples actually written so far this recording pass
     this.committedL = null;
     this.committedR = null;
     this.previousCommittedL = null; // one level of Undo
@@ -25,27 +40,36 @@ class LooperProcessor extends AudioWorkletProcessor {
     this.port.onmessage = (e) => this._onMessage(e.data);
   }
 
+  // Ensures room for `needed` samples, growing by doubling (amortized O(1)
+  // per sample, not one allocation per render quantum) rather than
+  // reallocating on every call. Keeps the previous recording's buffer
+  // around and reuses it across passes when it's already big enough.
+  _ensureRecordCapacity(needed) {
+    if (this.recordL && needed <= this.recordL.length) return;
+    const newCap = Math.max(needed, this.recordL ? this.recordL.length * 2 : Math.ceil(sampleRate * RECORD_INITIAL_SECONDS));
+    const newL = new Float32Array(newCap);
+    const newR = new Float32Array(newCap);
+    if (this.recordL) {
+      newL.set(this.recordL.subarray(0, this.recordLen));
+      newR.set(this.recordR.subarray(0, this.recordLen));
+    }
+    this.recordL = newL;
+    this.recordR = newR;
+  }
+
   _onMessage(msg) {
     switch (msg.type) {
       case "start_record":
         this.state = "recording";
-        this.recordChunks = [];
+        this.recordLen = 0; // reuses the existing recordL/R buffer if it's already allocated
         this.port.postMessage({ type: "started_recording" });
         break;
 
       case "stop_and_loop": {
-        // Concatenate every render-quantum chunk captured during the
-        // recording pass into one contiguous buffer.
-        const rawLen = this.recordChunks.reduce((sum, [l]) => sum + l.length, 0);
-        let rawL = new Float32Array(rawLen);
-        let rawR = new Float32Array(rawLen);
-        let pos = 0;
-        for (const [l, r] of this.recordChunks) {
-          rawL.set(l, pos);
-          rawR.set(r, pos);
-          pos += l.length;
-        }
-        this.recordChunks = [];
+        const rawLen = this.recordLen;
+        const rawL = this.recordL ? this.recordL.subarray(0, rawLen) : new Float32Array(0);
+        const rawR = this.recordR ? this.recordR.subarray(0, rawLen) : new Float32Array(0);
+        this.recordLen = 0;
 
         // msg.barLengthFrames: one bar's length in frames at the song's
         // detected BPM (main thread computes this from State.analysis.bpm,
@@ -136,7 +160,7 @@ class LooperProcessor extends AudioWorkletProcessor {
 
       case "clear":
         this.state = "idle";
-        this.recordChunks = [];
+        this.recordLen = 0;
         this.committedL = null;
         this.committedR = null;
         this.previousCommittedL = null;
@@ -178,9 +202,15 @@ class LooperProcessor extends AudioWorkletProcessor {
     const n = outL.length;
 
     if (this.state === "recording") {
-      const inL = (input && input[0]) || new Float32Array(n);
+      const inL = (input && input[0]) || null;
       const inR = (input && input.length > 1) ? input[1] : inL;
-      this.recordChunks.push([inL.slice(), inR.slice()]);
+      this._ensureRecordCapacity(this.recordLen + n);
+      if (inL) this.recordL.set(inL, this.recordLen);
+      if (inR) this.recordR.set(inR, this.recordLen);
+      // (no input yet: recordL/R are already zero-filled at this offset —
+      // Float32Array starts zeroed and _ensureRecordCapacity never touches
+      // already-written samples, so this is silence, not garbage.)
+      this.recordLen += n;
       // Silent output while recording — nothing to play back yet.
       outL.fill(0);
       if (outR !== outL) outR.fill(0);

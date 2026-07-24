@@ -163,9 +163,29 @@ function paMakeReverbImpulse(ctx, seconds, decay) {
 // Graph construction (lazy — built once, first time the panel opens)
 // ---------------------------------------------------------------------------
 
+// Code-review finding: this used to be "if (PA.built) return;" with no
+// in-flight guard — a second call landing before the first's awaited
+// addModule()/node-construction work finished would see PA.built still
+// false and build an entire SECOND rig graph, permanently orphaning the
+// first (still connected, still processing every render quantum, with no
+// reference left to disconnect it). Reachable in practice: Play Along,
+// Tone Lab, and AI Lab's Rate My Take all call paEnsureRigSessionReady on
+// open, so clicking between them fast enough on the FIRST open of any of
+// them this session (the only time the worklet loads take real time) could
+// trigger it. paGraphBuildPromise makes concurrent callers await the same
+// in-flight build instead of starting their own — same fix shape as
+// app.js's stemLoadGeneration guard for the same class of race.
+let paGraphBuildPromise = null;
+
 async function ensurePAGraph() {
   ensureCtx(); // app.js — same context/graph as backing-track playback
   if (PA.built) return;
+  if (paGraphBuildPromise) return paGraphBuildPromise;
+  paGraphBuildPromise = _buildPAGraph().finally(() => { paGraphBuildPromise = null; });
+  return paGraphBuildPromise;
+}
+
+async function _buildPAGraph() {
   await Audio.ctx.audioWorklet.addModule("gate-processor.js");
   await Audio.ctx.audioWorklet.addModule("nam-processor.js");
   await Audio.ctx.audioWorklet.addModule("octave-processor.js");
@@ -1946,6 +1966,13 @@ function paSetActiveScreen(id) {
   document.getElementById("top-banner-screen-label").textContent = PA_SCREEN_LABELS[id] || "";
 }
 
+// Code-review finding: MIDI access used to be requested unconditionally at
+// page load (wireMidiControls), prompting every user on every session
+// whether or not they'd ever touch it. Lazy + once-per-session instead —
+// first real Tone Lab open, same "explicit action" gating camera/mic/output
+// device already get elsewhere in this app.
+let midiDevicesRequested = false;
+
 async function openToneLab() {
   await paEnsureRigSessionReady();
   document.getElementById("tonelab-overlay").classList.add("show");
@@ -1955,6 +1982,10 @@ async function openToneLab() {
   paRefreshOutputDevices();
   paRefreshNamModels();
   paRefreshIrModels();
+  if (!midiDevicesRequested) {
+    midiDevicesRequested = true;
+    paRefreshMidiDevices();
+  }
   paUpdateSuggestVisibility();
   paSetActiveScreen("tonelab-open-btn");
 }
@@ -3172,7 +3203,14 @@ function wireMidiControls() {
   document.getElementById("pa-midi-forward-display").textContent = paMidiMapLabel(paMidiLoadMapping(PA_MIDI_MAP_FORWARD_KEY));
   document.getElementById("pa-midi-backward-display").textContent = paMidiMapLabel(paMidiLoadMapping(PA_MIDI_MAP_BACKWARD_KEY));
 
-  paRefreshMidiDevices();
+  // Code-review finding: this used to call paRefreshMidiDevices() right
+  // here, at page load — navigator.requestMIDIAccess() then fires (and
+  // prompts for permission) for every single user on every single app
+  // load, whether or not they own a footswitch or ever open Tone Lab.
+  // Every other permission-gated integration in this app (camera, mic,
+  // output device) is opt-in behind an explicit action; MIDI now matches
+  // that — requested lazily, the first time Tone Lab actually opens (see
+  // openToneLab).
 }
 
 function wireRigPresets() {
@@ -3293,11 +3331,24 @@ function wireRigPresets() {
 const RIFF_CAPTURE_SECONDS = 20;
 let riffCaptureNode = null;
 
+// Code-review finding: same in-flight-build race as ensurePAGraph/
+// ensureLooper (see ensurePAGraph's comment) — two near-simultaneous
+// callers could both pass "if (riffCaptureNode) return" before the first's
+// awaited addModule() resolves, each building its own worklet node. Same
+// fix shape.
+let riffCaptureBuildPromise = null;
+
 async function ensureRiffCapture() {
-  if (riffCaptureNode) return;
   ensureCtx();
-  if (typeof ensureRecordBus === "function") ensureRecordBus(); // recorder.js — backing + guitar mix
-  else return; // recorder.js not loaded (shouldn't happen — it's always on the page)
+  if (riffCaptureNode) return;
+  if (typeof ensureRecordBus !== "function") return; // recorder.js not loaded (shouldn't happen — it's always on the page)
+  if (riffCaptureBuildPromise) return riffCaptureBuildPromise;
+  riffCaptureBuildPromise = _buildRiffCapture().finally(() => { riffCaptureBuildPromise = null; });
+  return riffCaptureBuildPromise;
+}
+
+async function _buildRiffCapture() {
+  ensureRecordBus(); // recorder.js — backing + guitar mix
   await Audio.ctx.audioWorklet.addModule("riff-capture-processor.js");
   riffCaptureNode = new AudioWorkletNode(Audio.ctx, "riff-capture-processor", {
     numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
@@ -3383,9 +3434,22 @@ function wireRiffCapture() {
 // postMessage, and rendering its acks into the Looper card's UI.
 // ---------------------------------------------------------------------------
 
+// Code-review finding: same in-flight-build race ensurePAGraph had — see
+// its own comment above for the failure mode (two near-simultaneous
+// callers both pass "if (PA.looperNode) return" before the first's
+// awaited addModule() resolves, so both build a full second looper node,
+// permanently orphaning the first). Same fix shape.
+let paLooperBuildPromise = null;
+
 async function ensureLooper() {
-  if (PA.looperNode) return;
   ensureCtx();
+  if (PA.looperNode) return;
+  if (paLooperBuildPromise) return paLooperBuildPromise;
+  paLooperBuildPromise = _buildLooper().finally(() => { paLooperBuildPromise = null; });
+  return paLooperBuildPromise;
+}
+
+async function _buildLooper() {
   await Audio.ctx.audioWorklet.addModule("looper-processor.js");
   PA.looperNode = new AudioWorkletNode(Audio.ctx, "looper-processor", {
     numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],

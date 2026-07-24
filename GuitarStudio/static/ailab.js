@@ -942,17 +942,19 @@ async function aiLabStartDryRecording() {
     hintEl.textContent = "This browser can't record audio (no supported MediaRecorder format).";
     return;
   }
-  const chunks = [];
+  // GP-mem: stream chunks to the server as they arrive rather than holding
+  // the whole take in a JS array — see makeChunkedRecordingUpload (app.js)
+  // and the same fix in recorder.js's beginRecordingPass.
+  const upload = makeChunkedRecordingUpload();
   const recorder = new MediaRecorder(AiLabDry.dest.stream, { mimeType, audioBitsPerSecond: 192_000 });
-  recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+  recorder.ondataavailable = (e) => upload.push(e.data);
   recorder.onerror = (e) => {
     console.error("Dry recorder error", e.error);
     hintEl.textContent = "Recorder error — stopped early, salvaging what was captured.";
     aiLabStopDryRecording();
   };
-  recorder.onstop = () => aiLabFinalizeDryRecording(chunks, mimeType);
+  recorder.onstop = () => aiLabFinalizeDryRecording(upload, mimeType);
   AiLabDry.recorder = recorder;
-  AiLabDry.chunks = chunks;
   AiLabDry.state = "recording";
   AiLabDry.startedAt = performance.now();
   recorder.start(1000);
@@ -970,14 +972,14 @@ function aiLabStopDryRecording() {
   aiLabRmtUpdateRecordUI();
 }
 
-async function aiLabFinalizeDryRecording(chunks, mimeType) {
+async function aiLabFinalizeDryRecording(upload, mimeType) {
   const hintEl = document.getElementById("ailab-rmt-record-hint");
-  const blob = new Blob(chunks, { type: mimeType });
   const ext = mimeType.includes("mp4") ? "m4a" : "webm";
   hintEl.textContent = "Saving dry take…";
   try {
-    const r = await Api.postRaw(
-      `/api/recording/save?track=${encodeURIComponent(State.track || "")}&ext=${ext}&prefix=dry`, blob);
+    // GP-mem: chunks already streamed to the server as they were produced
+    // — commit just renames the assembled temp file into place.
+    const r = await upload.commit(State.track || "", ext, "dry");
     hintEl.textContent = `Saved as ${r.filename}.`;
     if (typeof questMarkDone === "function") questMarkDone("capture");
     await aiLabRmtRefreshTakes();

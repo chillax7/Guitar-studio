@@ -53,6 +53,54 @@ const Api = {
 };
 
 // ---------------------------------------------------------------------------
+// Chunked recording upload — shared by recorder.js (Play Along takes) and
+// ailab.js (Rate My Take dry takes). Real user report: a several-hour Play
+// Along recording session (camera on, forgot to hit Stop) climbed to 7+GB
+// of browser memory and locked up the tab — the old code pushed every
+// MediaRecorder chunk into a JS array for the WHOLE take, only turning it
+// into a Blob and uploading it once Stop was finally pressed. This uploads
+// each ~1s chunk to a server-side temp file as it arrives (svc_recording_
+// append/commit in server.py), so the tab never holds more than one chunk
+// at a time no matter how long the take runs.
+// ---------------------------------------------------------------------------
+
+function makeChunkedRecordingUpload() {
+  const token = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    .replace(/[^a-zA-Z0-9-]/g, "");
+  let queue = Promise.resolve();
+  let failed = false;
+  return {
+    // Chunks must reach the server in order and one at a time (the server
+    // just appends bytes as they arrive) — chaining onto `queue` serializes
+    // them even though ondataavailable fires faster than any one upload
+    // completes.
+    push(blob) {
+      queue = queue.then(async () => {
+        if (failed || !blob || !blob.size) return;
+        try {
+          await Api.postRaw(`/api/recording/append?token=${token}`, blob);
+        } catch (e) {
+          failed = true; // stop trying — commit() will surface this
+        }
+      });
+    },
+    async commit(track, ext, prefix) {
+      await queue;
+      if (failed) {
+        throw new Error("Upload failed partway through the take — the chunks that made it are still safe on the server, but this take couldn't be finalized. Check your connection and try recording again.");
+      }
+      return Api.postRaw(
+        `/api/recording/commit?token=${token}&track=${encodeURIComponent(track || "")}&ext=${ext}&prefix=${prefix}`,
+        undefined);
+    },
+    async discard() {
+      await queue.catch(() => {});
+      return Api.postRaw(`/api/recording/discard_token?token=${token}`, undefined).catch(() => {});
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 

@@ -1276,6 +1276,98 @@ def svc_recording_save(track: str, ext: str, data: bytes, prefix: str = "take") 
     return {"path": str(path), "filename": filename, "take": n}
 
 
+# Real user report: a several-hour Play Along recording session (camera on,
+# forgot to hit Stop) climbed to 7+GB of browser memory and the tab locked
+# up — recorder.js used to hold every MediaRecorder chunk for the WHOLE take
+# in a JS array, only ever turning it into a Blob (and uploading it) once,
+# in finalizeAndUpload, when Stop was finally pressed. Fixed by uploading
+# each ~1s chunk as it arrives instead: svc_recording_append appends it
+# straight to a temp file on disk, so the browser never holds more than one
+# chunk at a time regardless of how long the take runs. svc_recording_commit
+# then just renames that temp file into place — same filename/numbering
+# scheme svc_recording_save already used, no behavior change for anything
+# downstream (finalize, ratings, the takes list, etc).
+TMP_TOKEN_RE = re.compile(r"^[a-zA-Z0-9_-]{8,128}$")
+
+
+def _tmp_takes_dir() -> Path:
+    d = engine.OUTPUT_DIR / ".tmp_takes"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _tmp_take_path(token: str) -> Path:
+    if not TMP_TOKEN_RE.match(token or ""):
+        raise ApiError(400, "Invalid recording token")
+    return _tmp_takes_dir() / f"{token}.part"
+
+
+def svc_recording_append(token: str, chunk: bytes) -> dict:
+    if not chunk:
+        return {"ok": True}
+    path = _tmp_take_path(token)
+    with path.open("ab") as f:
+        f.write(chunk)
+    return {"ok": True}
+
+
+def svc_recording_commit(token: str, track: str, ext: str, prefix: str = "take") -> dict:
+    if ext not in ("mp4", "webm", "m4a", "wav"):
+        raise ApiError(400, f"Unsupported extension '{ext}' — use mp4, webm, m4a, or wav")
+    if prefix not in ("take", "riff", "dry", "loop"):
+        raise ApiError(400, f"Unsupported prefix '{prefix}' — use take, riff, dry, or loop")
+    tmp_path = _tmp_take_path(token)
+    # A marker written right after a successful commit (below) — makes commit
+    # safe to retry. Without this, a commit that actually succeeded server-side
+    # but whose response the client never received (connection dropped after
+    # the rename, before the reply) would make recorder.js's own Retry button
+    # (finalizeAndUpload) call commit again with the same token; tmp_path is
+    # already gone by then, so it would raise "No recorded data" — a false
+    # failure for a take that in fact saved correctly, just never shown in the
+    # UI. Returning the original result instead makes retry idempotent.
+    marker_path = tmp_path.with_suffix(".committed.json")
+    if not tmp_path.exists() or tmp_path.stat().st_size == 0:
+        if marker_path.exists():
+            try:
+                return json.loads(marker_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
+        raise ApiError(400, "No recorded data for this token — nothing was uploaded, or it was already committed/discarded")
+    track_name = safe_name(track) if track else "_untracked"
+    rec_dir = recordings_dir_for(track)
+    rec_dir.mkdir(parents=True, exist_ok=True)
+    if prefix == "riff":
+        n = next_riff_number(rec_dir)
+    elif prefix == "dry":
+        n = next_dry_number(rec_dir)
+    elif prefix == "loop":
+        n = next_loop_number(rec_dir)
+    else:
+        n = next_take_number(rec_dir)
+    filename = f"{track_name} - {prefix} {n:02d}.{ext}"
+    path = rec_dir / filename
+    # Same volume (OUTPUT_DIR) as the destination, so this is an atomic
+    # rename, not a copy — instant regardless of take size.
+    os.replace(tmp_path, path)
+    if prefix == "dry":
+        dry_takes = _read_dry_takes(rec_dir)
+        dry_takes.add(filename)
+        _write_dry_takes(rec_dir, dry_takes)
+    result = {"path": str(path), "filename": filename, "take": n}
+    marker_path.write_text(json.dumps(result))
+    return result
+
+
+def svc_recording_discard_token(token: str) -> dict:
+    """A take abandoned before Stop/commit (recorder error, or the user just
+    never finishes it) — drop its temp file rather than leaving it to
+    accumulate forever in .tmp_takes."""
+    tmp_path = _tmp_take_path(token)
+    tmp_path.unlink(missing_ok=True)
+    tmp_path.with_suffix(".committed.json").unlink(missing_ok=True)
+    return {"ok": True}
+
+
 STARRED_FILE = ".starred.json"
 
 
@@ -1720,7 +1812,18 @@ def svc_export_social(path: str, preset: str) -> dict:
         raise ApiError(500, "ffmpeg not found — required to export. Is it installed? (brew install ffmpeg)")
 
     suffix = spec["suffix"] or f"_web{target.suffix}"
+    # Code-review finding: this used to always write the same fixed name, so
+    # re-exporting the same preset for the same take (a second try, or after
+    # a re-record under the same take name) silently clobbered the earlier
+    # export via ffmpeg's own -y flag — no warning, no differently-named
+    # file, same "Exported: <filename>" success message either time.
+    # svc_recording_trim (this file) already solves exactly this for its own
+    # derived output with a "(trimmed N)" disambiguator; mirrors that here.
     dest = target.with_name(target.stem + suffix)
+    n = 2
+    while dest.exists():
+        dest = target.with_name(f"{target.stem} ({n}){suffix}")
+        n += 1
 
     cmd = [ffmpeg, "-y", "-i", str(target)]
     if "vf" in spec:
@@ -3144,6 +3247,22 @@ class Handler(BaseHTTPRequestHandler):
                 _, query = self._query()
                 result = svc_recording_save(query.get("track", ""), query.get("ext", "webm"),
                                              self._read_body(), query.get("prefix", "take"))
+                return self._send_json(200, result)
+
+            if path == "/api/recording/append":
+                _, query = self._query()
+                result = svc_recording_append(query.get("token", ""), self._read_body())
+                return self._send_json(200, result)
+
+            if path == "/api/recording/commit":
+                _, query = self._query()
+                result = svc_recording_commit(query.get("token", ""), query.get("track", ""),
+                                               query.get("ext", "webm"), query.get("prefix", "take"))
+                return self._send_json(200, result)
+
+            if path == "/api/recording/discard_token":
+                _, query = self._query()
+                result = svc_recording_discard_token(query.get("token", ""))
                 return self._send_json(200, result)
 
             if path == "/api/recording/finalize":
