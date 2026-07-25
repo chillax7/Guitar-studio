@@ -142,6 +142,15 @@ machine that tears it into stems.*
   **and** survives Re-separate — never disappears, never needs re-adding.
 - [ ] Re-dropping a same-named file replaces the existing custom stem
   (no duplicate, no error); the ✕ next to it removes it (with confirm).
+- [ ] **Delete any stem, not just custom (real user request):** every
+  lane's ✕ now works — delete a plain model stem (e.g. `piano`) and a
+  derived split candidate (Boss 5) too, not only a custom one. Each
+  disappears from the lane list immediately, the other stems' names/
+  labels/mix settings are untouched, and the confirm wording is right for
+  what you're deleting (model stem: mentions Re-separate to get it back;
+  custom: gone for good). Confirm a plain reselect of the song does NOT
+  silently regenerate the deleted model stem — only Re-separate (force)
+  does.
 - [ ] A custom stem literally named "guitar" does **not** trigger the
   Guitar Split panel (Boss 5) — only a real model-produced `guitar` stem
   does.

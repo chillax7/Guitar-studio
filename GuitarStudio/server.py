@@ -873,6 +873,43 @@ def svc_stem_rename(source_path: str, model: str, stem: str, new_label: str) -> 
     return {"ok": True, "name": stem_key, "label": labels[stem_key]}
 
 
+def svc_stem_remove(source_path: str, model: str, stem: str) -> dict:
+    """Real user request: stem deletion already existed for custom (user-
+    dropped) stems (svc_remove_custom_stem below) but not for a model's own
+    stems (the known vocals/drums/bass/guitar/piano/other outputs, or a
+    derived one like guitar_center/guitar_sides from the lead/rhythm split)
+    — this closes that gap, deletable "regardless of where it came from"
+    as asked. Same on-disk shape svc_stem_rename above already relies on
+    (out_dir / f"{stem_key}.wav"), so this works identically for a plain
+    Demucs/audio-separator stem, an audio-separator-model-specific stem, or
+    a split-derived one.
+
+    Deliberately just removes the file (+ its label, if any) rather than
+    also touching State.mix's gain/mute/pan/eq entries for it — those are
+    keyed by name and harmlessly orphaned (same as they'd be for a custom
+    stem that no longer exists), not read again once stem_info() stops
+    listing the file. Re-running Separate with force=True is how to get a
+    deleted model stem back; svc_separate's own reused-cache check only
+    requires ANY wav to still exist in the directory, so deleting one of
+    several stems does not by itself trigger a full re-separation next
+    time this song is opened — only an explicit forced re-separate does."""
+    input_path = resolve_source_path(source_path)
+    out_dir = engine.track_stem_dir(input_path, model)
+    if not engine.has_cached_stems(out_dir):
+        raise ApiError(404, f"No stems found for {input_path.name} with model '{model}'.")
+    stem_key = safe_name(stem)
+    stem_path = out_dir / f"{stem_key}.wav"
+    if not stem_path.exists():
+        raise ApiError(404, f"No '{stem}' stem found.")
+    stem_path.unlink()
+    labels_path = out_dir / "stem_labels.json"
+    if labels_path.exists():
+        labels = json.loads(labels_path.read_text())
+        labels.pop(stem_key, None)
+        labels_path.write_text(json.dumps(labels, indent=2))
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------
 # Custom stems (custom-stems-spec.md) — drag an external mp3/wav onto an
 # already-separated song's mixer and have it behave as a full stem from
@@ -3204,6 +3241,13 @@ class Handler(BaseHTTPRequestHandler):
                                           body.get("model", engine.DEFAULT_MODEL),
                                           body.get("stem", ""),
                                           body.get("new_label", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/stem/remove":
+                body = self._read_json_body()
+                result = svc_stem_remove(body.get("source_path", ""),
+                                          body.get("model", engine.DEFAULT_MODEL),
+                                          body.get("stem", ""))
                 return self._send_json(200, result)
 
             if path == "/api/custom_stem":

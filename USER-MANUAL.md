@@ -421,7 +421,16 @@ separation engine's quality ceiling, not a bug in your mix.
 Each stem is a lane: name (with a small **✎** to rename its display
 label — useful for a stem pack import with a long original filename;
 this only changes what's shown, never the underlying file or your saved
-gain/mute/pan settings for it), **M**(ute)/**S**(olo) buttons (soloing a
+gain/mute/pan settings for it) and a small **✕** to remove the stem
+outright (with a confirmation first) — **every** stem can be removed this
+way now, not just a custom one: a model-produced stem (vocals/drums/
+bass/guitar/piano/other) or a derived one (§3.8's split candidates) too,
+useful for clearing out a stem you know you'll never use for this song.
+Removing one of these isn't as permanent as removing a custom stem —
+**Re-separate** (§3.5, with force) regenerates everything the model
+produces, custom stems included in that they're untouched by it either
+way — but there's no "are you sure" beyond the one confirmation, so treat
+it the same as any other delete. **M**(ute)/**S**(olo) buttons (soloing a
 lane that's currently muted un-mutes it too — the point of Solo is to
 hear that one stem, so a muted one wouldn't otherwise make a sound even
 while soloed; un-soloing afterward leaves it unmuted rather than
@@ -534,7 +543,9 @@ whichever separation model happens to be selected — switch between
 and re-separating (even with **Re-separate**) never touches it. Dragging
 in a new file with the same name replaces the old one, for re-recording
 an improved take without any extra cleanup step. A small **✕** next to a
-custom stem's name removes it for good (with a confirmation first).
+custom stem's name removes it for good (with a confirmation first) —
+the same ✕ every other stem's lane has too (§3.6), but for a custom one
+there's no Re-separate to bring it back afterward.
 
 **Positioning a custom stem in the song ("patching"):** a custom stem
 doesn't have to start at the beginning — drag its waveform left or right

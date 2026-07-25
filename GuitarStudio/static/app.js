@@ -1978,7 +1978,7 @@ function renderLanes() {
         ${stem.is_derived ? '<span class="lane-derived-badge">derived</span>' : ""}
         ${stem.is_custom ? '<span class="lane-custom-badge" title="Added by you — not produced by the separation model">custom</span>' : ""}
         <button class="lane-rename-btn" title="Rename this stem (display name only — doesn't touch its saved mix)">✎</button>
-        ${stem.is_custom ? '<button class="lane-delete-btn" title="Remove this custom stem">✕</button>' : ""}
+        <button class="lane-delete-btn" title="Remove this stem">✕</button>
         ${State.model === "imported" && name !== "guitar" ? `<button class="lane-guitar-btn${State.guitarStemOverride === name ? " on" : ""}" title="${State.guitarStemOverride === name ? "This is the guitar stem for Suggest a Tone / Rate My Take — click to unset" : "Mark this as the guitar stem, so Suggest a Tone / Rate My Take treat it like a real separated guitar stem"}">🎸</button>` : ""}</div>
       <div class="lane-buttons">
         <button class="mute-btn ${State.mix.muted[name] ? "on" : ""}">M</button>
@@ -2046,18 +2046,29 @@ function renderLanes() {
         renderLanes();
       });
     }
-    if (stem.is_custom) {
-      header.querySelector(".lane-delete-btn").addEventListener("click", async (e) => {
-        e.stopPropagation();
-        if (!confirm(`Remove the custom stem "${stemDisplayName(name, stem.label)}"? This can't be undone.`)) return;
-        try {
+    // Real user request: deletion used to only exist for custom (user-
+    // dropped) stems — every stem can now be removed regardless of where
+    // it came from. A model-produced stem comes back via Re-separate
+    // (force); a custom one, like before, is gone for good since nothing
+    // regenerates it.
+    header.querySelector(".lane-delete-btn").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const displayName = stemDisplayName(name, stem.label);
+      const warning = stem.is_custom
+        ? `Remove the custom stem "${displayName}"? This can't be undone.`
+        : `Remove the "${displayName}" stem? This can't be undone — re-separate this song (force) to get it back.`;
+      if (!confirm(warning)) return;
+      try {
+        if (stem.is_custom) {
           await Api.post("/api/custom_stem/remove", { source_path: State.track, stem: name });
-          await refreshStemsForCurrentModelAndTrack();
-        } catch (err) {
-          alert(`Could not remove stem: ${err.message || err}`);
+        } else {
+          await Api.post("/api/stem/remove", { source_path: State.track, model: State.model, stem: name });
         }
-      });
-    }
+        await refreshStemsForCurrentModelAndTrack();
+      } catch (err) {
+        alert(`Could not remove stem: ${err.message || err}`);
+      }
+    });
     header.querySelector(".mute-btn").addEventListener("click", () => toggleMute(name));
     header.querySelector(".solo-btn").addEventListener("click", () => toggleSolo(name));
     const fader = header.querySelector(".lane-gain-input");
