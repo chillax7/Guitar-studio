@@ -981,6 +981,7 @@ def svc_split_guitar(source_path: str, model: str, stem: str, method: str) -> di
         center_mono, sides_mono = engine.hybrid_pan_split(left, right, sr, beats)
     else:
         center_mono, sides_mono = engine.midside_pan_split(left, right)
+    center_mono, sides_mono = engine.normalize_split_outputs(center_mono, sides_mono, left, right)
     center = engine.np.stack([center_mono, center_mono], axis=1)
     sides = engine.np.stack([sides_mono, -sides_mono], axis=1)
 

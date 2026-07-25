@@ -2189,6 +2189,33 @@ def _match_length(signal: np.ndarray, target_len: int) -> np.ndarray:
     return signal[:target_len]
 
 
+def normalize_split_outputs(center_mono: np.ndarray, sides_mono: np.ndarray,
+                             left: np.ndarray, right: np.ndarray) -> tuple:
+    """Real user report: the 'sides' (rhythm) proxy from a lead/rhythm split
+    came out too quiet to use even at the mixer's already-elevated 300% gain
+    cap for split stems, on a real song ('Blackbird,' Alter Bridge). Root
+    cause: 'sides' is literally half the L-R difference signal — for a
+    source that's only lightly/partially panned rather than hard stereo-
+    spread, that difference is naturally much smaller in amplitude than
+    'center' (half the L+R sum), with nothing here evening them out before
+    now. Peak-normalizing both outputs to the ORIGINAL stem's own peak (same
+    'peak-normalized on load' idiom Cab IR already uses, so a quiet source
+    file doesn't read as globally quieter) means neither proxy needs an
+    extreme gain boost regardless of how hard the source happened to be
+    panned — and since both are scaled against the SAME target peak, the
+    real loudness balance between the two parts is preserved, not flattened
+    to equal volume."""
+    target_peak = float(max(np.max(np.abs(left)), np.max(np.abs(right)), 1e-6))
+
+    def _peak_normalize(mono: np.ndarray) -> np.ndarray:
+        peak = float(np.max(np.abs(mono))) if len(mono) else 0.0
+        if peak < 1e-6:
+            return mono  # near-silent proxy (e.g. a fully-centered source's "sides") — nothing to scale
+        return (mono * (target_peak / peak)).astype(np.float32)
+
+    return _peak_normalize(center_mono), _peak_normalize(sides_mono)
+
+
 def _onset_regularity_curve(mono: np.ndarray, samplerate: int, beat_times: list,
                              frame_times: np.ndarray) -> np.ndarray:
     """How tightly note onsets in `mono` cluster around the beat grid,
@@ -2311,6 +2338,7 @@ def cmd_split_guitar(args: argparse.Namespace) -> None:
         center_mono, sides_mono = hybrid_pan_split(left, right, sr, beats)
     else:
         center_mono, sides_mono = midside_pan_split(left, right)
+    center_mono, sides_mono = normalize_split_outputs(center_mono, sides_mono, left, right)
     center = np.stack([center_mono, center_mono], axis=1)
     sides = np.stack([sides_mono, -sides_mono], axis=1)
 

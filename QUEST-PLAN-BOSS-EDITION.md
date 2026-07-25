@@ -578,6 +578,13 @@ playback and Tune transposition, not just a static screenshot's worth.
 - [ ] **Backing Track card + Offset:** play/scrub to where the solo
   actually starts, click **↓ Use current position as Offset**, confirm it
   fills the field correctly.
+- [ ] **Record starts the backing track (real user request):** scrub the
+  Backing Track card to a specific spot, then **● Record dry take** —
+  confirm playback actually starts from that exact spot (not 0, not
+  needing a separate manual Play). Toggle this card's own Count-in on and
+  record again — confirm the 2-bar click plays first and recording +
+  playback both start together right after it, same feel as Play Along's
+  own count-in. **Stop** should pause the backing track too.
 - [ ] **Score this take** with Offset search left at default — the auto-
   fine-tune should land close to the actual best-aligned start even from a
   rough guess; the heatmap is scoped to just the take's own span (not the

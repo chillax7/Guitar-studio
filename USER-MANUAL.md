@@ -685,6 +685,13 @@ Three split algorithms are offered:
 None of the three is guaranteed to beat the others on a given song —
 try more than one and judge by ear, same as always.
 
+Both Candidate A and Candidate B are peak-normalized against the original
+guitar stem's own peak level when the split runs, so neither one comes out
+needing an extreme gain boost just because the source happened to be only
+lightly panned rather than hard stereo-spread (real user report: the
+"sides" candidate on one song was audible but far too quiet even boosted
+to the mixer's already-elevated 300% cap for split stems — this is why).
+
 ### 3.9 Export
 
 The **Export** section is always visible in the right-hand inspector once a
@@ -1433,6 +1440,13 @@ scrub timeline. Play or scrub to the spot the solo actually starts, then
 **↓ Use current position as Offset** drops it straight into the Offset
 field below — no more nudging the Offset number by trial and error, or
 switching back to the Mixer to find the spot first.
+
+**Record dry take also starts the backing track**, from wherever the
+playhead is currently sitting on the card above (scrub to the right spot
+first, same as setting the Offset) — with the count-in toggle honored
+first if it's on, exactly like Play Along's own Record button. A dry take
+needs the real song playing to actually play along with; **Stop** pauses
+the backing track again, the same way Play Along's Stop does.
 
 **Managing takes right here.** Each row in the takes list has its own
 **▶ Play**, **✎ Rename**, and **🗑 Delete** — the same actions Play

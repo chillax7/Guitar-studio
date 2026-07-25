@@ -942,6 +942,21 @@ async function aiLabStartDryRecording() {
     hintEl.textContent = "This browser can't record audio (no supported MediaRecorder format).";
     return;
   }
+  // Real user request: Record used to never start the backing track, so a
+  // dry take was recorded against silence rather than the actual song —
+  // scoring needs a real reference performance to play along with, not
+  // just guitar-in-a-vacuum. Starts from wherever the playhead already is
+  // (this screen's own mirrored Backing Track transport, same idiom as
+  // Play Along's), honoring its count-in toggle exactly like recorder.js's
+  // beginRecordingPass does — count-in first (if on), THEN recording and
+  // playback begin together on beat 1.
+  const countInEl = document.querySelector('[data-transport="count-in-toggle"]');
+  const doCountIn = !!(countInEl && countInEl.classList.contains("active"));
+  withOptionalCountIn(doCountIn, () => aiLabBeginDryRecordingPass(mimeType));
+}
+
+function aiLabBeginDryRecordingPass(mimeType) {
+  const hintEl = document.getElementById("ailab-rmt-record-hint");
   // GP-mem: stream chunks to the server as they arrive rather than holding
   // the whole take in a JS array — see makeChunkedRecordingUpload (app.js)
   // and the same fix in recorder.js's beginRecordingPass.
@@ -958,6 +973,9 @@ async function aiLabStartDryRecording() {
   AiLabDry.state = "recording";
   AiLabDry.startedAt = performance.now();
   recorder.start(1000);
+  if (State.track && Audio.duration && typeof startPlaybackAt === "function") {
+    startPlaybackAt(currentPosition());
+  }
   hintEl.textContent = "Recording — guitar only, backing track is not being captured.";
   aiLabRmtUpdateRecordUI();
   aiLabDryTick();
@@ -969,6 +987,9 @@ function aiLabStopDryRecording() {
   AiLabDry.recorder.stop();
   AiLabDry.state = "saving";
   if (AiLabDry.tickInterval) { clearInterval(AiLabDry.tickInterval); AiLabDry.tickInterval = null; }
+  // Matches Play Along's own Record card: Stop also stops the backing
+  // track, so a take doesn't end with the mix still playing on regardless.
+  if (typeof pausePlayback === "function") pausePlayback();
   aiLabRmtUpdateRecordUI();
 }
 
