@@ -789,14 +789,27 @@ async function paEnableInput() {
   const deviceId = document.getElementById("pa-device-select").value;
   const hintEl = document.getElementById("pa-input-hint");
   try {
-    // latency ideal:0 asks the capture stack for its smallest input buffer
-    // — an "ideal" constraint can't fail the getUserMedia call, the
-    // browser just gets as close as it can. The input buffer is the one
-    // piece of the monitoring path no Web Audio API can even measure
-    // (see paShowLatencyEstimate), so asking is all that's available.
+    // V6-MEM1: used to also request `latency: { ideal: 0 }` here to shave
+    // the input side's buffer as tight as the output side already is (see
+    // ensureCtx's latencyHint: 0) — but with a real external USB interface
+    // (confirmed: reproduces with a Helix, not the built-in mic) whose
+    // capture clock is independent of the Mac's output clock, asking BOTH
+    // ends for the smallest possible buffer maximizes how often Chrome's
+    // renderer has to reconcile drift between the two clock domains, and
+    // that reconciliation path is exactly where a real, continuous native
+    // memory leak was observed (Chrome Helper (Renderer) RSS climbing
+    // unboundedly for as long as input stayed enabled — invisible to JS
+    // heap, confirmed NOT present in plain backing-track playback, and not
+    // reproducible against a synthetic/fake capture device, which has no
+    // independent hardware clock to drift against in the first place). It
+    // was only ever a latency preference, not a correctness requirement —
+    // "ideal" constraints can't fail the getUserMedia call either way — so
+    // dropping it costs nothing except that unmeasurable sliver of input
+    // latency, in exchange for giving Chrome's own capture stack room to
+    // pick a buffer size that survives clock drift instead of chasing the
+    // smallest possible one on both ends at once.
     const audioConstraints = {
       echoCancellation: false, noiseSuppression: false, autoGainControl: false,
-      latency: { ideal: 0 },
     };
     if (deviceId) audioConstraints.deviceId = { exact: deviceId };
     const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
