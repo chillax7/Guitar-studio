@@ -504,6 +504,12 @@ async function ensureStretchNodes() {
       : [buf.getChannelData(0).slice(), buf.getChannelData(0).slice()];
     node.port.postMessage({ type: "load", channels }, channels.map((c) => c.buffer));
     node.port.postMessage({ type: "params", speed: Audio.speed, pitchRatio: Audio.pitchRatio });
+    // Seed the idle flag from the mix state that already exists, so a stem
+    // that was ALREADY muted before Speed/Tune was switched on starts idle
+    // rather than running a full (inaudible) phase vocoder until the next
+    // time something toggles it. See applyMixToGains.
+    const baseGain = Audio.gains[name]._baseGain;
+    node.port.postMessage({ type: "active", active: baseGain === undefined || baseGain > 0 });
     Audio.stretchNodes[name] = node;
   }
 }
@@ -845,6 +851,15 @@ function applyMixToGains() {
     if (State.mix.muted[name]) g = 0;
     if (soloStem && name !== soloStem) g = 0;
     Audio.gains[name]._baseGain = g;
+    // In processed (Speed/Tune) mode, a stem at gain 0 was still running a
+    // full phase vocoder every hop to produce audio nothing could hear —
+    // real wasted work on the audio thread, and with up to 6 stems that
+    // waste was a measurable part of why processed playback dropped out.
+    // Tell the worklet to idle instead; it keeps its read position moving,
+    // so unmuting stays sample-aligned with every other stem (see
+    // stretch-processor.js's `active`).
+    const node = Audio.stretchNodes[name];
+    if (node) node.port.postMessage({ type: "active", active: g > 0 });
   }
   applyLiveMuteRanges(currentPosition());
 }

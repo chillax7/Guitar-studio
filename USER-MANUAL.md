@@ -1770,6 +1770,17 @@ current song has attached.
 - The chord lane is a maj/min/7/5 heuristic (§3.7) — still assistive,
   best on pop/rock, and worth confirming by ear, not a real
   chord-recognition model.
+- **Speed/Tune** run a phase vocoder per stem, in real time, in the
+  browser. It uses identity phase locking (the standard technique for
+  keeping each note's partials coherent) and is a large improvement on
+  what came before — two real reports of distortion and dropouts were
+  traced to specific, now-fixed faults — but it still isn't a
+  mastering-grade offline time-stretch like RubberBand or Elastique.
+  Expect it to hold up well across the ±100 cent / 0.5–2× ranges the app
+  actually exposes, with the usual phase-vocoder softness on very
+  transient-heavy material at the extremes. Anything that sounds
+  genuinely broken (crackle, pumping, dropouts) is a bug worth
+  reporting, not the expected ceiling.
 
 ## 10. File locations reference
 

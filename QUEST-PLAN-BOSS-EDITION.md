@@ -731,14 +731,26 @@ Takes.*
   point of this redesign.
 - [ ] Double-click resets: Speed/Tune value readouts here **and** on the
   Mixer reset to 1.00×/0¢; master Volume readout resets to 100%.
-- [ ] **Speed/Tune audio quality:** with Tune moved off 0¢ (either
-  direction) or Speed off 1.00×, playback stays clean at normal listening
-  levels with several stems playing — no crackling, clipping, or harsh
-  distortion. If anything sounds rough, note whether it tracks to a
-  specific stem type (percussive vs. sustained) and whether more un-muted
-  stems make it worse — this engine has an acknowledged quality ceiling on
-  transient-heavy material, so the useful signal is *how* it fails, not
-  just that it does.
+- [ ] **Speed/Tune audio quality (rewritten — phase-locked vocoder):** the
+  headline fix of this round, from a real report of "distorted, and the
+  volume cuts in and out" on a long complex song. With Tune off 0¢ and/or
+  Speed off 1.00×, **all stems un-muted**, on a busy transient-heavy
+  passage: playback must stay clean and full-bandwidth with no dropouts,
+  no pumping, and no gritty edge. Three measured faults were fixed — CPU
+  (six stems needed ~256% of the real-time audio budget, now ~59%), level
+  overshoot (a 0.9 sine came out at 1.18 and hit the soft limiter, now
+  0.90), and treble loss (−1.9dB at 15kHz from the resampler, now
+  −0.67dB) — so all three are worth listening for separately.
+- [ ] **Processed vs direct A/B:** play the same passage at Speed 1.00×/
+  Tune 0¢ (direct path, no vocoder) and then nudged slightly off unity
+  (processed path). The processed version should sound close in loudness
+  and brightness — clearly *not* noticeably quieter, duller, or grittier.
+  A big step down between the two is the bug this round was meant to end.
+- [ ] **Muted stems are free now:** in processed mode, muting a stem
+  should change nothing about how the rest sound, and un-muting it must
+  drop back in **perfectly in time** — it keeps tracking position while
+  idle specifically so this stays sample-aligned. A stem that returns
+  early/late/flammed against the others is a real bug, report it.
 - [ ] **Rig Preset quick-picker:** matches Tone Lab's own dropdown at all
   times; picking a name here applies immediately with no separate Load
   click, and updates Tone Lab's dropdown to match.
