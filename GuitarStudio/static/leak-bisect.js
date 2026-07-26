@@ -21,23 +21,41 @@
   const riff = () => (typeof riffCaptureNode !== 'undefined' ? riffCaptureNode : null);
 
   window.LEAK = {
+    // ROUND 2. a) has now been run on the reporting machine: it silenced
+    // monitoring, proving the disconnect took effect, and memory kept
+    // climbing anyway. So the signal PATH is cleared, and b)/c)/d)/e) — all
+    // of which only rewire that path — cannot explain it either.
+    //
+    // Two things survive a): the rig's worklets are still pulled every
+    // quantum by the audio thread (a disconnected source does not stop
+    // nodes that still reach ctx.destination), and the capture device plus
+    // the output device are both still open. mic-leak-test.html never
+    // rendered any audio out, only captured, so "both directions open on
+    // the same interface" is a configuration it never tested.
+    //
+    // g) and k) below split exactly that, and each one is decisive on its
+    // own rather than needing a chain of inference.
     plan() {
       return [
-        'Watch the Memory footprint of this tab in Chrome task manager (Shift+Esc).',
-        'Confirm it is climbing BEFORE cutting anything, or the results mean nothing.',
+        'Watch this tab in Chrome task manager (Shift+Esc). Confirm it is climbing',
+        'before each step, or the result means nothing.',
         '',
-        '1. LEAK.info()  -- device + rig facts, no change. Send me this.',
-        '2. LEAK.a()     -- cut the input off the whole graph. Wait ~2 min.',
-        '     still climbing -> the audio graph is NOT the cause; stop here and tell me.',
-        '     stopped        -> it is downstream of the input; continue.',
-        '3. LEAK.b()     -- input -> meters analyser only. Wait ~2 min.',
-        '4. LEAK.c()     -- input -> rig chain only. Wait ~2 min.',
-        '     whichever of b/c climbs contains the cause.',
-        '5. If c) climbs, reload the page, re-enable input, then try',
-        '   LEAK.d() (riff capture) and LEAK.e() (looper), ~2 min each.',
-        '6. LEAK.f()     -- stop the meter animation loop.',
+        'a) has already told us the signal path is not the cause, so skip b-e.',
+        'Run these, ~2 min each, and stop at the first one that halts the growth:',
         '',
-        'LEAK.restore() puts the signal path back. Reload the page to undo d/e.',
+        '1. LEAK.f()   -- stop the meter animation loop (main thread, per frame).',
+        '2. LEAK.g()   -- suspend the AudioContext: every worklet and node stops',
+        '                 being pulled. This is the big split — if growth halts, the',
+        '                 cause is on the audio render thread; if not, it is not audio',
+        '                 processing at all. LEAK.h() resumes.',
+        '3. LEAK.out() -- move playback to the system default output, off the Helix.',
+        '                 The bisect page never played audio out, only captured, so',
+        '                 running both directions on one interface is untested ground.',
+        '4. LEAK.k()   -- stop the capture tracks outright. Ends the last thing that',
+        '                 is still touching the device.',
+        '',
+        'Report which step (if any) stops it, and roughly how fast it was climbing.',
+        'Reload the page to undo everything.',
       ].join('\n');
     },
 
@@ -105,6 +123,42 @@
       if (PA.meterRaf) cancelAnimationFrame(PA.meterRaf);
       PA.meterRaf = null;
       return 'F: meter animation loop stopped. Wait ~2 min.';
+    },
+
+    // G: nothing on the audio render thread runs while a context is
+    // suspended, so this covers every worklet and node at once — gate, NAM,
+    // octave, riff capture, looper, the waveshaper and the convolver —
+    // without having to unpick them one at a time. Disconnecting the source
+    // never stopped any of them, because they still reach ctx.destination
+    // and so are still pulled every quantum with silence flowing through.
+    async g() {
+      await Audio.ctx.suspend();
+      return 'G: AudioContext suspended (state=' + Audio.ctx.state + '). All audio processing ' +
+             'has stopped. Wait ~2 min: if the growth stops, it is on the render thread; if it ' +
+             'carries on, audio processing is not what is growing. LEAK.h() resumes.';
+    },
+    async h() {
+      await Audio.ctx.resume();
+      return 'H: AudioContext resumed (state=' + Audio.ctx.state + ').';
+    },
+
+    // OUT: the app monitors through the interface; the bisect page never
+    // opened an output at all. That makes "capture and playback both live on
+    // the same USB device" the one configuration nothing has tested yet.
+    async out() {
+      if (!Audio.ctx.setSinkId) return 'OUT: this Chrome cannot switch the output device.';
+      const before = Audio.ctx.sinkId;
+      await Audio.ctx.setSinkId('');
+      return `OUT: playback moved from sink "${before || '(default)'}" to the system default. ` +
+             'If the Helix was the output, it is now only capturing. Wait ~2 min.';
+    },
+
+    // K: stops capture outright — the device is no longer being read at all.
+    k() {
+      if (!PA.stream) return 'K: no stream to stop.';
+      PA.stream.getTracks().forEach((t) => t.stop());
+      return 'K: capture tracks stopped; nothing is reading the interface now. Wait ~2 min. ' +
+             '(Reload to get input back.)';
     },
 
     restore() {
