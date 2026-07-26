@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Input memory-leak bisect</title>
+<!--
+  Standalone diagnostic for the "enabling a USB interface makes Chrome's
+  renderer process grow until the tab dies" report.
+
+  Why this page exists: the leak does not reproduce headlessly. Plain
+  backing-track playback, live input at matched sample rates, live input at
+  mismatched rates, and 8 channels pushed through the whole rig all measured
+  flat against real process RSS. So the trigger is something only real
+  hardware produces, and the useful question stops being "which line leaks"
+  and becomes "how much of the stack do you need before it starts".
+
+  This page deliberately depends on NOTHING from the app — no app.js, no
+  playalong.js, no worklets unless you ask for them. Each level adds exactly
+  one layer on top of the previous one. Whichever level first makes memory
+  climb is the answer, and it splits the search in half straight away: if
+  level 1 or 2 climbs, the app's rig is irrelevant and this is Chrome +
+  the interface; if it only starts at 4, it is ours.
+-->
+<style>
+  body { font: 14px/1.55 system-ui, -apple-system, sans-serif; max-width: 780px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.3rem; }
+  fieldset { border: 1px solid #bbb; border-radius: 8px; margin: 1rem 0; padding: 1rem; }
+  legend { font-weight: 600; padding: 0 .4rem; }
+  button { font: inherit; padding: .45rem .8rem; margin: .2rem .3rem .2rem 0; border-radius: 6px; border: 1px solid #888; background: #f4f4f4; cursor: pointer; }
+  button.stop { background: #ffe0e0; border-color: #c88; }
+  #status { font-family: ui-monospace, monospace; white-space: pre-wrap; background: #f6f6f6; border-radius: 6px; padding: .75rem; min-height: 5rem; }
+  select { font: inherit; padding: .3rem; max-width: 100%; }
+  ol { padding-left: 1.3rem; }
+  code { background: #eee; padding: .1rem .3rem; border-radius: 3px; }
+</style>
+
+<h1>Input memory-leak bisect</h1>
+
+<p>Open <b>Activity Monitor</b> (or Chrome's own task manager, <b>Shift+Esc</b>, which
+names the process precisely) and watch <b>Google Chrome Helper (Renderer)</b> for this tab.
+Run <b>one level at a time</b>, leave it going 3–5 minutes, and note whether memory climbs.
+Press <b>Stop</b> between levels.</p>
+
+<fieldset>
+  <legend>Input device</legend>
+  <select id="dev"></select>
+  <button id="refresh">Refresh list</button>
+  <div id="devinfo" style="margin-top:.5rem;font-family:ui-monospace,monospace;font-size:12px;"></div>
+</fieldset>
+
+<fieldset>
+  <legend>Levels — each adds one layer to the one above</legend>
+  <button data-level="1">1. Capture only (no Web Audio at all)</button><br>
+  <button data-level="2">2. + AudioContext &amp; MediaStreamSource</button><br>
+  <button data-level="3">3. + Analyser read on every animation frame</button><br>
+  <button data-level="4">4. + AudioWorklet in the path (the app's gate)</button><br>
+  <button id="stop" class="stop">Stop</button>
+</fieldset>
+
+<fieldset>
+  <legend>Status</legend>
+  <div id="status">Idle.</div>
+</fieldset>
+
+<p><b>What the result tells us</b></p>
+<ol>
+  <li><b>Level 1 climbs</b> — the leak is in Chrome's capture stack itself. Nothing in the app is involved; the fix is a workaround plus a Chrome bug report.</li>
+  <li><b>Level 2 climbs</b> — it is <code>createMediaStreamSource</code> feeding an AudioContext, i.e. still Chrome, but tied to how we open the context.</li>
+  <li><b>Level 3 climbs</b> — the meter loop's analyser reads are implicated.</li>
+  <li><b>Level 4 climbs</b> — an AudioWorklet in the live path is implicated, and that <i>is</i> ours to fix.</li>
+</ol>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let stream = null, ctx = null, raf = null, t0 = 0, timer = null;
+
+async function listDevices() {
+  // Labels only populate once permission has been granted at least once.
+  try { (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach(t => t.stop()); } catch (e) {}
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
+  $('dev').innerHTML = '';
+  for (const d of devs) {
+    const o = document.createElement('option');
+    o.value = d.deviceId;
+    o.textContent = d.label || `(unlabelled ${d.deviceId.slice(0, 8)})`;
+    $('dev').appendChild(o);
+  }
+  log(`${devs.length} input device(s) found. Pick the Helix, then run a level.`);
+}
+
+function log(msg) { $('status').textContent = msg; }
+
+function startTimer(level, extra) {
+  t0 = Date.now();
+  clearInterval(timer);
+  timer = setInterval(() => {
+    const secs = ((Date.now() - t0) / 1000).toFixed(0);
+    const jsHeap = performance.memory
+      ? ` | JS heap ${(performance.memory.usedJSHeapSize / 1e6).toFixed(1)}MB (expected to stay flat — the growth is native, so watch Activity Monitor, not this)`
+      : '';
+    log(`LEVEL ${level} running — ${secs}s\n${extra}${jsHeap}`);
+  }, 1000);
+}
+
+async function stopAll() {
+  clearInterval(timer);
+  if (raf) { cancelAnimationFrame(raf); raf = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (ctx) { try { await ctx.close(); } catch (e) {} ctx = null; }
+  log('Stopped. Memory should stop climbing now (it will not necessarily fall back).');
+}
+
+async function getStream() {
+  const deviceId = $('dev').value;
+  const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+  if (deviceId) audio.deviceId = { exact: deviceId };
+  stream = await navigator.mediaDevices.getUserMedia({ audio });
+  const s = stream.getAudioTracks()[0].getSettings();
+  $('devinfo').textContent =
+    `track: ${s.sampleRate}Hz, ${s.channelCount}ch, latency ${s.latency}s`;
+  return s;
+}
+
+async function run(level) {
+  await stopAll();
+  try {
+    const s = await getStream();
+    let extra = `capture: ${s.sampleRate}Hz ${s.channelCount}ch`;
+
+    if (level >= 2) {
+      // latencyHint 0 matches what the app asks for, so this reproduces the
+      // app's conditions rather than a friendlier default.
+      ctx = new AudioContext({ latencyHint: 0 });
+      const src = ctx.createMediaStreamSource(stream);
+      extra += `\ncontext: ${ctx.sampleRate}Hz` +
+        (ctx.sampleRate !== s.sampleRate ? '  <-- RATE MISMATCH (Chrome must resample)' : '  (rates match)');
+
+      if (level >= 3) {
+        const an = ctx.createAnalyser();
+        an.fftSize = 8192;
+        src.connect(an);
+        const buf = new Float32Array(an.fftSize);
+        const tick = () => { an.getFloatTimeDomainData(buf); raf = requestAnimationFrame(tick); };
+        tick();
+        extra += '\nanalyser: reading every animation frame';
+      }
+
+      if (level >= 4) {
+        await ctx.audioWorklet.addModule('gate-processor.js');
+        const gate = new AudioWorkletNode(ctx, 'gate-processor', {
+          numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1,
+        });
+        const sink = ctx.createGain();
+        sink.gain.value = 0; // silent: this is a memory test, not a monitoring test
+        src.connect(gate).connect(sink).connect(ctx.destination);
+        extra += `\nworklet: gate-processor in path (node reports ${gate.channelCount}ch, mode "${gate.channelCountMode}")`;
+      }
+    }
+    startTimer(level, extra);
+  } catch (e) {
+    log('Failed: ' + e.message);
+  }
+}
+
+document.querySelectorAll('button[data-level]').forEach((b) => {
+  b.addEventListener('click', () => run(Number(b.dataset.level)));
+});
+$('stop').addEventListener('click', stopAll);
+$('refresh').addEventListener('click', listDevices);
+listDevices();
+</script>
