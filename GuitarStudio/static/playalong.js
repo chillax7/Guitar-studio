@@ -3155,20 +3155,39 @@ function paSelectMidiDevice(id) {
   statusEl.textContent = `Connected: ${input.name || input.id}.`;
 }
 
-async function paRefreshMidiDevices() {
+// V6-MEM2: this used to request access AND render the list AND install the
+// statechange handler in one function, with the handler calling the whole
+// thing again. That recursed without end.
+//
+// requestMIDIAccess() hands back a fresh MIDIAccess each call, and a fresh
+// object announces the ports it already has by firing statechange — which
+// re-entered here, requested access again, and so on. Each pass rebuilt the
+// <option> list, and escapeHtml() builds a throwaway <div> per device, so
+// the loop shed detached DOM nodes as fast as it could spin: measured at 913
+// createElement calls a second, and roughly a gigabyte a minute of renderer
+// memory until the tab died.
+//
+// It only ever bit people with a USB MIDI device attached, because with no
+// MIDI ports there is nothing for a new MIDIAccess to announce and the loop
+// never starts. A Helix registers MIDI ports; a built-in microphone does
+// not. That is the whole reason this looked like an audio problem for so
+// long — it tracked "plug the interface in", survived suspending the
+// AudioContext and stopping capture, and never once reproduced against a
+// synthetic capture device, which brings no MIDI ports with it.
+//
+// Access is now acquired once and the handler only re-renders.
+async function paEnsureMidiAccess() {
+  if (PA.midiAccess) return PA.midiAccess;
+  PA.midiAccess = await navigator.requestMIDIAccess();
+  // Installed once, on the one object we keep. Re-rendering is safe to
+  // repeat; re-requesting access is what was not.
+  PA.midiAccess.onstatechange = () => paRenderMidiDeviceList();
+  return PA.midiAccess;
+}
+
+function paRenderMidiDeviceList() {
   const select = document.getElementById("pa-midi-device-select");
-  const statusEl = document.getElementById("pa-midi-status");
-  if (!navigator.requestMIDIAccess) {
-    select.innerHTML = '<option value="">Not supported in this browser — try Chrome or Edge</option>';
-    return;
-  }
-  try {
-    PA.midiAccess = await navigator.requestMIDIAccess();
-  } catch (e) {
-    select.innerHTML = '<option value="">MIDI access denied</option>';
-    statusEl.textContent = "MIDI access was denied — check your browser's site permissions.";
-    return;
-  }
+  if (!PA.midiAccess) return;
   const inputs = [...PA.midiAccess.inputs.values()];
   select.innerHTML = inputs.length
     ? inputs.map((inp) => `<option value="${inp.id}">${escapeHtml(inp.name || inp.id)}</option>`).join("")
@@ -3177,11 +3196,31 @@ async function paRefreshMidiDevices() {
   const toSelect = inputs.find((inp) => inp.id === savedId) || inputs[0];
   if (toSelect) {
     select.value = toSelect.id;
-    paSelectMidiDevice(toSelect.id);
+    // Only re-bind when the selection actually changed. Re-running this on
+    // every statechange would reassign onmidimessage and rewrite
+    // localStorage for a device that was already connected.
+    if (!PA.midiInput || PA.midiInput.id !== toSelect.id) paSelectMidiDevice(toSelect.id);
   }
-  // A footswitch plugged in (or unplugged) after this ran shouldn't need a
-  // page reload to show up — real gap a one-time enumeration would leave.
-  PA.midiAccess.onstatechange = () => paRefreshMidiDevices();
+}
+
+async function paRefreshMidiDevices() {
+  const select = document.getElementById("pa-midi-device-select");
+  const statusEl = document.getElementById("pa-midi-status");
+  if (!navigator.requestMIDIAccess) {
+    select.innerHTML = '<option value="">Not supported in this browser — try Chrome or Edge</option>';
+    return;
+  }
+  try {
+    await paEnsureMidiAccess();
+  } catch (e) {
+    select.innerHTML = '<option value="">MIDI access denied</option>';
+    statusEl.textContent = "MIDI access was denied — check your browser's site permissions.";
+    return;
+  }
+  // A footswitch plugged in (or unplugged) later still shows up without a
+  // reload — that is what the statechange handler above is for, and it now
+  // does only this render rather than starting over.
+  paRenderMidiDeviceList();
 }
 
 function wireMidiControls() {
