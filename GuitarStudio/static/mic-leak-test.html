@@ -34,10 +34,19 @@
 
 <h1>Input memory-leak bisect</h1>
 
-<p>Open <b>Activity Monitor</b> (or Chrome's own task manager, <b>Shift+Esc</b>, which
-names the process precisely) and watch <b>Google Chrome Helper (Renderer)</b> for this tab.
-Run <b>one level at a time</b>, leave it going 3–5 minutes, and note whether memory climbs.
-Press <b>Stop</b> between levels.</p>
+<p><b>Use Chrome's own task manager, not Activity Monitor.</b> Press <b>Shift+Esc</b>
+(or ⋮ → More Tools → Task Manager) and find the row named
+&ldquo;<i>Input memory-leak bisect</i>&rdquo; — that is this tab, and its
+<b>Memory footprint</b> column is the number to watch. Activity Monitor only shows
+a pile of identically-named &ldquo;Google Chrome Helper (Renderer)&rdquo; processes with
+no indication of which tab each one belongs to, and if the leaking tab has already been
+discarded there may be no matching row at all — which makes &ldquo;I saw no growth&rdquo;
+impossible to distinguish from &ldquo;I was watching the wrong process.&rdquo;</p>
+
+<p>Run <b>one level at a time</b>, leave it going 3–5 minutes, and note whether that row's
+memory climbs. Press <b>Stop</b> between levels. For a baseline, note the number before
+you start a level — the app itself sits around 1&nbsp;GB, so what matters is the
+<i>trend</i>, not the absolute figure.</p>
 
 <fieldset>
   <legend>Input device</legend>
@@ -94,7 +103,7 @@ function startTimer(level, extra) {
   timer = setInterval(() => {
     const secs = ((Date.now() - t0) / 1000).toFixed(0);
     const jsHeap = performance.memory
-      ? ` | JS heap ${(performance.memory.usedJSHeapSize / 1e6).toFixed(1)}MB (expected to stay flat — the growth is native, so watch Activity Monitor, not this)`
+      ? ` | JS heap ${(performance.memory.usedJSHeapSize / 1e6).toFixed(1)}MB (expected to stay flat — the growth is native memory, which this number cannot see, so judge by the task manager's Memory footprint, not this)`
       : '';
     log(`LEVEL ${level} running — ${secs}s\n${extra}${jsHeap}`);
   }, 1000);
@@ -144,7 +153,50 @@ async function run(level) {
       }
 
       if (level >= 4) {
-        await ctx.audioWorklet.addModule('gate-processor.js');
+        // addModule reports every failure as the same opaque "Unable to load
+        // a worklet's module", which is useless for telling "file missing"
+        // apart from "served with the wrong type" apart from "script threw".
+        // server.py's _serve_static answers ANY unknown path with index.html
+        // and a 200, so a wrong URL arrives as HTML rather than as a 404 —
+        // indistinguishable from the outside without actually looking at the
+        // response. Fetch it first and say exactly what came back.
+        const url = new URL('gate-processor.js', location.href).href;
+        let pre;
+        try {
+          pre = await fetch(url);
+        } catch (e) {
+          throw new Error(`could not fetch ${url} — ${e.message}`);
+        }
+        const ctype = pre.headers.get('content-type') || '(none)';
+        const body = await pre.text();
+        const looksLikeHtml = /^\s*<!doctype html|^\s*<html/i.test(body);
+        extra += `\nworklet URL: ${url}\n  HTTP ${pre.status}, content-type: ${ctype}, ${body.length} bytes`;
+        if (!pre.ok) {
+          throw new Error(`worklet fetch returned HTTP ${pre.status} for ${url}`);
+        }
+        if (looksLikeHtml) {
+          throw new Error(
+            `${url} returned HTML, not JavaScript — the server fell back to index.html, ` +
+            `which means gate-processor.js is not present at that path in the static folder ` +
+            `this server is running from. Check that your pull actually landed it, and that ` +
+            `the server was started from this same checkout.`
+          );
+        }
+        if (!/javascript|ecmascript/i.test(ctype)) {
+          throw new Error(
+            `${url} was served as "${ctype}" — a worklet module must be served with a ` +
+            `JavaScript content-type or Chrome refuses to load it.`
+          );
+        }
+        try {
+          await ctx.audioWorklet.addModule(url);
+        } catch (e) {
+          throw new Error(
+            `the file fetched fine (HTTP ${pre.status}, ${ctype}) but addModule still rejected it: ` +
+            `${e.name}: ${e.message} — that points at the module failing to evaluate rather than ` +
+            `at the download.`
+          );
+        }
         const gate = new AudioWorkletNode(ctx, 'gate-processor', {
           numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1,
         });
