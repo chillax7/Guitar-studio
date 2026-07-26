@@ -52,7 +52,23 @@ you start a level — the app itself sits around 1&nbsp;GB, so what matters is t
   <legend>Input device</legend>
   <select id="dev"></select>
   <button id="refresh">Refresh list</button>
+  <div style="margin-top:.6rem;">
+    <label><input type="checkbox" id="tightLatency"> Request the app's smallest input buffer
+    (<code>latency: { ideal: 0 }</code>)</label>
+  </div>
   <div id="devinfo" style="margin-top:.5rem;font-family:ui-monospace,monospace;font-size:12px;"></div>
+</fieldset>
+
+<fieldset style="border-color:#c9a227;background:#fffdf3;">
+  <legend>Run this first</legend>
+  <p style="margin:0 0 .5rem;">Levels 1–4 all stayed flat, but they were asking for a
+  <i>different input buffer than the app</i>. Every other device parameter has now been
+  measured identical (48000 Hz in and out, stereo), leaving this as the only known
+  difference between the levels that hold steady and the app that does not.</p>
+  <p style="margin:0;"><b>Tick the box above, then re-run level 1, and then level 2</b>, 3–5 min each.
+  If either climbs, the buffer request is the trigger and nothing further down the rig
+  matters. If both stay flat, the request is exonerated and the cause is in the rig
+  proper — carry on with <code>leak-bisect.js</code> in the app instead.</p>
 </fieldset>
 
 <fieldset>
@@ -179,11 +195,22 @@ async function stopAll() {
 async function getStream() {
   const deviceId = $('dev').value;
   const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+  // The app asks for this and these levels originally did not — which made
+  // them differ from the app in a way that is small to write and large in
+  // effect. On the reporting machine the app's stream comes back with
+  // latency 0.002666 (a 128-frame input buffer at 48kHz) where a stream
+  // without the constraint sits an order of magnitude higher. With every
+  // other device parameter now measured identical (48000 in, 48000 context,
+  // stereo), this is the one remaining difference between the levels that
+  // stay flat and the app that does not, so it needs to be switchable
+  // rather than assumed either way.
+  if ($('tightLatency').checked) audio.latency = { ideal: 0 };
   if (deviceId) audio.deviceId = { exact: deviceId };
   stream = await navigator.mediaDevices.getUserMedia({ audio });
   const s = stream.getAudioTracks()[0].getSettings();
   $('devinfo').textContent =
-    `track: ${s.sampleRate}Hz, ${s.channelCount}ch, latency ${s.latency}s`;
+    `track: ${s.sampleRate}Hz, ${s.channelCount}ch, latency ${s.latency}s` +
+    ($('tightLatency').checked ? '  (asked for the app\'s smallest buffer)' : '  (browser default buffer)');
   return s;
 }
 
@@ -191,7 +218,10 @@ async function run(level) {
   await stopAll();
   try {
     const s = await getStream();
-    let extra = `capture: ${s.sampleRate}Hz ${s.channelCount}ch`;
+    let extra = `capture: ${s.sampleRate}Hz ${s.channelCount}ch, input buffer ${s.latency}s` +
+      ($('tightLatency').checked
+        ? '  <-- asked for the app\'s smallest buffer'
+        : '  (browser default — the app does NOT run this way)');
 
     if (level >= 2) {
       // latencyHint 0 matches what the app asks for, so this reproduces the
