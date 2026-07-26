@@ -1009,21 +1009,46 @@ function paUpdateRigPill() {
     : " — click to open Tone Lab's Input card.");
 }
 
+// V6-MEM3: peak of a buffer, by index rather than for...of.
+//
+// Iterating a Float32Array with for...of allocates an iterator result
+// object PER SAMPLE. The meter loop walks two 8192-sample buffers every
+// frame, so that came to roughly two million short-lived objects a second
+// on a 120Hz display. It never leaked — GC kept up with it — but it was the
+// heap sawtooth visible while hunting the MIDI recursion, and it is pure
+// waste in the one loop that runs continuously for as long as input is
+// enabled. Indexed access allocates nothing.
+function paBufferPeak(buf) {
+  let peak = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const a = Math.abs(buf[i]);
+    if (a > peak) peak = a;
+  }
+  return peak;
+}
+
 function paStartMeters() {
   if (PA.meterRaf) cancelAnimationFrame(PA.meterRaf);
   const inData = new Float32Array(PA.inAnal.fftSize);
   const outData = new Float32Array(PA.outAnal.fftSize);
+  // These two elements live as long as the page does, so looking them up
+  // once beats two getElementById calls every frame forever.
+  const inFill = document.getElementById("pa-input-meter-fill");
+  const outFill = document.getElementById("pa-output-meter-fill");
+  // Same skip-redundant-writes idiom the playhead/time renderers in app.js
+  // already use: a silent input rewrites an identical width 120 times a
+  // second otherwise, invalidating style for no visible change.
+  let lastInWidth = null, lastOutWidth = null;
   let tunerFrameCount = 0;
   function tick() {
     PA.inAnal.getFloatTimeDomainData(inData);
     PA.outAnal.getFloatTimeDomainData(outData);
-    let inMax = 0, outMax = 0;
-    for (const v of inData) inMax = Math.max(inMax, Math.abs(v));
-    for (const v of outData) outMax = Math.max(outMax, Math.abs(v));
-    const inFill = document.getElementById("pa-input-meter-fill");
-    const outFill = document.getElementById("pa-output-meter-fill");
-    inFill.style.width = Math.min(100, inMax * 100) + "%";
-    outFill.style.width = Math.min(100, outMax * 100) + "%";
+    const inMax = paBufferPeak(inData);
+    const outMax = paBufferPeak(outData);
+    const inWidth = Math.min(100, inMax * 100) + "%";
+    const outWidth = Math.min(100, outMax * 100) + "%";
+    if (inWidth !== lastInWidth) { inFill.style.width = inWidth; lastInWidth = inWidth; }
+    if (outWidth !== lastOutWidth) { outFill.style.width = outWidth; lastOutWidth = outWidth; }
 
     if (inMax >= CLIP_THRESHOLD_LINEAR && !PA.inputClipped) {
       PA.inputClipped = true;
