@@ -332,6 +332,54 @@
       return 'spy removed.';
     },
 
+    // RAFSPY: name the animation loops.
+    //
+    // requestAnimationFrame is being called about 240 times a second on the
+    // reporting machine. One loop is 60/sec, and the same app on a machine
+    // that does not leak reads 120/sec — the two loops it is supposed to
+    // have, app.js's tick and playalong.js's meters. Four means two extra,
+    // and duplicates matter here beyond the wasted work: the meter loop
+    // walks two 8192-sample analyser buffers per frame with for...of, which
+    // allocates an iterator result object PER SAMPLE, so every surplus copy
+    // adds roughly a million short-lived objects a second. That matches the
+    // sawtoothing used heap and the total heap climbing underneath it.
+    //
+    // Wrapping the scheduler and keeping the stack of whoever called it
+    // turns "four loops" into four named call sites.
+    rafspy(seconds) {
+      const secs = seconds || 5;
+      const orig = window.requestAnimationFrame;
+      const hist = Object.create(null);
+      window.requestAnimationFrame = function (cb) {
+        let st = '';
+        try {
+          st = (new Error().stack || '')
+            .split('\n')
+            .slice(1)
+            // Drop this wrapper and anything else injected from the console,
+            // so the first line left is the real scheduler.
+            .filter((l) => !/leak-bisect|<anonymous>:|VM\d+/.test(l))
+            .slice(0, 2)
+            .map((l) => l.trim())
+            .join('  <-  ');
+        } catch (e) { st = '(no stack)'; }
+        hist[st || '(unknown)'] = (hist[st || '(unknown)'] || 0) + 1;
+        return orig.call(window, cb);
+      };
+      orig.call(window, function done() {}); // keep a frame pumping if idle
+      setTimeout(() => {
+        window.requestAnimationFrame = orig;
+        const rows = Object.keys(hist).map((k) => [k, hist[k]]).sort((a, b) => b[1] - a[1]);
+        console.log(`[rafspy] ${rows.length} distinct scheduler(s) over ${secs}s ` +
+                    `(~60/sec per loop; expect 2 loops = ~${60 * secs * 2} total):`);
+        for (const [k, v] of rows.slice(0, 12)) {
+          console.log(`  ${v}x  (${(v / secs).toFixed(0)}/sec)  ${k}`);
+        }
+      }, secs * 1000);
+      return `Sampling animation-frame schedulers for ${secs}s — results print when done. ` +
+             `Run this on a FRESH page load (no LEAK.spy() first), or the counts double up.`;
+    },
+
     // WATCH: with the context suspended and capture stopped, roughly a
     // gigabyte a minute is still going somewhere, and no amount of reading
     // the source has explained where. This stops guessing at the cause and
