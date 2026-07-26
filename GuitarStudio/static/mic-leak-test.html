@@ -161,40 +161,45 @@ async function run(level) {
         // indistinguishable from the outside without actually looking at the
         // response. Fetch it first and say exactly what came back.
         const url = new URL('gate-processor.js', location.href).href;
-        let pre;
+
+        // The preflight is ONLY a diagnostic — never a gate. An earlier
+        // version threw when the fetch failed, which stopped level 4 from
+        // running at all over what may well have been an unrelated hiccup.
+        // addModule does its own fetch through a different path, so it can
+        // perfectly well succeed where this one didn't; always try it.
+        let pre = null, preErr = null, ctype = '', body = '';
         try {
-          pre = await fetch(url);
+          pre = await fetch(url, { cache: 'no-store' });
+          ctype = pre.headers.get('content-type') || '(none)';
+          body = await pre.text();
         } catch (e) {
-          throw new Error(`could not fetch ${url} — ${e.message}`);
+          preErr = `${e.name}: ${e.message}`;
         }
-        const ctype = pre.headers.get('content-type') || '(none)';
-        const body = await pre.text();
-        const looksLikeHtml = /^\s*<!doctype html|^\s*<html/i.test(body);
-        extra += `\nworklet URL: ${url}\n  HTTP ${pre.status}, content-type: ${ctype}, ${body.length} bytes`;
-        if (!pre.ok) {
-          throw new Error(`worklet fetch returned HTTP ${pre.status} for ${url}`);
+
+        if (pre) {
+          extra += `\nworklet URL: ${url}\n  HTTP ${pre.status}, content-type: ${ctype}, ${body.length} bytes`;
+          if (/^\s*<!doctype html|^\s*<html/i.test(body)) {
+            extra += `\n  WARNING: that is HTML, not JavaScript — the server fell back to index.html,` +
+                     `\n  so gate-processor.js is missing from the static folder this server runs from.`;
+          } else if (!/javascript|ecmascript/i.test(ctype)) {
+            extra += `\n  WARNING: "${ctype}" is not a JavaScript content-type; Chrome may refuse it.`;
+          }
+        } else {
+          extra += `\nworklet URL: ${url}\n  preflight fetch failed (${preErr}) — trying addModule anyway;` +
+                   `\n  if the level starts running, ignore this line.`;
         }
-        if (looksLikeHtml) {
-          throw new Error(
-            `${url} returned HTML, not JavaScript — the server fell back to index.html, ` +
-            `which means gate-processor.js is not present at that path in the static folder ` +
-            `this server is running from. Check that your pull actually landed it, and that ` +
-            `the server was started from this same checkout.`
-          );
-        }
-        if (!/javascript|ecmascript/i.test(ctype)) {
-          throw new Error(
-            `${url} was served as "${ctype}" — a worklet module must be served with a ` +
-            `JavaScript content-type or Chrome refuses to load it.`
-          );
-        }
+
         try {
           await ctx.audioWorklet.addModule(url);
         } catch (e) {
           throw new Error(
-            `the file fetched fine (HTTP ${pre.status}, ${ctype}) but addModule still rejected it: ` +
-            `${e.name}: ${e.message} — that points at the module failing to evaluate rather than ` +
-            `at the download.`
+            `addModule rejected ${url} — ${e.name}: ${e.message}. ` +
+            (pre
+              ? `The file itself fetched fine (HTTP ${pre.status}, ${ctype}), so this is the module ` +
+                `failing to evaluate rather than a download problem.`
+              : `A plain fetch of it also failed (${preErr}), so the server most likely is not ` +
+                `reachable at that URL right now — open ${url} in a new tab to check, and make sure ` +
+                `the app's server is still running.`)
           );
         }
         const gate = new AudioWorkletNode(ctx, 'gate-processor', {
