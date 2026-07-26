@@ -20,6 +20,10 @@
 (() => {
   const riff = () => (typeof riffCaptureNode !== 'undefined' ? riffCaptureNode : null);
 
+  // Populated by LEAK.spy(); read by LEAK.watch().
+  let spyCounts = null;
+  let spyRestore = null;
+
   window.LEAK = {
     // ROUND 2. a) has now been run on the reporting machine: it silenced
     // monitoring, proving the disconnect took effect, and memory kept
@@ -46,27 +50,34 @@
     // So the question is no longer "which part of the rig" but "what kind of
     // memory". LEAK.watch() answers that directly, and the two cheap
     // experiments below decide whether the page is even involved.
+    // ROUND 4. The watch settled the category. DOM, option and canvas counts
+    // never moved; the JS heap only sawtoothed between about 30 and 90 MB, so
+    // allocation is heavy but collection is working; and a reload stopped the
+    // climb outright, which makes this page-scoped rather than a browser or
+    // driver problem. Native, page-scoped, invisible to the JS heap, and
+    // unaffected by suspending the context or stopping capture — that is Web
+    // Audio object creation, which a suspended context does nothing to
+    // prevent.
+    //
+    // Counting beats guessing, so spy() names the constructor being called.
     plan() {
       return [
-        'Everything cut so far (a, f, g, out, k) left the climb untouched at ~1GB/min,',
-        'so this is not the audio path. Find out WHAT is growing instead:',
+        'The category is settled: not DOM, not canvas, not the JS heap, and a reload',
+        'stops it — so something is creating native Web Audio objects in a loop.',
+        'This names it:',
         '',
-        '1. Get it climbing, then run:  LEAK.watch()',
-        '   Leave it a couple of minutes and paste the [watch] lines back.',
-        '   dom/opt climbing      -> DOM nodes are accumulating.',
-        '   canvasPx climbing     -> canvas backing stores are.',
-        '   heap climbing         -> ordinary JS after all.',
-        '   ALL flat, task manager still rising -> nothing the page can see is doing',
-        '   it, and the cause is below JavaScript.',
+        '  LEAK.spy()      then      LEAK.watch()',
         '',
-        '2. While it is climbing, press Cmd+R to reload WITHOUT enabling input.',
-        '   Still climbing on the fresh page -> our code is exonerated; something in',
-        '   the browser is holding on across a reload.',
-        '   Stops -> it is this page after all.',
+        'Let it run a minute with the task manager climbing, then paste the lines.',
+        'Each one now ends with a "calls:" list, busiest first.',
         '',
-        '3. If a reload does not stop it, navigate the tab to about:blank.',
-        '   Still climbing with no page loaded at all is decisive: report that and',
-        '   stop testing, it is a Chrome-level problem, not ours.',
+        'A count in the thousands and rising IS the bug — whatever it names is being',
+        'constructed in a loop. A count that climbs by a few per second points at a',
+        'timer or animation frame doing the constructing.',
+        '',
+        'If every count stays low and flat while memory still climbs, tell me: that',
+        'would mean the growth is not the page constructing audio objects either,',
+        'and I have the wrong model of this.',
       ].join('\n');
     },
 
@@ -172,6 +183,85 @@
              '(Reload to get input back.)';
     },
 
+    // SPY: count every Web Audio object the page constructs.
+    //
+    // The watch results narrowed this a long way: DOM, option and canvas
+    // counts are all exactly flat, the JS heap only sawtooths between
+    // roughly 30 and 90 MB (so it is allocating hard but collecting fine),
+    // and a reload stops the climb dead. Page-scoped, native, and invisible
+    // to the JS heap points squarely at Web Audio, whose objects are large
+    // natively while their JS wrappers are small enough to be collected —
+    // which is also why suspending the context changed nothing, since a
+    // suspended context still lets nodes be CREATED, and why stopping the
+    // tracks did not either.
+    //
+    // So rather than reason about which call site might be looping, count
+    // them. Whatever is being constructed thousands of times a minute is the
+    // bug, and this reports it by name.
+    spy() {
+      if (spyCounts) return 'Already spying. LEAK.unspy() first to reset the counts.';
+      spyCounts = Object.create(null);
+      const bump = (k) => { spyCounts[k] = (spyCounts[k] || 0) + 1; };
+      const undo = [];
+
+      const Ctor = window.AudioContext || window.webkitAudioContext;
+      const proto = Ctor.prototype;
+      // Everything that mints a native audio object: createGain,
+      // createBufferSource, createBuffer, createAnalyser, createConvolver,
+      // createWaveShaper, createMediaStreamSource, and the rest.
+      const names = [];
+      for (let o = proto; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+        for (const n of Object.getOwnPropertyNames(o)) {
+          if ((/^create/.test(n) || n === 'decodeAudioData') && names.indexOf(n) === -1) names.push(n);
+        }
+      }
+      for (const n of names) {
+        let fn;
+        try { fn = proto[n]; } catch (e) { continue; }
+        if (typeof fn !== 'function') continue;
+        undo.push([proto, n, fn]);
+        proto[n] = function (...args) { bump(n); return fn.apply(this, args); };
+      }
+
+      if (window.AudioWorkletNode) {
+        const Orig = window.AudioWorkletNode;
+        undo.push([window, 'AudioWorkletNode', Orig]);
+        window.AudioWorkletNode = function (...args) {
+          bump('new AudioWorkletNode(' + args[1] + ')');
+          return new Orig(...args);
+        };
+        window.AudioWorkletNode.prototype = Orig.prototype;
+      }
+
+      const md = navigator.mediaDevices;
+      if (md) {
+        for (const n of ['getUserMedia', 'enumerateDevices']) {
+          const fn = md[n];
+          if (typeof fn !== 'function') continue;
+          undo.push([md, n, fn]);
+          md[n] = function (...args) { bump('mediaDevices.' + n); return fn.apply(this, args); };
+        }
+      }
+
+      // The app's own entry point, since a loop here would explain all of it.
+      if (typeof window.paEnableInput === 'function') {
+        const fn = window.paEnableInput;
+        undo.push([window, 'paEnableInput', fn]);
+        window.paEnableInput = function (...args) { bump('paEnableInput'); return fn.apply(this, args); };
+      }
+
+      spyRestore = () => { for (const [obj, n, fn] of undo) obj[n] = fn; };
+      return 'Spying on ' + names.length + ' audio constructors plus AudioWorkletNode, ' +
+             'getUserMedia, enumerateDevices and paEnableInput. Now run LEAK.watch() — the ' +
+             'counts appear on each line. Anything racing up is the culprit.';
+    },
+    unspy() {
+      if (spyRestore) spyRestore();
+      spyRestore = null;
+      spyCounts = null;
+      return 'spy removed.';
+    },
+
     // WATCH: with the context suspended and capture stopped, roughly a
     // gigabyte a minute is still going somewhere, and no amount of reading
     // the source has explained where. This stops guessing at the cause and
@@ -205,11 +295,23 @@
       this._watchTimer = setInterval(() => {
         const s = snap();
         const d = (k) => (typeof s[k] === 'number' ? (s[k] - base[k] >= 0 ? '+' : '') + (s[k] - base[k]) : '');
+        // Busiest constructors first — a runaway one goes straight to the
+        // front instead of being buried among the calls made once at startup.
+        let calls = '';
+        if (spyCounts) {
+          const top = Object.keys(spyCounts)
+            .map((k) => [k, spyCounts[k]])
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 6)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(' ');
+          calls = top ? `\n         calls: ${top}` : '\n         calls: (none yet)';
+        }
         console.log(
           `[watch] t=${((performance.now() - t0) / 1000).toFixed(0)}s ` +
           `dom=${s.dom}(${d('dom')}) opt=${s.opts}(${d('opts')}) ` +
           `canvas=${s.canvas}(${d('canvas')}) canvasPx=${(s.canvasPx / 1e6).toFixed(1)}M(${d('canvasPx')}) ` +
-          `heap=${s.heapMB}MB(${d('heapMB')}) liveTracks=${s.tracks} ctx=${s.ctx}`
+          `heap=${s.heapMB}MB(${d('heapMB')}) liveTracks=${s.tracks} ctx=${s.ctx}` + calls
         );
       }, (seconds || 5) * 1000);
       return 'Watching every ' + (seconds || 5) + 's. Let it run a couple of minutes while the ' +
