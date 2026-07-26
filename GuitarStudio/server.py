@@ -3114,6 +3114,19 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "Invalid static path"})
             return
         if not file_path.exists() or not file_path.is_file():
+            # A missing file that names an extension is a missing ASSET, and
+            # answering those with index.html and a 200 actively misleads:
+            # the caller gets HTML dressed as success. That cost real time
+            # twice while chasing the live-input memory leak — a worklet
+            # addModule failed as the unexplained "Unable to load a worklet's
+            # module" (Chrome refusing HTML), and a console
+            # fetch(...).then(eval) died on "Unexpected token '<'" — in both
+            # cases the honest answer was simply that the file was not there.
+            # Extensionless paths still fall back, so deep links into the
+            # single-page app keep working.
+            if Path(rel).suffix:
+                self._send_json(404, {"error": f"Not found: {rel}"})
+                return
             file_path = STATIC_DIR / "index.html"
             if not file_path.exists():
                 self._send_json(404, {"error": "Not found"})
