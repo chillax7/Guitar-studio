@@ -312,6 +312,22 @@
           P.postMessage = function (...a) { bump('port.postMessage'); return fn.apply(this, a); };
         }
       }
+      // Listeners are one of the two categories I told the reporter only
+      // Chrome's own profiler could see, which was not true — they are
+      // countable from here. They are worth counting because an accumulating
+      // listener is invisible to every other counter in this file: it adds
+      // no DOM node, constructs no audio object, and the closure it retains
+      // is native bookkeeping rather than anything usedJSHeapSize reports.
+      // A rising add with no matching remove is the signature.
+      if (window.EventTarget) {
+        const P = EventTarget.prototype;
+        for (const n of ['addEventListener', 'removeEventListener']) {
+          const fn = P[n];
+          if (typeof fn !== 'function') continue;
+          undo.push([P, n, fn]);
+          P[n] = function (...a) { bump(n); return fn.apply(this, a); };
+        }
+      }
       for (const n of ['setTimeout', 'setInterval', 'requestAnimationFrame']) {
         const fn = window[n];
         if (typeof fn !== 'function') continue;
