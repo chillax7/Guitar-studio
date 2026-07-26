@@ -23,6 +23,7 @@
   // Populated by LEAK.spy(); read by LEAK.watch().
   let spyCounts = null;
   let spyRestore = null;
+  let inWatchLog = false; // stops watch's own console.log counting itself
 
   window.LEAK = {
     // ROUND 2. a) has now been run on the reporting machine: it silenced
@@ -60,24 +61,41 @@
     // prevent.
     //
     // Counting beats guessing, so spy() names the constructor being called.
+    // ROUND 5. Every audio constructor counted zero across a full minute of
+    // ~1GB/min growth, so the page creates no audio objects and that model
+    // was wrong. Ruled out by measurement so far: the signal path, the audio
+    // render thread, capture itself, the output device, DOM nodes, canvas
+    // backing stores, retained JS heap, and audio object construction. Still
+    // true: a reload stops it dead, so it is this page.
+    //
+    // What can still grow native page-scoped memory while allocating nothing
+    // the JS heap retains: console retention (held messages pin everything
+    // they reference), in-flight network buffers, and worklet/main-thread
+    // message traffic, which is serialized natively and is not a constructor
+    // call. Those are now counted, along with the timers, whose RATE is
+    // itself diagnostic.
     plan() {
       return [
-        'The category is settled: not DOM, not canvas, not the JS heap, and a reload',
-        'stops it — so something is creating native Web Audio objects in a loop.',
-        'This names it:',
+        'Audio construction came back at zero, so that idea is dead. This round',
+        'counts console output, network calls, worklet message traffic and timers,',
+        'and adds V8\'s total heap next to the used figure.',
         '',
         '  LEAK.spy()      then      LEAK.watch()',
         '',
-        'Let it run a minute with the task manager climbing, then paste the lines.',
-        'Each one now ends with a "calls:" list, busiest first.',
+        'Run it a minute while memory climbs, then paste the lines. Reading them:',
         '',
-        'A count in the thousands and rising IS the bug — whatever it names is being',
-        'constructed in a loop. A count that climbs by a few per second points at a',
-        'timer or animation frame doing the constructing.',
+        '  console.* in the thousands  -> log spam; retained messages pin memory and',
+        '                                 none of it shows in the JS heap.',
+        '  port.postMessage racing     -> a worklet is flooding the main thread.',
+        '  fetch/xhr.send racing       -> a request loop.',
+        '  requestAnimationFrame much  -> more than one animation loop is running',
+        '  above ~60/sec                  (60/sec is one loop, which is normal).',
+        '  heap used flat, total rising -> churn is inflating V8\'s heap; the used',
+        '                                 figure alone would hide that.',
         '',
-        'If every count stays low and flat while memory still climbs, tell me: that',
-        'would mean the growth is not the page constructing audio objects either,',
-        'and I have the wrong model of this.',
+        'If all of these are flat too, say so. That exhausts what the page can see,',
+        'and the next step is Chrome\'s own memory breakdown rather than more of my',
+        'guesses about which line is at fault.',
       ].join('\n');
     },
 
@@ -250,10 +268,62 @@
         window.paEnableInput = function (...args) { bump('paEnableInput'); return fn.apply(this, args); };
       }
 
+      // Round 5. The audio counters all came back at zero for a full minute
+      // while memory climbed ~1GB/min, so the page is not constructing audio
+      // objects and that model was simply wrong. What remains are the ways a
+      // page can grow native, page-scoped memory WITHOUT allocating anything
+      // the JS heap keeps: console retention (messages and everything they
+      // reference are held, and the JS heap does not account for it),
+      // in-flight network buffers, and message traffic between the audio
+      // worklets and the main thread, which is serialized natively and never
+      // shows up as a constructor call.
+      //
+      // Timers and animation frames are counted too, not because they leak
+      // but because the RATE is diagnostic: requestAnimationFrame should sit
+      // near 60/sec, so several hundred means several loops are running at
+      // once, which would be a bug in itself.
+      for (const n of ['log', 'warn', 'error', 'info', 'debug', 'trace', 'dir', 'table']) {
+        const fn = console[n];
+        if (typeof fn !== 'function') continue;
+        undo.push([console, n, fn]);
+        console[n] = function (...args) {
+          if (!inWatchLog) bump('console.' + n);
+          return fn.apply(this, args);
+        };
+      }
+      if (typeof window.fetch === 'function') {
+        const fn = window.fetch;
+        undo.push([window, 'fetch', fn]);
+        window.fetch = function (...a) { bump('fetch'); return fn.apply(this, a); };
+      }
+      if (window.XMLHttpRequest) {
+        const P = XMLHttpRequest.prototype, fn = P.send;
+        if (typeof fn === 'function') {
+          undo.push([P, 'send', fn]);
+          P.send = function (...a) { bump('xhr.send'); return fn.apply(this, a); };
+        }
+      }
+      // AudioWorkletNode.port is a MessagePort, so this catches every message
+      // between a worklet and the main thread in both directions.
+      if (window.MessagePort) {
+        const P = MessagePort.prototype, fn = P.postMessage;
+        if (typeof fn === 'function') {
+          undo.push([P, 'postMessage', fn]);
+          P.postMessage = function (...a) { bump('port.postMessage'); return fn.apply(this, a); };
+        }
+      }
+      for (const n of ['setTimeout', 'setInterval', 'requestAnimationFrame']) {
+        const fn = window[n];
+        if (typeof fn !== 'function') continue;
+        undo.push([window, n, fn]);
+        window[n] = function (...a) { bump(n); return fn.apply(window, a); };
+      }
+
       spyRestore = () => { for (const [obj, n, fn] of undo) obj[n] = fn; };
-      return 'Spying on ' + names.length + ' audio constructors plus AudioWorkletNode, ' +
-             'getUserMedia, enumerateDevices and paEnableInput. Now run LEAK.watch() — the ' +
-             'counts appear on each line. Anything racing up is the culprit.';
+      return 'Spying on ' + names.length + ' audio constructors, AudioWorkletNode, ' +
+             'getUserMedia, enumerateDevices, paEnableInput, console.*, fetch/XHR, ' +
+             'MessagePort.postMessage, and the timers. Run LEAK.watch() — counts appear ' +
+             'on each line, busiest first.';
     },
     unspy() {
       if (spyRestore) spyRestore();
@@ -286,6 +356,12 @@
           canvas: canvases.length,
           canvasPx: canvases.reduce((n, c) => n + (c.width * c.height), 0),
           heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1e6).toFixed(1) : null,
+          // usedJSHeapSize is what has survived the last collection; totalJSHeapSize
+          // is what V8 has actually taken from the OS and mostly does not give back.
+          // Used staying flat while total climbs would mean heavy churn is inflating
+          // the heap even though nothing is being retained — which the used figure
+          // alone cannot show.
+          totalMB: performance.memory ? +(performance.memory.totalJSHeapSize / 1e6).toFixed(1) : null,
           tracks: PA.stream ? PA.stream.getTracks().filter((t) => t.readyState === 'live').length : 0,
           ctx: Audio.ctx.state,
         };
@@ -307,12 +383,15 @@
             .join(' ');
           calls = top ? `\n         calls: ${top}` : '\n         calls: (none yet)';
         }
+        inWatchLog = true;
         console.log(
           `[watch] t=${((performance.now() - t0) / 1000).toFixed(0)}s ` +
           `dom=${s.dom}(${d('dom')}) opt=${s.opts}(${d('opts')}) ` +
           `canvas=${s.canvas}(${d('canvas')}) canvasPx=${(s.canvasPx / 1e6).toFixed(1)}M(${d('canvasPx')}) ` +
-          `heap=${s.heapMB}MB(${d('heapMB')}) liveTracks=${s.tracks} ctx=${s.ctx}` + calls
+          `heap=${s.heapMB}/${s.totalMB}MB(${d('heapMB')}/${d('totalMB')}) ` +
+          `liveTracks=${s.tracks} ctx=${s.ctx}` + calls
         );
+        inWatchLog = false;
       }, (seconds || 5) * 1000);
       return 'Watching every ' + (seconds || 5) + 's. Let it run a couple of minutes while the ' +
              'task manager climbs, then paste the lines back. LEAK.unwatch() stops it.';
