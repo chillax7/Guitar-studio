@@ -332,24 +332,26 @@
       return 'spy removed.';
     },
 
-    // RAFSPY: name the animation loops.
+    // RAFSPY: name the animation loops, and count them correctly.
     //
-    // requestAnimationFrame is being called about 240 times a second on the
-    // reporting machine. One loop is 60/sec, and the same app on a machine
-    // that does not leak reads 120/sec — the two loops it is supposed to
-    // have, app.js's tick and playalong.js's meters. Four means two extra,
-    // and duplicates matter here beyond the wasted work: the meter loop
-    // walks two 8192-sample analyser buffers per frame with for...of, which
-    // allocates an iterator result object PER SAMPLE, so every surplus copy
-    // adds roughly a million short-lived objects a second. That matches the
-    // sawtoothing used heap and the total heap climbing underneath it.
-    //
-    // Wrapping the scheduler and keeping the stack of whoever called it
-    // turns "four loops" into four named call sites.
+    // A raw calls-per-second figure cannot be read on its own, and reading
+    // one cost a round here: 240 calls/sec looked like four loops against an
+    // assumed 60Hz, when the reporting machine has a 120Hz ProMotion display
+    // and was running exactly two. requestAnimationFrame fires at the
+    // display's refresh rate, so the only meaningful number is
+    // calls-per-second divided by that rate — which this now measures rather
+    // than assumes, with a probe loop scheduled through the unwrapped
+    // scheduler so it does not count itself.
     rafspy(seconds) {
       const secs = seconds || 5;
       const orig = window.requestAnimationFrame;
       const hist = Object.create(null);
+
+      // Actual frames delivered over the window == the display's refresh
+      // rate, whatever the panel happens to be.
+      let probeFrames = 0;
+      const probe = () => { probeFrames++; orig.call(window, probe); };
+      orig.call(window, probe);
       window.requestAnimationFrame = function (cb) {
         let st = '';
         try {
@@ -366,14 +368,16 @@
         hist[st || '(unknown)'] = (hist[st || '(unknown)'] || 0) + 1;
         return orig.call(window, cb);
       };
-      orig.call(window, function done() {}); // keep a frame pumping if idle
       setTimeout(() => {
         window.requestAnimationFrame = orig;
+        const hz = probeFrames / secs;
         const rows = Object.keys(hist).map((k) => [k, hist[k]]).sort((a, b) => b[1] - a[1]);
-        console.log(`[rafspy] ${rows.length} distinct scheduler(s) over ${secs}s ` +
-                    `(~60/sec per loop; expect 2 loops = ~${60 * secs * 2} total):`);
+        console.log(`[rafspy] display refresh measured at ${hz.toFixed(0)}Hz. ` +
+                    `${rows.length} distinct scheduler(s) over ${secs}s. ` +
+                    `"loops" is calls/sec divided by refresh — 1.0 is one healthy loop:`);
         for (const [k, v] of rows.slice(0, 12)) {
-          console.log(`  ${v}x  (${(v / secs).toFixed(0)}/sec)  ${k}`);
+          const loops = (v / secs) / (hz || 60);
+          console.log(`  ${v}x  (${(v / secs).toFixed(0)}/sec)  loops=${loops.toFixed(1)}  ${k}`);
         }
       }, secs * 1000);
       return `Sampling animation-frame schedulers for ${secs}s — results print when done. ` +
