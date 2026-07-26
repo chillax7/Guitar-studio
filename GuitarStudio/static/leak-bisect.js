@@ -348,6 +348,58 @@
       return 'spy removed.';
     },
 
+    // DOMSPY: name whoever is creating the detached nodes.
+    //
+    // Chrome's Performance monitor shows DOM Nodes and JS event listeners
+    // both climbing, while watch()'s dom count sat flat at 1401 the whole
+    // time. Those are not in conflict — they measure different things, and
+    // the gap between them IS the finding. querySelectorAll('*') sees only
+    // nodes attached to the document; Chrome's counter includes DETACHED
+    // ones, still alive because something holds a reference. So elements are
+    // being made that never enter the tree (or leave it and are kept), each
+    // carrying listeners, which is precisely the shape that slipped past
+    // every counter here: no attached node, no audio object, and a retained
+    // closure that usedJSHeapSize does not report.
+    //
+    // Rather than read 81 createElement call sites, wrap the two calls
+    // involved and keep the caller's stack.
+    domspy(seconds) {
+      const secs = seconds || 5;
+      const origCreate = document.createElement;
+      const origAdd = EventTarget.prototype.addEventListener;
+      const hist = Object.create(null);
+      const rec = (kind, detail) => {
+        let st = '';
+        try {
+          st = (new Error().stack || '').split('\n').slice(1)
+            .filter((l) => !/leak-bisect|<anonymous>:|VM\d+/.test(l))
+            .slice(0, 3).map((l) => l.trim()).join('  <-  ');
+        } catch (e) { st = '(no stack)'; }
+        const k = `${kind}<${detail}>  ${st}`;
+        hist[k] = (hist[k] || 0) + 1;
+      };
+      document.createElement = function (tag, ...rest) {
+        rec('createElement', tag);
+        return origCreate.call(this, tag, ...rest);
+      };
+      EventTarget.prototype.addEventListener = function (type, ...rest) {
+        rec('addEventListener', type);
+        return origAdd.call(this, type, ...rest);
+      };
+      setTimeout(() => {
+        delete document.createElement; // fall back to the prototype's
+        EventTarget.prototype.addEventListener = origAdd;
+        const rows = Object.keys(hist).map((k) => [k, hist[k]]).sort((a, b) => b[1] - a[1]);
+        console.log(`[domspy] ${rows.length} distinct site(s) over ${secs}s, busiest first. ` +
+                    `Anything running per-frame is the bug:`);
+        for (const [k, v] of rows.slice(0, 12)) {
+          console.log(`  ${v}x  (${(v / secs).toFixed(0)}/sec)  ${k}`);
+        }
+      }, secs * 1000);
+      return `Sampling createElement and addEventListener for ${secs}s — results print when ` +
+             `done. Best on a fresh load with input enabled and no LEAK.spy() active.`;
+    },
+
     // RAFSPY: name the animation loops, and count them correctly.
     //
     // A raw calls-per-second figure cannot be read on its own, and reading
@@ -419,6 +471,11 @@
       const snap = () => {
         const canvases = Array.from(document.querySelectorAll('canvas'));
         return {
+          // ATTACHED nodes only. This read 1401 and never moved while
+          // Chrome's own DOM Nodes counter climbed, because that one counts
+          // detached nodes too — which is exactly what is leaking here. Kept
+          // as-is, but no longer to be read as "the DOM is fine": the two
+          // numbers disagreeing is the signal, not noise.
           dom: document.querySelectorAll('*').length,
           opts: document.querySelectorAll('option').length,
           canvas: canvases.length,
