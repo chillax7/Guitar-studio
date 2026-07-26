@@ -35,27 +35,38 @@
     //
     // g) and k) below split exactly that, and each one is decisive on its
     // own rather than needing a chain of inference.
+    // ROUND 3. a), f), g), out() and k() have all now been run, and none of
+    // them slowed a climb of about a gigabyte a minute. Suspending the
+    // context stops every worklet and node; stopping the tracks ends capture
+    // outright. That both changed nothing rules out the audio subsystem
+    // entirely — it was never the cause, only the trigger — and no loop or
+    // stray timer explains it either: the source has no devicechange
+    // listener and no runaway interval.
+    //
+    // So the question is no longer "which part of the rig" but "what kind of
+    // memory". LEAK.watch() answers that directly, and the two cheap
+    // experiments below decide whether the page is even involved.
     plan() {
       return [
-        'Watch this tab in Chrome task manager (Shift+Esc). Confirm it is climbing',
-        'before each step, or the result means nothing.',
+        'Everything cut so far (a, f, g, out, k) left the climb untouched at ~1GB/min,',
+        'so this is not the audio path. Find out WHAT is growing instead:',
         '',
-        'a) has already told us the signal path is not the cause, so skip b-e.',
-        'Run these, ~2 min each, and stop at the first one that halts the growth:',
+        '1. Get it climbing, then run:  LEAK.watch()',
+        '   Leave it a couple of minutes and paste the [watch] lines back.',
+        '   dom/opt climbing      -> DOM nodes are accumulating.',
+        '   canvasPx climbing     -> canvas backing stores are.',
+        '   heap climbing         -> ordinary JS after all.',
+        '   ALL flat, task manager still rising -> nothing the page can see is doing',
+        '   it, and the cause is below JavaScript.',
         '',
-        '1. LEAK.f()   -- stop the meter animation loop (main thread, per frame).',
-        '2. LEAK.g()   -- suspend the AudioContext: every worklet and node stops',
-        '                 being pulled. This is the big split — if growth halts, the',
-        '                 cause is on the audio render thread; if not, it is not audio',
-        '                 processing at all. LEAK.h() resumes.',
-        '3. LEAK.out() -- move playback to the system default output, off the Helix.',
-        '                 The bisect page never played audio out, only captured, so',
-        '                 running both directions on one interface is untested ground.',
-        '4. LEAK.k()   -- stop the capture tracks outright. Ends the last thing that',
-        '                 is still touching the device.',
+        '2. While it is climbing, press Cmd+R to reload WITHOUT enabling input.',
+        '   Still climbing on the fresh page -> our code is exonerated; something in',
+        '   the browser is holding on across a reload.',
+        '   Stops -> it is this page after all.',
         '',
-        'Report which step (if any) stops it, and roughly how fast it was climbing.',
-        'Reload the page to undo everything.',
+        '3. If a reload does not stop it, navigate the tab to about:blank.',
+        '   Still climbing with no page loaded at all is decisive: report that and',
+        '   stop testing, it is a Chrome-level problem, not ours.',
       ].join('\n');
     },
 
@@ -159,6 +170,55 @@
       PA.stream.getTracks().forEach((t) => t.stop());
       return 'K: capture tracks stopped; nothing is reading the interface now. Wait ~2 min. ' +
              '(Reload to get input back.)';
+    },
+
+    // WATCH: with the context suspended and capture stopped, roughly a
+    // gigabyte a minute is still going somewhere, and no amount of reading
+    // the source has explained where. This stops guessing at the cause and
+    // measures the category instead: whichever counter below climbs in step
+    // with the task manager identifies what is actually being allocated.
+    //
+    // The JS heap has looked flat throughout, so a leak of this size is
+    // native — and the two native pools a page can grow without touching
+    // that heap are DOM nodes and canvas backing stores, both of which are
+    // counted here. If every counter stays flat while the process keeps
+    // growing, then nothing the page can see is responsible, and the
+    // remaining suspects sit below JavaScript entirely.
+    watch(seconds) {
+      this.unwatch();
+      const t0 = performance.now();
+      const base = {};
+      const snap = () => {
+        const canvases = Array.from(document.querySelectorAll('canvas'));
+        return {
+          dom: document.querySelectorAll('*').length,
+          opts: document.querySelectorAll('option').length,
+          canvas: canvases.length,
+          canvasPx: canvases.reduce((n, c) => n + (c.width * c.height), 0),
+          heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1e6).toFixed(1) : null,
+          tracks: PA.stream ? PA.stream.getTracks().filter((t) => t.readyState === 'live').length : 0,
+          ctx: Audio.ctx.state,
+        };
+      };
+      Object.assign(base, snap());
+      console.log('[watch] baseline', JSON.stringify(base));
+      this._watchTimer = setInterval(() => {
+        const s = snap();
+        const d = (k) => (typeof s[k] === 'number' ? (s[k] - base[k] >= 0 ? '+' : '') + (s[k] - base[k]) : '');
+        console.log(
+          `[watch] t=${((performance.now() - t0) / 1000).toFixed(0)}s ` +
+          `dom=${s.dom}(${d('dom')}) opt=${s.opts}(${d('opts')}) ` +
+          `canvas=${s.canvas}(${d('canvas')}) canvasPx=${(s.canvasPx / 1e6).toFixed(1)}M(${d('canvasPx')}) ` +
+          `heap=${s.heapMB}MB(${d('heapMB')}) liveTracks=${s.tracks} ctx=${s.ctx}`
+        );
+      }, (seconds || 5) * 1000);
+      return 'Watching every ' + (seconds || 5) + 's. Let it run a couple of minutes while the ' +
+             'task manager climbs, then paste the lines back. LEAK.unwatch() stops it.';
+    },
+    unwatch() {
+      if (this._watchTimer) clearInterval(this._watchTimer);
+      this._watchTimer = null;
+      return 'watch stopped.';
     },
 
     restore() {
