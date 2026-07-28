@@ -222,7 +222,14 @@ function isSplitCandidate(name) {
 // staying visually neutral is the correct outcome, not a bug.
 function stemColorCategory(name) {
   if (isSplitCandidate(name)) return name.endsWith("_center") ? "candidate-a" : "candidate-b";
-  if (name === "vocals" || name === "drums" || name === "bass" || name === "guitar") return name;
+  // R2-2: piano and other were previously left uncategorized on purpose —
+  // "don't guess wrong" made sense when they were the two names most likely
+  // to actually be something else. In practice both are real, recognized
+  // htdemucs_6s stem names (see backing_track.py's ALL_KNOWN_MODELS), not a
+  // guess, so they get their own colors too now; only genuinely unknown
+  // names (a custom stem, an imported one) still fall through to null.
+  if (name === "vocals" || name === "drums" || name === "bass" || name === "guitar" ||
+      name === "piano" || name === "other") return name;
   return null;
 }
 
@@ -3969,9 +3976,13 @@ function wireQuestLog() {
 // literal "molten") falls back to the default, so the default flip never
 // needed a migration for existing users.
 const THEME_KEY = "gs_theme";
-const THEME_ORDER = ["molten", "brightspark", "studio"];
-const THEME_ICONS = { molten: "🔥", brightspark: "☀️", studio: "🌙" };
-const THEME_LABELS = { molten: "Molten Obsidian", brightspark: "Bright Spark", studio: "Studio" };
+// R2-5/R2-6: Future Metal and Castle Rock are additions, not replacements —
+// appended rather than inserted, so the existing three keep the exact same
+// cycle order/positions for anyone who already has muscle memory for how
+// many clicks gets them to their preferred theme.
+const THEME_ORDER = ["molten", "brightspark", "studio", "futuremetal", "castlerock"];
+const THEME_ICONS = { molten: "🔥", brightspark: "☀️", studio: "🌙", futuremetal: "⚙️", castlerock: "🏰" };
+const THEME_LABELS = { molten: "Molten Obsidian", brightspark: "Bright Spark", studio: "Studio", futuremetal: "Future Metal", castlerock: "Castle Rock" };
 
 function currentTheme() {
   const stored = localStorage.getItem(THEME_KEY);

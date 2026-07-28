@@ -7,13 +7,19 @@
 <link rel="stylesheet" href="styles.css">
 <!-- Applied before first paint so the theme doesn't flash on reload — see
      wireThemeToggle (app.js, THEME_ORDER) for the persisted-cycle logic
-     this mirrors. Molten Obsidian is the default; "brightspark" or
-     "studio" keep their own look. -->
+     this mirrors. Molten Obsidian is the default; every other theme keeps
+     its own look. This list is a plain copy of THEME_ORDER, not a shared
+     reference — app.js hasn't loaded yet when this runs, so it can't be;
+     if THEME_ORDER ever gains another theme, this needs the same addition
+     or that one new theme will flash-of-wrong-theme on every reload
+     (R2-5/R2-6 caught this exact gap already only handling two of what
+     were about to become four non-default themes). -->
 <script>
   (function () {
     var t = localStorage.getItem("gs_theme");
+    var nonDefault = ["brightspark", "futuremetal", "castlerock"];
     if (t === "studio") return;
-    document.documentElement.setAttribute("data-theme", t === "brightspark" ? "brightspark" : "molten");
+    document.documentElement.setAttribute("data-theme", nonDefault.indexOf(t) !== -1 ? t : "molten");
   })();
 </script>
 </head>

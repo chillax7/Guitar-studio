@@ -1,3 +1,17 @@
+/* R2-5/R2-6: self-hosted, not fonts.googleapis.com at runtime — the app's
+   whole positioning is "everything runs locally... nothing is uploaded
+   anywhere" (README.md), and a live Google Fonts request on every launch
+   would be a real (if small and non-uploading) break from "fully local,"
+   not just a style choice. All four are open-license (SIL OFL/Apache) and
+   small: ~106KB total for every weight actually used below. */
+@font-face { font-family: "Orbitron"; font-weight: 700; src: url("fonts/orbitron-700.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Rajdhani"; font-weight: 400; src: url("fonts/rajdhani-400.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Rajdhani"; font-weight: 500; src: url("fonts/rajdhani-500.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Rajdhani"; font-weight: 600; src: url("fonts/rajdhani-600.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Share Tech Mono"; font-weight: 400; src: url("fonts/sharetechmono-400.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Cinzel"; font-weight: 600; src: url("fonts/cinzel-600.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Cinzel"; font-weight: 700; src: url("fonts/cinzel-700.woff2") format("woff2"); font-display: swap; }
+
 :root {
   --bg: #1b1d22;
   --panel: #232630;
@@ -32,6 +46,15 @@
   --track-drums: #7c8aa3;
   --track-bass: #9c8a52;
   --track-guitar: #c98a3d;
+  /* R2-2: piano/other used to have no color at all (deliberately, when
+     they were the two names likeliest to be an unrecognized/imported
+     stem) — now that stemColorCategory (app.js) recognizes them as real
+     htdemucs_6s output, they need their own hues too, chosen to sit apart
+     from all six others: violet reads as neither warm (vocals/bass/guitar)
+     nor the existing cool teal/blue of the split candidates; green is the
+     one hue family nothing else here uses. */
+  --track-piano: #9b7fc9;
+  --track-other: #7fa65c;
   --track-candidate-a: #4a9c96;
   --track-candidate-b: #6f8fae;
   /* UI-4 (design review v1): distinct from --accent on purpose — the brief
@@ -48,6 +71,22 @@
   --heading-font: inherit;
   --heading-transform: none;
   --heading-tracking: normal;
+  /* R2-5/R2-6: new tokens, not just new values for existing ones — no prior
+     theme needed its own font beyond --heading-font (nav/heading only).
+     Future Metal and Castle Rock both bring a real body/data-dense
+     companion face, so this is the first theme-scoped hook for THOSE.
+     Declared once here rather than repeated in every theme block: none of
+     Studio/Molten/Bright Spark override it, so all three correctly inherit
+     this same default — only Future Metal and Castle Rock's own blocks,
+     further down, set a real value.
+     Deliberately the literal system-font stack body{} already hardcoded,
+     NOT the keyword "inherit" — var(--font-ui) substitutes whatever this
+     resolves to as a literal value, so the keyword "inherit" would make
+     body inherit font-family from <html> (which sets none, so browser
+     default serif) instead of a no-op — a real regression for every
+     existing theme, caught before it shipped rather than after. */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
 }
 
@@ -89,6 +128,8 @@
   --track-drums: #8a8390;
   --track-bass: #96814a;
   --track-guitar: #b98a3a;
+  --track-piano: #8a6fa8;
+  --track-other: #6fa060;
   --track-candidate-a: #4a9690;
   --track-candidate-b: #6a86a3;
   --dry-take-accent: #45a89e;
@@ -187,6 +228,8 @@
   --track-drums: var(--waveform);
   --track-bass: var(--waveform);
   --track-guitar: var(--waveform);
+  --track-piano: var(--waveform); /* R2-2: same collapse-to-neutral as the rest, for the same reason */
+  --track-other: var(--waveform);
   --track-candidate-a: var(--waveform);
   --track-candidate-b: var(--waveform);
   --warn: #b45309;
@@ -247,6 +290,163 @@
   border: 1px solid var(--border);
 }
 
+/* ---------------------------------------------------------------------
+   R2-5: "Future Metal" — brushed steel, HUD-on-a-fighter-jet, cold and
+   precise; the deliberate contrast to Molten Obsidian's warm "amp on
+   stage" character. Same token set as every theme above, so it needs
+   nothing else wired anywhere — the shared h3 rule, .pa-card, .lane.track-
+   color-*, #rig-status-pill.live, .track-row.selected, the AI Lab grid all
+   pick it up automatically the same way they already do for the other
+   three. Flat CSS only (gradients/borders), no texture images, per spec.
+   --------------------------------------------------------------------- */
+:root[data-theme="futuremetal"] {
+  --bg: #171b20;
+  --panel: #1d232a;
+  --panel-2: #242b33;
+  --border: #333d47;
+  --text: #d7dee6;
+  --text-dim: #8a97a5;
+  --accent: #29c5e6;
+  --accent-dim: #163a42;
+  --waveform: #3ad0ee; /* a touch lighter than --accent, same reasoning as Molten's waveform vs its own accent */
+  --accent-2: var(--waveform);
+  --accent-2-dim: var(--accent-dim);
+  --warn: #e0a83c;
+  --danger: #e05a5a;
+  --success: #46c17a;
+  --mute: #4d5866;
+  --solo: #e0c34a;
+  /* Cool-metallic family (steel blue, chrome/silver, gunmetal, cool violet-
+     steel, deep teal) plus one warm standout (copper, on Guitar per spec)
+     so nothing in the mixer reads flat. Split candidates get their own two
+     cool tones, same as every other theme's pattern. */
+  --track-vocals: #4a7fa8;
+  --track-drums: #9aa4ac;
+  --track-bass: #5c6570;
+  --track-guitar: #c9793a;
+  --track-piano: #7b7fc0;
+  --track-other: #2f8f96;
+  --track-candidate-a: #3ad0ee;
+  --track-candidate-b: #5c78a0;
+  /* Same "real functional distinction, not decorative" reasoning as every
+     other theme's dry-take-accent — a magenta reads as clearly apart from
+     this theme's cyan as teal did from Molten's orange. */
+  --dry-take-accent: #d162c4;
+  --heading-font: "Orbitron", var(--font-ui);
+  --heading-transform: none;
+  --heading-tracking: 0.04em; /* a little extra tracking on nav/app-title suits the HUD character; h3's own tracking already comes from its dedicated rule, unaffected by this */
+  --font-ui: "Rajdhani", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Share Tech Mono", ui-monospace, monospace;
+}
+:root[data-theme="futuremetal"] body {
+  background:
+    linear-gradient(155deg, #1c222a 0%, transparent 40%),
+    linear-gradient(-25deg, #131720 0%, transparent 45%),
+    var(--bg);
+}
+:root[data-theme="futuremetal"] h2, :root[data-theme="futuremetal"] h3,
+:root[data-theme="futuremetal"] #app-title, :root[data-theme="futuremetal"] #top-banner-screen-label,
+:root[data-theme="futuremetal"] .nav-screen-btn {
+  font-family: var(--heading-font);
+  letter-spacing: var(--heading-tracking);
+}
+:root[data-theme="futuremetal"] .nav-screen-btn.active,
+:root[data-theme="futuremetal"] .ailab-tab-btn.on,
+:root[data-theme="futuremetal"] .ailab-mode-toggle button.on,
+:root[data-theme="futuremetal"] button.primary {
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18);
+}
+:root[data-theme="futuremetal"] #rig-status-pill.live #rig-status-led,
+:root[data-theme="futuremetal"] #rig-status-pill.clipped #rig-status-led {
+  box-shadow: 0 0 6px currentColor;
+}
+:root[data-theme="futuremetal"] .pa-chain-icon.pa-chain-on {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root[data-theme="futuremetal"] .pa-chain-icon.pa-chain-open {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 85%, transparent);
+}
+
+/* ---------------------------------------------------------------------
+   R2-6: "Castle Rock" — stone, iron, torchlight; a medieval training-
+   ground/dungeon character. Same reasoning and same token set as Future
+   Metal above — nothing else needs wiring for either new theme.
+   --------------------------------------------------------------------- */
+:root[data-theme="castlerock"] {
+  --bg: #211f1c;
+  --panel: #2a2723;
+  --panel-2: #332f29;
+  --border: #4a443b;
+  --text: #e8e2d5;
+  --text-dim: #a89b87;
+  --accent: #e0942f;
+  --accent-dim: #4a3419;
+  --waveform: #e8a542;
+  --accent-2: var(--waveform);
+  --accent-2-dim: var(--accent-dim);
+  --warn: #cf7a2e;
+  --danger: #b5443a;
+  --success: #5a8f4a;
+  --mute: #6b6357;
+  --solo: #d1a52e;
+  /* Warm material family (deep wine-red, iron grey, bronze, torchlight-
+     amber standout on Guitar, parchment-tan) — filled out to all eight
+     categories with a mossy forest-green (Other) and two cool contrasts
+     (steel/chainmail-blue, banner-cloth plum) for the split candidates, so
+     they read apart from the otherwise all-warm palette the same way
+     Future Metal's candidates read apart from its all-cool one. */
+  --track-vocals: #7a3540;
+  --track-drums: #6e6a63;
+  --track-bass: #8a6a3a;
+  --track-guitar: #d1892f;
+  --track-piano: #b8a179;
+  --track-other: #5f7a4a;
+  --track-candidate-a: #6a7a8a;
+  --track-candidate-b: #7a5a7a;
+  /* A cool blue against an otherwise all-warm stone/torchlight palette —
+     same "real functional distinction" reasoning as every other theme. */
+  --dry-take-accent: #5a86b8;
+  --heading-font: "Cinzel", var(--font-ui);
+  --heading-transform: none;
+  --heading-tracking: normal; /* Cinzel's own letterforms already carry a carved, spaced-out feel; no extra tracking needed */
+  /* Deliberately NOT a new display font here — spec's own guidance was to
+     avoid illegible blackletter/gothic faces at the sizes this app uses
+     and pair Cinzel with "a plain, highly legible body font." The plainest
+     legible option is the system stack every other theme already uses, so
+     --font-ui stays that rather than introducing a fourth downloaded font
+     this theme doesn't actually need. */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+:root[data-theme="castlerock"] body {
+  background:
+    linear-gradient(160deg, #262320 0%, transparent 45%),
+    linear-gradient(-20deg, #1a1815 0%, transparent 50%),
+    var(--bg);
+}
+:root[data-theme="castlerock"] h2, :root[data-theme="castlerock"] h3,
+:root[data-theme="castlerock"] #app-title, :root[data-theme="castlerock"] #top-banner-screen-label,
+:root[data-theme="castlerock"] .nav-screen-btn {
+  font-family: var(--heading-font);
+  letter-spacing: var(--heading-tracking);
+}
+:root[data-theme="castlerock"] .nav-screen-btn.active,
+:root[data-theme="castlerock"] .ailab-tab-btn.on,
+:root[data-theme="castlerock"] .ailab-mode-toggle button.on,
+:root[data-theme="castlerock"] button.primary {
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.3);
+}
+:root[data-theme="castlerock"] #rig-status-pill.live #rig-status-led,
+:root[data-theme="castlerock"] #rig-status-pill.clipped #rig-status-led {
+  box-shadow: 0 0 6px currentColor;
+}
+:root[data-theme="castlerock"] .pa-chain-icon.pa-chain-on {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root[data-theme="castlerock"] .pa-chain-icon.pa-chain-open {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 85%, transparent);
+}
+
 /* Real gap the theme work surfaced: sliders never set accent-color, so
    they stayed native browser blue even under Molten Obsidian. Safe in the
    Studio theme too — browser blue already closely matches --accent there. */
@@ -258,9 +458,18 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   height: 100vh;
   overflow: hidden;
+}
+
+/* R2-5/R2-6: numeric/data-dense readouts (BPM, Hz, cents, fader/pan
+   percentages) get the theme's monospace-leaning companion face where one
+   exists (Future Metal's Share Tech Mono) — a shared attribute/class
+   selector rather than touching each of these individually, so a future
+   readout only needs one of these same selectors to pick it up for free. */
+[data-transport], #pa-tuner-hz, #pa-tuner-cents-val, .lane-gain-val, .lane-pan-val {
+  font-family: var(--font-mono);
 }
 
 #app {
@@ -894,6 +1103,8 @@ button:disabled:hover { filter: none; }
 .lane.track-color-drums { --waveform: var(--track-drums, var(--waveform)); }
 .lane.track-color-bass { --waveform: var(--track-bass, var(--waveform)); }
 .lane.track-color-guitar { --waveform: var(--track-guitar, var(--waveform)); }
+.lane.track-color-piano { --waveform: var(--track-piano, var(--waveform)); }
+.lane.track-color-other { --waveform: var(--track-other, var(--waveform)); }
 .lane.track-color-candidate-a { --waveform: var(--track-candidate-a, var(--waveform)); }
 .lane.track-color-candidate-b { --waveform: var(--track-candidate-b, var(--waveform)); }
 
@@ -2028,6 +2239,35 @@ h3:first-child { margin-top: 0; }
 /* ---------- AI Lab (V5-F2: Scale/Mode Advisor) ---------- */
 
 .ailab-column { display: flex; flex-direction: column; gap: 14px; }
+
+/* R2-1: Rate My Take's cards were the one .ailab-column that stayed a
+   narrow single column at any width — Backing Track/Dry Takes/Record a Dry
+   Take/Score a Take are unrelated in DOM-adjacency terms but pair up
+   logically (the two things you do before scoring; the two things you look
+   at while scoring), so a plain reflow-into-two-equal-columns wouldn't have
+   grouped them right. Scoped to this one panel rather than .ailab-column
+   generally — Scales/AI Assistant weren't asked for and their own content
+   shapes don't obviously split into two same-height columns the way this
+   one does. Explicit grid placement (not auto-flow) is what achieves the
+   1st+3rd / 2nd+4th pairing instead of the 1st+2nd / 3rd+4th an unplaced
+   2-column auto-flow would give for free. Below the breakpoint this
+   collapses to the same single column it always was — 1fr is 1fr whether
+   or not the second track exists, so no separate narrow-width ruleset
+   is needed. */
+#ailab-ratemytake-panel {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 14px;
+}
+@media (min-width: 820px) {
+  #ailab-ratemytake-panel { grid-template-columns: 1fr 1fr; }
+  #ailab-ratemytake-panel > section:nth-of-type(1) { grid-column: 1; grid-row: 1; } /* Backing Track */
+  #ailab-ratemytake-panel > section:nth-of-type(3) { grid-column: 1; grid-row: 2; } /* Record a dry take */
+  #ailab-ratemytake-panel > section:nth-of-type(2) { grid-column: 2; grid-row: 1; } /* Dry takes for this song */
+  #ailab-ratemytake-panel > section:nth-of-type(4) { grid-column: 2; grid-row: 2; } /* Score a take */
+  #ailab-ratemytake-panel > section:nth-of-type(5) { grid-column: 1 / 3; grid-row: 3; } /* Result — spans both once it appears */
+}
 
 /* SS-1 Song Structure — the part-by-part map. Each part is a card with a
    colour-coded left edge (reusing SECTION_COLORS so a repeated part keeps its

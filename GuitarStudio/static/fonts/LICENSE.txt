@@ -1,0 +1,10 @@
+Fonts in this directory (Orbitron, Rajdhani, Share Tech Mono, Cinzel) are
+Google Fonts, all licensed under the SIL Open Font License, version 1.1
+(https://scripts.sil.org/OFL), which permits bundling, redistribution, and
+use in end-user applications free of charge, including in this project's
+own distribution.
+
+Self-hosted here (rather than loaded from fonts.googleapis.com at runtime)
+to match the app's local-first design — see README.md.
+
+Full license text: https://scripts.sil.org/OFL
