@@ -2608,16 +2608,22 @@ def _optional_song_theory(source_path: str, model: str) -> tuple:
 TRACK_INFO_FILE = PROJECTS_DIR / "_track_info.json"
 
 
-def _guess_title_from_filename(track: str) -> str:
+def _guess_artist_title_from_filename(track: str) -> tuple:
     """Best-effort only, never trusted blindly — real filenames in this
-    project have been messy (e.g. "Empty_Rooms__Gary_Moore.mp3__dry_03.m4a"),
-    so this just strips a trailing take/stem-style suffix and underscores
-    rather than attempting a real artist/title split. The user always
-    confirms/edits the actual Artist/Title fields; this is only a prefill
-    hint for the title field."""
+    project have been messy (e.g. "Empty_Rooms__Gary_Moore.mp3__dry_03.m4a").
+    Library convention (per user) is "Artist - Title"; if the cleaned
+    filename contains a " - " separator we split on the first one,
+    otherwise there's no reliable way to tell artist from title so we
+    return the whole cleaned name as the title guess and no artist guess.
+    The user always confirms/edits the actual Artist/Title fields; this is
+    only a prefill hint."""
     name = re.sub(r"\.\w+__(dry|Good|Bad)(_\d+)?(\.\w+)?$", "", Path(track).name)
     stem = Path(name).stem
-    return re.sub(r"[_\s]+", " ", stem).strip()
+    cleaned = re.sub(r"[_\s]+", " ", stem).strip()
+    if " - " in cleaned:
+        artist, title = cleaned.split(" - ", 1)
+        return artist.strip(), title.strip()
+    return "", cleaned
 
 
 def _load_track_info_all() -> dict:
@@ -2631,10 +2637,12 @@ def _load_track_info_all() -> dict:
 
 def svc_load_track_info(track: str) -> dict:
     info = _load_track_info_all().get(content_hash_for_track(track), {})
+    guessed_artist, guessed_title = _guess_artist_title_from_filename(track)
     return {
         "artist": info.get("artist", ""),
         "title": info.get("title", ""),
-        "guessed_title": _guess_title_from_filename(track),
+        "guessed_artist": guessed_artist,
+        "guessed_title": guessed_title,
     }
 
 

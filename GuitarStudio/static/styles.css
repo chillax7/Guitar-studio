@@ -36,6 +36,21 @@
   --success: #4caf6a;
   --mute: #55596a;
   --solo: #e0c34a;
+  /* Tuner gauge (per user request): red = under pitch (flat), blue = above
+     pitch (sharp), yellow = on pitch. Flat/in-tune are deliberately derived
+     from --danger/--solo via var() rather than given their own literal
+     values — declared once here, they resolve against whichever theme's
+     --danger/--solo is in effect on the actual element (same mechanism as
+     --accent-2: var(--waveform) above), so every theme's tuner automatically
+     matches its own red/yellow without needing its own copy of this line.
+     --tuner-sharp has no existing blue-ish token to borrow (every theme's
+     --accent is a different hue), so it does get its own value per theme,
+     same as --dry-take-accent. Treated as a status color, not a decorative
+     one, so — like danger/success/solo — it is NOT collapsed to grey in
+     Bright Spark. */
+  --tuner-flat: var(--danger);
+  --tuner-sharp: #4a90e2;
+  --tuner-intune: var(--solo);
   /* UI-1 (design review v1): per-instrument track colors — muted/desaturated
      on purpose, chosen to sit apart from --solo's yellow-gold (no "is this
      soloed or is this just the guitar track" ambiguity) and from --waveform/
@@ -120,6 +135,7 @@
   --success: #59b878;
   --mute: #55596a;
   --solo: #e0c34a;
+  --tuner-sharp: #5b9fe0; /* a touch lighter than Studio's, for contrast against Molten's darker panels */
   /* UI-1: shifted browner/more muted than Studio's set specifically because
      Molten's whole palette already lives in orange (--accent/--waveform are
      #ff7a3d/#ff8a4d) — a guitar-track amber close to that would read as
@@ -237,6 +253,10 @@
   --success: #157a3d;
   --mute: #9aa0ad;
   --solo: #a3790a;
+  /* Status-color exception (same as danger/success/solo above) — a
+     darker, more saturated blue than the dark themes' since it has to
+     read against this theme's near-white panels. */
+  --tuner-sharp: #1c5fa8;
   /* UI-4 (design review v1): flagging this one specifically. This theme is
      deliberately monochromatic by direct prior user request (see the
      comment above --accent) — everything except "status colours
@@ -316,6 +336,10 @@
   --success: #46c17a;
   --mute: #4d5866;
   --solo: #e0c34a;
+  /* A cooler indigo-violet rather than another cyan — this theme's own
+     --accent/--waveform are already cyan, so a same-hue "sharp" reading
+     would blend into the rest of the HUD instead of standing apart. */
+  --tuner-sharp: #6c7ae0;
   /* Cool-metallic family (steel blue, chrome/silver, gunmetal, cool violet-
      steel, deep teal) plus one warm standout (copper, on Guitar per spec)
      so nothing in the mixer reads flat. Split candidates get their own two
@@ -389,6 +413,11 @@
   --success: #5a8f4a;
   --mute: #6b6357;
   --solo: #d1a52e;
+  /* A cool steel-blue against the otherwise all-warm stone/torchlight
+     palette — deliberately its own value rather than reusing
+     --dry-take-accent, which already means something else (the Rate My
+     Take record button) elsewhere in this same theme. */
+  --tuner-sharp: #3a6a95;
   /* Warm material family (deep wine-red, iron grey, bronze, torchlight-
      amber standout on Guitar, parchment-tan) — filled out to all eight
      categories with a mossy forest-green (Other) and two cool contrasts
@@ -2029,20 +2058,35 @@ h3:first-child { margin-top: 0; }
   stroke: var(--border);
   stroke-width: 10;
   stroke-linecap: round;
+  transition: stroke 120ms ease-out;
 }
+/* Real user request: the gauge itself reads tuning direction at a glance —
+   red when flat (under pitch), blue when sharp (above pitch), yellow once
+   within the in-tune allowance — not just the pointer/dot. Applied to the
+   pointer and dot too so the whole instrument agrees on one color per
+   state, rather than the arc saying "flat" in red while the pointer still
+   said "in tune" in a different color scheme (--success/green, the old
+   single-state behavior this replaces). */
+.pa-tuner-arc-track.flat { stroke: var(--tuner-flat); }
+.pa-tuner-arc-track.sharp { stroke: var(--tuner-sharp); }
+.pa-tuner-arc-track.in-tune { stroke: var(--tuner-intune); }
 .pa-tuner-pointer {
   fill: var(--text-dim);
-  transition: transform 80ms ease-out;
+  transition: transform 80ms ease-out, fill 120ms ease-out;
   transform-origin: 150px 150px;
 }
-.pa-tuner-pointer.in-tune { fill: var(--success); }
+.pa-tuner-pointer.flat { fill: var(--tuner-flat); }
+.pa-tuner-pointer.sharp { fill: var(--tuner-sharp); }
+.pa-tuner-pointer.in-tune { fill: var(--tuner-intune); }
 .pa-tuner-arc-dot {
   fill: var(--accent);
   stroke: var(--panel);
   stroke-width: 2;
-  transition: cx 80ms ease-out, cy 80ms ease-out;
+  transition: cx 80ms ease-out, cy 80ms ease-out, fill 120ms ease-out;
 }
-.pa-tuner-arc-dot.in-tune { fill: var(--success); }
+.pa-tuner-arc-dot.flat { fill: var(--tuner-flat); }
+.pa-tuner-arc-dot.sharp { fill: var(--tuner-sharp); }
+.pa-tuner-arc-dot.in-tune { fill: var(--tuner-intune); }
 .pa-tuner-mic-btn {
   position: absolute;
   bottom: 6%;

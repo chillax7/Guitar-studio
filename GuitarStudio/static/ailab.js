@@ -1196,8 +1196,12 @@ function aiLabAssistantSetMode(mode) {
 // ---------------------------------------------------------------------------
 // This song's Artist/Title (release-v5-spec.md §4a) — shared by This Track,
 // This Artist, and Ask AI's context, since none of them have any other way
-// to know what song this actually is (no ID3/filename parsing trusted
-// blindly — see _guess_title_from_filename's docstring server-side).
+// to know what song this actually is. Library convention is a filename of
+// "Artist - Title"; if the user's filename follows that, both fields are
+// prefilled from it (see _guess_artist_title_from_filename's docstring
+// server-side). If they don't follow that convention, there's no reliable
+// way to split artist from title, so only the title field is prefilled
+// (with the whole cleaned filename) and the user fills in Artist themselves.
 // ---------------------------------------------------------------------------
 
 async function aiLabTrackInfoOpen() {
@@ -1214,11 +1218,13 @@ async function aiLabTrackInfoOpen() {
   }
   try {
     const r = await Api.get(`/api/trackinfo?track=${encodeURIComponent(State.track)}`);
-    artistEl.value = r.artist || "";
+    artistEl.value = r.artist || (r.guessed_artist || "");
     titleEl.value = r.title || (r.guessed_title || "");
     const configured = !!(r.artist || r.title);
     statusEl.textContent = configured
-      ? "" : `Guessed title "${r.guessed_title}" from the filename — check/edit before saving.`;
+      ? "" : r.guessed_artist
+        ? `Guessed "${r.guessed_artist} - ${r.guessed_title}" from the filename — check/edit before saving.`
+        : `Guessed title "${r.guessed_title}" from the filename — couldn't tell the artist, please fill that in.`;
     // ui-review-v5-full.md §2.7: collapse once configured, on the "just
     // opened this tab/switched song" moment only — not on every keystroke
     // or re-save, which would fight a user who deliberately reopened it.
@@ -1655,6 +1661,9 @@ function wireAiLab() {
     });
   });
   document.getElementById("ailab-explain-ask-btn").addEventListener("click", aiLabExplainAsk);
+  document.getElementById("ailab-explain-question").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") aiLabExplainAsk();
+  });
   document.getElementById("ailab-tips-suggest-btn").addEventListener("click", aiLabTipsSuggest);
   document.getElementById("ailab-tips-take-select").addEventListener("change", aiLabTipsOnTakeSelectChange);
   document.getElementById("ailab-trackinfo-save-btn").addEventListener("click", aiLabTrackInfoSave);

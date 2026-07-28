@@ -900,6 +900,23 @@ function paTunerArcPoint(cents, radius) {
   };
 }
 
+// Shared by paResetTunerDisplay (clears all three) and paUpdateTuner (sets
+// exactly one) — red = flat, blue = sharp, yellow = in tune (real user
+// request), applied to the arc track, pointer, and dot together so the
+// whole gauge reads as one instrument instead of the arc and pointer
+// disagreeing about what state they're in.
+const PA_TUNER_STATE_CLASSES = ["flat", "sharp", "in-tune"];
+
+function paSetTunerState(state) {
+  const track = document.getElementById("pa-tuner-arc-track");
+  const pointer = document.getElementById("pa-tuner-pointer");
+  const dot = document.getElementById("pa-tuner-arc-dot");
+  [track, pointer, dot].forEach((el) => {
+    el.classList.remove(...PA_TUNER_STATE_CLASSES);
+    if (state) el.classList.add(state);
+  });
+}
+
 function paResetTunerDisplay(status) {
   const statusEl = document.getElementById("pa-tuner-note");
   statusEl.textContent = status;
@@ -911,10 +928,9 @@ function paResetTunerDisplay(status) {
   const center = paTunerArcPoint(0, PA_TUNER_ARC_R);
   const pointerPos = paTunerArcPoint(0, PA_TUNER_ARC_R + 18);
   pointer.setAttribute("transform", `translate(${pointerPos.x}, ${pointerPos.y})`);
-  pointer.classList.remove("in-tune");
   dot.setAttribute("cx", center.x);
   dot.setAttribute("cy", center.y);
-  dot.classList.remove("in-tune");
+  paSetTunerState(null);
 }
 
 function paUpdateTuner(inData) {
@@ -929,16 +945,16 @@ function paUpdateTuner(inData) {
   statusEl.classList.add("reading");
   document.getElementById("pa-tuner-hz").textContent = `${freq.toFixed(1)} Hz`;
   document.getElementById("pa-tuner-cents-val").textContent = `${cents >= 0 ? "+" : ""}${cents}¢`;
-  const inTune = Math.abs(cents) <= 5;
   const pointer = document.getElementById("pa-tuner-pointer");
   const dot = document.getElementById("pa-tuner-arc-dot");
   const dotPos = paTunerArcPoint(cents, PA_TUNER_ARC_R);
   const pointerPos = paTunerArcPoint(cents, PA_TUNER_ARC_R + 18);
   pointer.setAttribute("transform", `translate(${pointerPos.x}, ${pointerPos.y})`);
-  pointer.classList.toggle("in-tune", inTune);
   dot.setAttribute("cx", dotPos.x);
   dot.setAttribute("cy", dotPos.y);
-  dot.classList.toggle("in-tune", inTune);
+  // A few cents' allowance either side of dead-on before calling it "in
+  // tune" — matches the existing +-5 threshold this replaces.
+  paSetTunerState(Math.abs(cents) <= 5 ? "in-tune" : cents < 0 ? "flat" : "sharp");
 }
 
 function paSetTunerEnabled(enabled) {
