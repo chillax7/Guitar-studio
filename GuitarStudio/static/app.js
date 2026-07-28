@@ -212,6 +212,20 @@ function isSplitCandidate(name) {
   return name.endsWith("_center") || name.endsWith("_sides");
 }
 
+// UI-1 (design review v1): color-code a track by instrument type, derived
+// from the stem's own name/kind rather than a manual per-track assignment —
+// so it stays consistent across every song without per-project setup. Only
+// the categories the design spec named get a color; anything else (piano,
+// "other", a custom stem, an unrecognized name) deliberately falls through
+// to null so renderLanes leaves it with no track-color-* class at all —
+// "don't guess wrong" was explicit in the brief, and an uncategorized stem
+// staying visually neutral is the correct outcome, not a bug.
+function stemColorCategory(name) {
+  if (isSplitCandidate(name)) return name.endsWith("_center") ? "candidate-a" : "candidate-b";
+  if (name === "vocals" || name === "drums" || name === "bass" || name === "guitar") return name;
+  return null;
+}
+
 function escapeHtml(s) {
   const d = document.createElement("div");
   d.textContent = s;
@@ -1035,7 +1049,13 @@ function drawWaveform(canvas, peaks) {
   ctx.clearRect(0, 0, w, h);
   // Canvas can't consume var() directly — resolve the themed color here so
   // waveforms follow the active theme (wireThemeToggle re-renders lanes).
-  ctx.fillStyle = getComputedStyle(document.documentElement)
+  // UI-1: reading it off the canvas itself, not document.documentElement,
+  // is what makes per-instrument track colors work for free — a categorized
+  // lane overrides --waveform in its own CSS scope (styles.css,
+  // .lane.track-color-*), and getComputedStyle on a descendant inherits
+  // that override; an uncategorized lane has nothing overriding it, so it
+  // still resolves all the way up to the theme's own --waveform, unchanged.
+  ctx.fillStyle = getComputedStyle(canvas)
     .getPropertyValue("--waveform").trim() || "#5b8cff";
   const mid = h / 2;
   const barW = w / peaks.length;
@@ -1981,10 +2001,12 @@ function renderLanes() {
 
   for (const stem of orderedStems()) {
     const name = stem.name;
+    const colorCategory = stemColorCategory(name);
     const lane = document.createElement("div");
     lane.className = "lane" +
       (State.mix.muted[name] ? " muted" : "") +
-      (State.mix.solo === name ? " solo-active" : "");
+      (State.mix.solo === name ? " solo-active" : "") +
+      (colorCategory ? ` track-color-${colorCategory}` : "");
 
     // BT-11: per-stem pan + a 3-band EQ, "carving space" to play along
     // (e.g. pan drums off-center, cut some bass mud) — pan is a fader-
@@ -1995,7 +2017,7 @@ function renderLanes() {
     const header = document.createElement("div");
     header.className = "lane-header";
     header.innerHTML = `
-      <div class="lane-name">${escapeHtml(stemDisplayName(name, stem.label))}
+      <div class="lane-name">${colorCategory ? '<span class="lane-color-dot"></span>' : ""}${escapeHtml(stemDisplayName(name, stem.label))}
         ${stem.is_derived ? '<span class="lane-derived-badge">derived</span>' : ""}
         ${stem.is_custom ? '<span class="lane-custom-badge" title="Added by you — not produced by the separation model">custom</span>' : ""}
         <button class="lane-rename-btn" title="Rename this stem (display name only — doesn't touch its saved mix)">✎</button>

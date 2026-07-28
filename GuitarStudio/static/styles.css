@@ -22,6 +22,26 @@
   --success: #4caf6a;
   --mute: #55596a;
   --solo: #e0c34a;
+  /* UI-1 (design review v1): per-instrument track colors — muted/desaturated
+     on purpose, chosen to sit apart from --solo's yellow-gold (no "is this
+     soloed or is this just the guitar track" ambiguity) and from --waveform/
+     --accent's blue. Every theme below defines its own set; drawWaveform
+     (app.js) and .lane.track-color-* further down both key off whichever
+     theme is active without either of them needing to know the values. */
+  --track-vocals: #c97b6e;
+  --track-drums: #7c8aa3;
+  --track-bass: #9c8a52;
+  --track-guitar: #c98a3d;
+  --track-candidate-a: #4a9c96;
+  --track-candidate-b: #6f8fae;
+  /* UI-4 (design review v1): distinct from --accent on purpose — the brief
+     suggested reusing "the AI Assistant active-tab color," but that tab
+     already uses plain --accent, which is this button's own resting-state
+     border color too (button.primary), so reusing it would have made the
+     two record buttons LESS distinguishable, not more, in this theme where
+     --accent happens to be blue already. A dedicated teal reads as its own
+     thing in every theme instead of coinciding with whatever --accent is. */
+  --dry-take-accent: #3fa9a0;
   --topbar-height: 44px;
   --sidebar-width: 240px; /* wireSidebarResize (app.js) overrides this live + persists it */
   --inspector-width: 280px; /* wireInspectorCollapse (app.js) overrides this live + persists it */
@@ -61,6 +81,17 @@
   --success: #59b878;
   --mute: #55596a;
   --solo: #e0c34a;
+  /* UI-1: shifted browner/more muted than Studio's set specifically because
+     Molten's whole palette already lives in orange (--accent/--waveform are
+     #ff7a3d/#ff8a4d) — a guitar-track amber close to that would read as
+     "this is the accent," not "this is the guitar." */
+  --track-vocals: #c07868;
+  --track-drums: #8a8390;
+  --track-bass: #96814a;
+  --track-guitar: #b98a3a;
+  --track-candidate-a: #4a9690;
+  --track-candidate-b: #6a86a3;
+  --dry-take-accent: #45a89e;
   /* Was the engraved-serif Palatino stack — reverted to match Studio/
      Bright Spark's plain `inherit` per direct feedback (readability over
      the theme flourish, for now). The token stays wired through h2/h3/
@@ -145,6 +176,17 @@
   --success: #157a3d;
   --mute: #9aa0ad;
   --solo: #a3790a;
+  /* UI-4 (design review v1): flagging this one specifically. This theme is
+     deliberately monochromatic by direct prior user request (see the
+     comment above --accent) — everything except "status colours
+     (danger/success/solo)" is meant to read as one calm greyscale. This
+     button needing to be told apart from Play Along's Record is a
+     functional distinction in that same status-color sense (recording the
+     wrong thing produces a file that can't be scored), not a decorative
+     accent, so it's treated the same way danger/success/solo already are
+     rather than left out. Worth a second look given the theme's own
+     explicit monochromatic mandate predates this need. */
+  --dry-take-accent: #1f7a72;
   --heading-font: inherit;
   --heading-transform: none;
   --heading-tracking: normal;
@@ -600,6 +642,16 @@ button.running:hover { background: var(--success); filter: brightness(1.1); }
    Stays quiet at rest per the house rule, but an accent-coloured border marks
    it as the primary thing to do without the loud fill of an active state. */
 button.primary { border-color: var(--accent); }
+/* UI-4 (design review v1): AI Lab's "Record dry take" vs Play Along's plain
+   "Record" (#rec-toggle-btn, unstyled here — stays the house .primary
+   baseline). Distinct border/text color plus a small leading icon
+   (::before, so the button's actual label text is untouched) — the two are
+   meant to be tellable apart without reading the paragraph above them each
+   time, since they capture fundamentally different things (an isolated dry
+   take for scoring vs. a normal mixed-in performance video). */
+button.primary.record-dry-btn { border-color: var(--dry-take-accent); color: var(--dry-take-accent); }
+button.primary.record-dry-btn:hover { background: color-mix(in srgb, var(--dry-take-accent) 16%, var(--panel-2)); border-color: var(--dry-take-accent); color: var(--dry-take-accent); }
+.record-dry-btn::before { content: "🎧"; margin-right: 5px; }
 button:disabled {
   opacity: 0.5;
   cursor: default;
@@ -805,6 +857,47 @@ button:disabled:hover { filter: none; }
   left: 0;
   z-index: 3;
   background: var(--bg);
+}
+
+/* UI-1 (design review v1): color-code a lane by instrument type. Each rule
+   only overrides --waveform WITHIN that lane's own scope (drawWaveform,
+   app.js, reads it off the canvas element, which inherits this), so nothing
+   outside a colored lane is affected — --accent-2 (chord ribbon) resolves
+   through :root's own --waveform exactly as before, since that lives
+   outside any .lane element.
+   The var(..., var(--waveform)) fallback matters specifically for Bright
+   Spark: that theme is deliberately monochromatic by direct prior user
+   request (see its own comment above), so it defines no --track-* tokens at
+   all, and every rule below quietly falls back to Bright Spark's plain,
+   already-neutral --waveform instead of breaking. Studio and Molten both
+   define the tokens, so they get real per-instrument color; Bright Spark
+   stays exactly as monochromatic as it already was. */
+.lane.track-color-vocals { --waveform: var(--track-vocals, var(--waveform)); }
+.lane.track-color-drums { --waveform: var(--track-drums, var(--waveform)); }
+.lane.track-color-bass { --waveform: var(--track-bass, var(--waveform)); }
+.lane.track-color-guitar { --waveform: var(--track-guitar, var(--waveform)); }
+.lane.track-color-candidate-a { --waveform: var(--track-candidate-a, var(--waveform)); }
+.lane.track-color-candidate-b { --waveform: var(--track-candidate-b, var(--waveform)); }
+
+/* The other two touchpoints the design spec asked for — the name label's
+   accent dot, and the M/S button group's border/tint — both just reuse
+   whichever --waveform a lane resolved to above, so there's exactly one
+   rule for all six categories instead of six more near-duplicates. */
+.lane[class*="track-color-"] .lane-header { border-left: 3px solid var(--waveform); }
+.lane-color-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--waveform);
+  margin-right: 2px;
+  flex: none;
+}
+.lane[class*="track-color-"] .lane-buttons {
+  border: 1px solid var(--waveform);
+  border-radius: 4px;
+  padding: 2px;
+  background: color-mix(in srgb, var(--waveform) 14%, transparent);
 }
 /* Imported stem-pack labels (multi-stem-import-spec.md) are the raw
    filename, underscores and all — one long unbroken "word" with no spaces
@@ -1133,7 +1226,45 @@ button:disabled:hover { filter: none; }
   overflow-y: auto;
   font-size: 12px;
 }
-#inspector h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin: 0 0 8px; }
+/* UI-2 (design review v1): every in-content section header in the app —
+   Mixer's inspector ("Track", "Speed Trainer", "Export", ...), every
+   Play Along/Tone Lab card ("Backing Track", "Rig Presets", "Noise Gate",
+   ...), and every AI Lab panel ("Get phrasing ideas", "Score a take", ...)
+   — turns out to already be a plain <h3>, nothing fancier. That makes one
+   shared, global rule the right fix rather than adding a class to every
+   template: it's automatically consistent today and automatically applies
+   to any new panel later, which per-instance overrides never guarantee.
+   Previously this same weight/size as the surrounding labels (11-12px,
+   uppercase, --text-dim) was split across two near-identical rules
+   (#inspector h3 and .pa-card h3 below) that had already drifted a pixel
+   apart from each other — replaced by this one.
+   The asymmetric margin (more above than below) is what visually groups a
+   header with the content under it rather than the section above it — but
+   only when there IS a section above: h3:first-child (a card whose header
+   is its very first element, which is most of them) gets no extra top
+   margin, so cards don't gain a band of empty space at their own top edge. */
+h3 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin: 18px 0 6px;
+}
+h3:first-child { margin-top: 0; }
+/* Verified needed: the per-theme rule ":root[data-theme=X] h2, h3, ...
+   { letter-spacing: var(--heading-tracking) }" further up also targets h3,
+   with higher specificity than the plain h3 rule above (it's scoped through
+   :root[data-theme="..."]), and --heading-tracking is "normal" in every
+   theme — it silently won and the tracking above was being computed as
+   "normal" everywhere until this was added. Matching that selector's own
+   specificity here, after it in source, is what makes this rule actually
+   win rather than just applying an equally-plausible-looking one that loses. */
+:root h3,
+:root[data-theme="molten"] h3,
+:root[data-theme="brightspark"] h3 {
+  letter-spacing: 0.08em;
+}
 
 /* Collapsible Track/Speed Trainer/Export panel (real user report: it eats
    screen width on the Mixer that could go to the lanes). Same "own CSS var
@@ -1354,7 +1485,6 @@ button:disabled:hover { filter: none; }
   border-radius: 6px;
   padding: 12px 14px;
 }
-.pa-card h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); }
 .pa-card label { display: block; font-size: 11px; color: var(--text-dim); margin: 8px 0 2px; }
 #pa-suggest-btn { display: block; margin-top: 18px; width: 100%; }
 .pa-card input[type=range] { width: 100%; }
@@ -1418,6 +1548,20 @@ button:disabled:hover { filter: none; }
 }
 .pa-top-card { min-width: 0; }
 
+/* UI-3 (design review v1): the two control groups inside the merged "Rig &
+   Looper" card, separated by a thin rule rather than each getting its own
+   full h3 — they're subordinate to that one card heading, not two more
+   section headers in their own right. */
+.pa-subcard + .pa-subcard { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.pa-subcard-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
 /* v4.7 Tone Lab redesign (research/ui-review-and-tonelab-redesign.md §3):
    one icon chip per rig stage, wrapping left-to-right in signal order.
    Replaces the old masonry card stack + SVG flow-arrow overlay — the
@@ -1473,8 +1617,12 @@ button:disabled:hover { filter: none; }
    need to know about it; only the open/close state matters. */
 .pa-card details { margin-top: 8px; }
 .pa-card summary {
-  cursor: pointer; font-size: 11px; color: var(--text-dim);
-  text-transform: uppercase; letter-spacing: 0.05em;
+  /* UI-2: same weight/tracking bump as the shared h3 rule above, kept at
+     its own smaller size deliberately — this is a sub-header disclosure
+     one level below the card's own h3 ("Setup: device & calibration"
+     under "Input"), so it should read as subordinate to it, not equal. */
+  cursor: pointer; font-size: 11px; font-weight: 700; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.07em;
   padding: 4px 0;
 }
 .pa-card summary:hover { color: var(--text); }

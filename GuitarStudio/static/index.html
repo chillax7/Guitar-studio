@@ -422,10 +422,36 @@
                auto-applying on selection (no separate Load button). Kept
                in sync with the Tone Lab dropdown by paSyncPresetQuickpick
                in playalong.js. -->
+          <!-- UI-3 (design review v1): Rig Preset and Looper were each their
+               own pa-top-card, both mostly empty space at the same fixed
+               width as the content-dense Backing Track/Tuner cards next to
+               them. Merged into one card (Option A of the two the review
+               offered) rather than switching the whole row to flexible
+               widths (Option B) — lower-disruption to .top-strip-grid, which
+               Tone Lab's Input strip also uses. Both controls' ids/behavior
+               are untouched; only the markup around them changed. -->
           <section class="pa-card pa-top-card">
-            <h3>Rig Preset</h3>
-            <select id="pa-preset-quickpick"></select>
-            <p class="hint">Full preset management is in Tone Lab.</p>
+            <h3>Rig &amp; Looper</h3>
+            <div class="pa-subcard">
+              <div class="pa-subcard-label">Rig Preset</div>
+              <select id="pa-preset-quickpick"></select>
+              <p class="hint">Full preset management is in Tone Lab.</p>
+            </div>
+            <!-- GP-06 (looper-pedal-spec.md): real-time loop recorder/
+                 overdubber. Same top-strip family as Riff Capture — this
+                 taps and plays back in parallel, it doesn't process the
+                 signal in line the way a pedal-chain card does. -->
+            <div class="pa-subcard">
+              <div class="pa-subcard-label">Looper</div>
+              <button id="looper-primary-btn" class="primary">● Record</button>
+              <div class="row">
+                <button id="looper-stop-btn" style="display:none">Stop</button>
+                <button id="looper-undo-btn" style="display:none">Undo</button>
+                <button id="looper-clear-btn" style="display:none">Clear</button>
+              </div>
+              <p class="hint" id="looper-length-hint"></p>
+              <p class="hint" id="looper-status"></p>
+            </div>
           </section>
 
           <section class="pa-card pa-top-card">
@@ -433,22 +459,6 @@
             <p class="hint">Always rolling in the background once your rig is active — hit Save that! any time within ~20s of playing something worth keeping.</p>
             <button id="riff-save-btn" class="primary">🎸 Save that!</button>
             <p class="hint" id="riff-status"></p>
-          </section>
-
-          <!-- GP-06 (looper-pedal-spec.md): real-time loop recorder/
-               overdubber. Same top-strip family as Riff Capture — this taps
-               and plays back in parallel, it doesn't process the signal
-               in line the way a pedal-chain card does. -->
-          <section class="pa-card pa-top-card">
-            <h3>Looper</h3>
-            <button id="looper-primary-btn" class="primary">● Record</button>
-            <div class="row">
-              <button id="looper-stop-btn" style="display:none">Stop</button>
-              <button id="looper-undo-btn" style="display:none">Undo</button>
-              <button id="looper-clear-btn" style="display:none">Clear</button>
-            </div>
-            <p class="hint" id="looper-length-hint"></p>
-            <p class="hint" id="looper-status"></p>
           </section>
         </div>
 
@@ -1100,7 +1110,12 @@
             <p class="hint">This is different from the takes recorded in <strong>Play Along</strong>'s Record tab, which deliberately mix the backing track in with your guitar so you have a normal, watchable/listenable performance video afterward. That's the right choice for a take you want to watch back — but the wrong input for scoring, since the reference performance would already be baked into the file regardless of how well you actually played. Use Play Along's Record tab for a real performance recording; use this button when you specifically want a take to score here.</p>
             <p class="hint">Want a watchable performance instead? <a href="#" id="rmt-jump-to-playalong">Go to Play Along →</a></p>
             <div class="row">
-              <button id="ailab-rmt-record-btn" class="primary">● Record dry take</button>
+              <!-- UI-4 (design review v1): visually distinct from Play Along's
+                   Record (#rec-toggle-btn) so the two are recognizable
+                   without re-reading the explanatory copy above every time —
+                   see .record-dry-btn in styles.css. Text/position/behavior
+                   all unchanged; only the added class and its styling are new. -->
+              <button id="ailab-rmt-record-btn" class="primary record-dry-btn">● Record dry take</button>
               <button id="ailab-rmt-stop-btn" style="display:none;">■ Stop</button>
               <span id="ailab-rmt-elapsed">0:00</span>
             </div>
