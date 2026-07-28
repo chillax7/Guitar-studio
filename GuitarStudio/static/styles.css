@@ -171,6 +171,24 @@
      --accent-2 comment for the full history. */
   --accent-2: var(--waveform);
   --accent-2-dim: var(--accent-dim);
+  /* UI-1 correction: these were meant to fall back to plain --waveform here
+     (var(--track-guitar, var(--waveform)) at each .track-color-* rule),
+     on the theory that a custom property left undeclared in this block
+     would resolve as unset. That's wrong — :root and :root[data-theme=
+     "brightspark"] are the SAME element, and CSS custom properties cascade
+     per-property across every rule that matches an element, not per
+     rule-block; the base :root's own --track-vocals etc. (further up this
+     file) still applied here even though this block never mentioned them,
+     so the fallback's second argument never actually triggered and every
+     lane still rendered in full color, directly contradicting the
+     monochromatic mandate two paragraphs up. Explicitly collapsing all six
+     to --waveform here is what actually restores it. */
+  --track-vocals: var(--waveform);
+  --track-drums: var(--waveform);
+  --track-bass: var(--waveform);
+  --track-guitar: var(--waveform);
+  --track-candidate-a: var(--waveform);
+  --track-candidate-b: var(--waveform);
   --warn: #b45309;
   --danger: #c9302c;
   --success: #157a3d;
