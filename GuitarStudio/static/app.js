@@ -903,16 +903,33 @@ function computePeaks(buffer, buckets, startSec, endSec) {
 
   const data = buffer.getChannelData(0);
   const sr = buffer.sampleRate;
-  const startSample = Math.max(0, Math.floor(s * sr));
-  const endSample = Math.min(data.length, Math.ceil(e * sr));
-  const span = Math.max(1, endSample - startSample);
+  // V6-BUG1: this used to derive bucket width from the CLIPPED sample range
+  // (endSample capped at data.length), so once a custom stem's offset
+  // pushed Audio.duration past this stem's own real length, [s,e] no
+  // longer matched buffer.duration — but every bucket still got filled by
+  // spreading the buffer's real content across the full requested [0,
+  // buckets) range, silently mapping proportionally into the WRONG span. A
+  // 9s lick rendered over a 132s view (up from the stem's real 60s) came
+  // out visually stretched to ~20s, a ratio matching the widened span
+  // exactly, and only "somehow dragging in the custom stem" as a symptom
+  // since nothing about the ordinary stem itself had changed — its buffer
+  // was still correct, only what got asked of it was.
+  //
+  // Fixed the way computeOffsetPeaks (this function's offset-aware sibling,
+  // right below) already handled the same shape of problem: compute each
+  // bucket's own real-time span directly against [s,e], and leave a bucket
+  // silent (0) once its start time is at or past this buffer's own
+  // duration, instead of ever assuming buf.duration == e.
+  const viewSpan = Math.max(1e-9, e - s);
   const peaks = new Float32Array(buckets);
-  const perBucket = Math.max(1, Math.floor(span / buckets));
   for (let i = 0; i < buckets; i++) {
+    const bucketStart = s + (i / buckets) * viewSpan;
+    const bucketEnd = s + ((i + 1) / buckets) * viewSpan;
+    if (bucketEnd <= 0 || bucketStart >= buffer.duration) continue; // past this stem's real audio — leave silent
+    const startSample = Math.max(0, Math.floor(bucketStart * sr));
+    const endSample = Math.min(data.length, Math.ceil(bucketEnd * sr));
     let max = 0;
-    const bstart = startSample + i * perBucket;
-    const bend = Math.min(bstart + perBucket, endSample);
-    for (let j = bstart; j < bend; j++) {
+    for (let j = startSample; j < endSample; j++) {
       const v = Math.abs(data[j]);
       if (v > max) max = v;
     }
@@ -991,16 +1008,20 @@ function peaksFromEnvelope(env, buckets, startSec, endSec) {
   const s = startSec ?? 0;
   const e = endSec ?? env.duration;
   const data = env.mono;
-  const startIdx = Math.max(0, Math.floor(s * env.envRate));
-  const endIdx = Math.min(data.length, Math.ceil(e * env.envRate));
-  const span = Math.max(1, endIdx - startIdx);
+  // V6-BUG1: same fix as computePeaks just above, same reason — this
+  // clipped endIdx to data.length and then spread the real content across
+  // every requested bucket, so it stretched too once a custom stem's
+  // offset widened Audio.duration past a plain stem's own real length.
+  const viewSpan = Math.max(1e-9, e - s);
   const peaks = new Float32Array(buckets);
-  const perBucket = Math.max(1, Math.floor(span / buckets));
   for (let i = 0; i < buckets; i++) {
+    const bucketStart = s + (i / buckets) * viewSpan;
+    const bucketEnd = s + ((i + 1) / buckets) * viewSpan;
+    if (bucketEnd <= 0 || bucketStart >= env.duration) continue; // past this stem's real audio — leave silent
+    const startIdx = Math.max(0, Math.floor(bucketStart * env.envRate));
+    const endIdx = Math.min(data.length, Math.ceil(bucketEnd * env.envRate));
     let max = 0;
-    const bstart = startIdx + i * perBucket;
-    const bend = Math.min(bstart + perBucket, endIdx);
-    for (let j = bstart; j < bend; j++) { if (data[j] > max) max = data[j]; }
+    for (let j = startIdx; j < endIdx; j++) { if (data[j] > max) max = data[j]; }
     peaks[i] = max;
   }
   return peaks;
