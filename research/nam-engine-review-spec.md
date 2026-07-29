@@ -908,10 +908,74 @@ on A1**, which independently justifies keeping it primary.
 
 ### 12.7 Still open
 
-- **Not tested against a real TONE3000 A2 download.** Everything here used
-  the official repo's example models. tone3000.com blocks automated
-  fetches from this environment, so a real-world A2 capture should be
-  spot-checked by hand.
+- ~~Not tested against a real TONE3000 A2 download.~~ Resolved — see §13,
+  which used a real 20-file TONE3000 pack and found (and fixed) a real bug.
 - A2 models carry `metadata.loudness` the same way, so auto-calibration
-  applies unchanged — but this hasn't been checked against a real capture's
-  perceived level.
+  applies unchanged — confirmed against the real pack in §13 (all 20 files
+  had `metadata.loudness`, all took the immediate-activate path).
+
+## 13. Real-world A2 pack: instance-leak bug found and fixed
+
+The user tested §12's A2 support against a real 20-file TONE3000 pack (all
+metal-band amp/cab captures, all `SlimmableContainer` — real-world A2, not
+the repo's example models) and reported: switching between 5-6 models is
+fine, then a subsequent switch goes silent for ~15 seconds before audio
+resumes. Confirms §12.7's flagged gap was hiding a real bug, not just an
+unverified path.
+
+### 13.1 Root cause
+
+`buildModelOfficial()` (`nam-processor.js`) calls `mod._nam_createInstance()`
+and `mod._malloc()` (twice, for `inPtr`/`outPtr`) on every model load. Nothing
+released the previous model's instance or buffers when it was replaced —
+not on a normal swap, not on a failed load, not on the deferred-calibration
+probe, not on the live-overrun rollback path, not on `"unload"`. Every one
+of those is a place where a reference to an official-engine model gets
+dropped; all of them leaked.
+
+This class of bug doesn't exist for the other two engines: our own WASM
+engine's arena is *reset* (not grown) by every `buildModelWasm()` call (see
+`WasmArena` — `resetArena()` on construction), and the JS engine is plain
+objects, GC'd normally. It's specific to the official core, which is a
+persistent multi-instance C++ runtime exposed over a growable WASM heap —
+exactly the rung A2 captures route through exclusively (all 20 real files
+were `SlimmableContainer`, none fell back to our own engines).
+
+Reproduced directly against the vendored core using 8 of the user's actual
+files, simulating repeated switches with and without disposal:
+
+| | after 8 switches |
+|---|---|
+| instance count, no disposal | 8 (never destroyed) |
+| instance count, with disposal | 1 (correct) |
+| wasm heap, no disposal | 64MB → 116MB (3 growth events) |
+| wasm heap, with disposal | 64MB (flat) |
+
+A growable `ArrayBuffer` copies its entire contents on every growth step —
+by the 5th-6th real capture the heap had already grown twice; the delay the
+user hit is consistent with a growth step large enough to stall the render
+thread for several seconds, worse each additional switch as the "old"
+generation of undestroyed instances kept accumulating.
+
+### 13.2 Fix
+
+Added `disposeModel(model)` (frees `inPtr`/`outPtr`, calls
+`mod._nam_destroyInstance(id)`; no-op for non-official models) and
+`disposeCalib(calib)` (disposes both halves — the pending model and the
+disposable loudness-probe model — of an in-flight calibration). Called at
+every point a model or calib reference is dropped:
+
+- normal swap: `_startLiveCheck()` now frees the *previous* rollback slot's
+  occupant once its own check window is guaranteed closed
+- live-overrun rollback: frees the bad model being rolled back out of
+- failed load (`buildModelAny` throws): frees `prevModel`
+- failed calibration probe build: frees the already-built pending model
+  before rethrowing
+- calibration lands: frees the disposable probe (the pending model survives
+  as the new active model)
+- calibration abandoned by a runtime error: frees both halves
+- `"unload"`: frees the active model, any in-flight calib, and the rollback
+  slot
+
+Verified: rerunning the reproduction above with the fixed dispose calls
+holds instance count at 1 and heap at 64MB across all 8 real files.

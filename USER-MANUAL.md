@@ -1836,7 +1836,8 @@ current song has attached.
 | No sound in Play Along | Check the input device is actually enabled (not just selected), and that the gate threshold isn't cutting off a quiet signal. |
 | A NAM model won't load / shows a "not loaded" message | **Most of these were a bug, now fixed** — the fast engine wasn't starting, so the speed check measured a ~4–8× slower fallback and rejected captures that were never actually too heavy (§4.9). Update and try again before hunting for a "Lite" version. If it still refuses after updating, it genuinely is too demanding for this machine. |
 | A NAM capture fails with a raw error mentioning `toLowerCase` | An out-of-date build meeting a capture saved in the current NAM file format. Update — newer-format files parse correctly now (§4.9). |
-| An A2 capture sounds wrong or won't load | A2 support is verified against the NAM project's own example models but **not yet against a real-world download**, so this is the most likely place for a genuine bug. Worth reporting with the capture name rather than assuming it's your file. |
+| Switching NAM captures repeatedly gets slower, then goes silent for several seconds | Fixed — was a memory leak in the A2/official-core engine where the previous model's resources weren't released on switch. If it recurs, report it with the capture name. |
+| An A2 capture sounds wrong or won't load | A2 support is verified against both the NAM project's example models and a real TONE3000 pack. Still worth reporting with the capture name if one misbehaves. |
 | Tuner works but I can't hear anything | Expected — the tuner mutes the backing track and your amp tone while it's on (§5.1); turn the tuner off to hear audio again. |
 | Camera/mic permission denied | System Settings → Privacy & Security → Camera / Microphone → enable for your browser. |
 | Guitar Studio.app won't open | Right-click → Open once, to get past Gatekeeper (it's unsigned). If that's not it, run the server by hand (§1.6) to see the actual error. |
@@ -1874,10 +1875,12 @@ current song has attached.
   practice — it settles long before you play a note), and a genuinely
   heavy capture can still be refused on a slower machine rather than
   glitch your audio (§4.9).
-- A2 support has been verified against the official NAM project's own
-  example models, but **not yet against a real-world A2 download** from a
-  capture-sharing site. If an A2 capture misbehaves, that's worth
-  reporting rather than assuming it's your file.
+- A2 support has been verified against both the official NAM project's own
+  example models and a real 20-capture pack downloaded from TONE3000. That
+  testing caught a real bug — switching between several A2 captures could
+  leave the previous model's memory unreleased, causing a growing delay and
+  eventually several seconds of silence on the next switch — which is now
+  fixed (each switch releases the outgoing model's resources).
 - The tone-suggestion feature is a cheap heuristic, explicitly not a
   guaranteed match — always finish tone-matching by ear.
 - Tone Lab's Output-card latency figure (§4.8) is a browser-reported

@@ -967,6 +967,38 @@ function forwardBlockOfficial(model, inBlock, outBlock, n) {
   for (let i = 0; i < n; i++) outBlock[i] = heap[outBase + i];
 }
 
+// The official core's instances live in ITS OWN wasm heap, which is built
+// with memory growth and never shrinks — unlike our own WASM engine (whose
+// arena is reset, not grown, on every buildModelWasm() — see WasmArena) or
+// the JS engine (plain objects, GC'd normally), a model built by
+// buildModelOfficial() holds a live instance (mod._nam_createInstance())
+// plus two malloc'd scratch buffers that nobody frees automatically. Every
+// caller that drops a reference to an official-engine model MUST call this
+// first, or the old instance's weights (a whole SlimmableContainer's worth
+// per switch) simply pile up in the module's linear memory forever. This
+// was the root cause of "switching between several A2/NAM2 captures gets
+// slower and eventually silent for ~15s": each switch grew the wasm heap a
+// little more, until a growth step big enough to require a slow copy of
+// the whole (by-then large) ArrayBuffer landed on the render thread.
+function disposeModel(model) {
+  if (!model || !model.isOfficial) return;
+  try {
+    model.mod._free(model.inPtr);
+    model.mod._free(model.outPtr);
+    model.mod._nam_destroyInstance(model.id);
+  } catch (e) { /* best-effort cleanup; a throw here must not crash the caller */ }
+}
+
+// calib holds up to two official-engine instances at once (the pending
+// model going live, and a disposable probe used only to measure loudness) —
+// see the "load" handler and _calibrationSlice(). Both must be released
+// together whenever a calibration is abandoned or completes.
+function disposeCalib(calib) {
+  if (!calib) return;
+  disposeModel(calib.pending);
+  disposeModel(calib.probe);
+}
+
 // Dispatch helpers used by NAMProcessor so its call sites don't need to
 // branch on which engine built a model.
 //
@@ -1063,6 +1095,14 @@ class NAMProcessor extends AudioWorkletProcessor {
   // captured by the caller before this.model was reassigned — so a bad
   // overrun reading can restore exactly that state.
   _startLiveCheck(prevModel, prevGainDb) {
+    // Whatever was sitting in rollbackModel from the PREVIOUS swap is being
+    // replaced now. Its own check window is over by construction (this swap
+    // already completed, which only happens after that one settled) unless a
+    // check is still actively in flight for it — in that rare race, leave it
+    // alone rather than free something process() might still read.
+    if (this.rollbackModel && this.rollbackModel !== prevModel && !this.liveCheckActive) {
+      disposeModel(this.rollbackModel);
+    }
     this.rollbackModel = prevModel;
     this.rollbackOutputGainDb = prevGainDb;
     this.liveCheckActive = this._hasPerfNow;
@@ -1132,6 +1172,10 @@ class NAMProcessor extends AudioWorkletProcessor {
         const cutoffHz = 10.0;
         const omega = (2 * Math.PI * cutoffHz) / sampleRate;
         this.dcCoeff = 1.0 - omega;
+        // A previous "load" may still have a calibration in flight (its own
+        // pending model + disposable probe) — this one is superseding it,
+        // so free both before dropping the reference.
+        disposeCalib(this.calib);
         this.calib = null;
         if (Number.isFinite(msg.outputGainDb)) {
           // Pre-calibrated by the caller (playalong.js measures the model
@@ -1155,9 +1199,18 @@ class NAMProcessor extends AudioWorkletProcessor {
           // The current model (if any) is dropped now: the dry signal
           // passes through for the ~30ms the calibration takes.
           this.model = null;
+          let probe;
+          try {
+            probe = buildModelAny(msg.nam, this.wasmExports, this.officialMod);
+          } catch (probeErr) {
+            // `model` (the pending one) already built successfully and has
+            // nowhere else to go now — free it before propagating.
+            disposeModel(model);
+            throw probeErr;
+          }
           this.calib = {
             pending: model,
-            probe: buildModelAny(msg.nam, this.wasmExports, this.officialMod),
+            probe,
             i: 0, sumSq: 0, measured: 0,
             prevModel, prevGainDb, // V3-E3: for _startLiveCheck once calibration lands
           };
@@ -1183,13 +1236,24 @@ class NAMProcessor extends AudioWorkletProcessor {
           outputGainDb: this.model ? this.modelOutputGainDb : null,
         });
       } catch (err) {
+        // By the time any throw above can reach here, this.model is either
+        // still prevModel untouched (buildModelAny for the pending model
+        // failed) or already null (the probe-build path above disposes its
+        // own orphans and rethrows) — either way prevModel is the one still
+        // needing disposal, never a double-free of the same object.
+        disposeModel(prevModel);
         this.model = null;
         this.calib = null;
         this.port.postMessage({ type: "loaded", ok: false, error: String(err && err.message || err) });
       }
     } else if (msg.type === "unload") {
+      disposeModel(this.model);
+      disposeCalib(this.calib);
+      disposeModel(this.rollbackModel);
       this.model = null;
       this.calib = null;
+      this.rollbackModel = null;
+      this.liveCheckActive = false;
     } else if (msg.type === "ping") {
       // Diagnostics: port messages are serviced on the render thread, so a
       // pong proves that thread is alive; its payload says whether a model
@@ -1235,9 +1299,16 @@ class NAMProcessor extends AudioWorkletProcessor {
         this.model = c.pending;
         this.modelOutputGainDb = c.pending.outputGainDb;
         this._startLiveCheck(c.prevModel, c.prevGainDb);
+        // c.pending is now live as this.model (kept); c.probe was only ever
+        // needed to measure loudness and has no other owner — free it now.
+        disposeModel(c.probe);
         this.calib = null;
       }
     } catch (err) {
+      // Calibration itself is being abandoned here — both halves of it are
+      // orphaned (this.model is untouched, still whatever was active before
+      // this "load", tracked separately and unaffected by this failure).
+      disposeCalib(c);
       this.calib = null;
       this.port.postMessage({ type: "runtime-error", error: String(err && err.message || err) });
     }
@@ -1313,6 +1384,11 @@ class NAMProcessor extends AudioWorkletProcessor {
         }
       }
     } catch (err) {
+      // this.model here is never the same object as this.rollbackModel (that
+      // slot only ever holds a PREVIOUS model, replaced by _startLiveCheck
+      // before this one went active), so freeing it can't double-free
+      // something a live-overrun rollback still needs.
+      disposeModel(this.model);
       this.model = null;
       this.dcPrevIn = 0;
       this.dcPrevOut = 0;
@@ -1331,7 +1407,9 @@ class NAMProcessor extends AudioWorkletProcessor {
           // This machine's live render thread isn't keeping up with the
           // model that just went active, for real — not the offline probe's
           // estimate. Roll back to whatever was active before it rather than
-          // let consecutive overruns take the whole stream down.
+          // let consecutive overruns take the whole stream down. The model
+          // being rolled back OUT OF is being dropped for good — free it.
+          disposeModel(this.model);
           this.model = this.rollbackModel;
           this.modelOutputGainDb = this.rollbackOutputGainDb;
           this.rollbackModel = null;
