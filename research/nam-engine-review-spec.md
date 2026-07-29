@@ -605,3 +605,173 @@ with no errors.
   Our engine is still the fastest measured option, so the headroom to
   attack it with is intact — but nothing here reduces refusals.
 - **The A2 architecture family** remains unsupported, per §8.5.
+
+---
+
+## 10. Complaint #2 answered: the WASM engine was never running
+
+§9.5 left complaint #2 (too many captures refused as too heavy) open. It's
+now root-caused and fixed, and the cause was not model weight, threshold
+tuning, or engine speed. **The WASM/SIMD engine had never actually run in
+the browser at all.** Everything — live playback and the speed probe that
+decides refusals — was being rendered by the ~6x slower JS fallback.
+
+### 10.1 The bug: a `WebAssembly.Module` posted to an AudioWorklet is silently dropped
+
+`playalong.js` compiled `nam.wasm` on the main thread and posted the
+resulting `WebAssembly.Module` to each `nam-processor` node, on the
+reasonable premise that a compiled Module is structured-clone-transferable
+so each worklet could skip re-compiling.
+
+A Module *is* transferable to a **Worker**. Posting one to an
+**AudioWorklet** does not work in Chrome — and it fails in the worst
+possible way: **silently**.
+
+Verified directly, on one port, in one run:
+
+| posted payload | arrived at worklet? |
+|---|---|
+| `{type:"wasm-module", module: WebAssembly.Module}` | **no** |
+| `{type:"wasm-bytes-probe", bytes: ArrayBuffer}` | yes |
+| `{type:"load", nam: {...}}` (plain object) | yes |
+
+No exception at the `postMessage` call. No `messageerror` event on either
+port. No console warning. The worklet's `onmessage` handler simply never
+fired for that one message — while plain-object and ArrayBuffer messages
+posted to the *same port* before and after arrived normally.
+
+Everything downstream then behaved exactly as designed, which is why it
+stayed invisible for so long:
+
+1. `_onWasmModule()` never ran, so `wasmInstantiating` was never set.
+2. `"load"` had nothing to await, and `this.wasmExports` stayed `null`.
+3. `buildModelAny(namJson, null)` took its documented "no wasm — use JS"
+   branch. That branch is a legitimate, intentional fallback with its own
+   silent `catch`, so it logged nothing.
+4. Instrumented proof: `{ hadExports: false, wasmThrew: null, engine: "js" }`
+   — not a WASM failure, WASM simply never arrived.
+
+### 10.2 What it cost
+
+Measured in-browser, warmed, on the real two-layer-array architectures
+(`standard` here is 13802 weights — the same count `nam-processor.js`'s own
+header cites for a real TONE3000 `deluxe.nam`):
+
+| model | JS engine | WASM engine | speedup |
+|---|---|---|---|
+| feather | 0.493 | 0.128 | 3.8x |
+| standard | 1.724 | 0.278 | **6.2x** |
+| heavy | 3.700 | 0.463 | 8.0x |
+
+The offline probe was therefore measuring JS-engine cost and comparing it
+against `NAM_REFUSE_RT_FACTOR` (0.9). Result — probe `rtFactor` at the
+shipping `NAM_PROBE_SECONDS` (0.25s), before vs after the fix:
+
+| model | before | verdict | after | verdict |
+|---|---|---|---|---|
+| feather | 0.68 | loads | **0.19** | loads |
+| lite | 1.27 | **REFUSED** | **0.23** | loads |
+| standard | 1.81 | **REFUSED** | **0.30** | loads |
+| heavy | 3.67 | **REFUSED** | **0.48** | loads |
+
+**Only the very lightest captures could load.** Anything from a normal
+"lite" upward was refused — precisely the reported complaint, and the
+refusal message ("needs ~181% of this machine's audio budget") was
+accurate about the measurement while being entirely wrong about the cause.
+
+Confirmed through the real app's own `paProbeNamModel()` afterwards:
+feather 0.25, lite 0.24, standard 0.31, heavy 0.47 — all "loads cleanly",
+no console errors.
+
+### 10.3 The fix
+
+Send the **bytes**, compile in the worklet:
+
+- `playalong.js`: `paGetNamWasmBytes()` caches the fetched `ArrayBuffer`
+  (no main-thread `WebAssembly.compile` at all now) and posts
+  `{type:"wasm-bytes", bytes: bytes.slice(0)}` — a copy per node, so the
+  cached original survives for the next one.
+- `nam-processor.js`: `_onWasmBytes()` does
+  `WebAssembly.instantiate(bytes, {})`. **Note the shape change that made
+  the old bug easy to miss:** `instantiate(Module)` resolves to an
+  *Instance*, but `instantiate(BufferSource)` resolves to
+  `{module, instance}` — it reads `result.instance.exports`.
+
+Compiling this ~31KB standalone module is sub-millisecond and happens at
+load time, never on the render path, so the re-compile the Module approach
+was trying to avoid was never worth anything.
+
+Instrumented confirmation after the fix:
+`{ hadExports: true, wasmThrew: null, engine: "wasm" }`.
+
+### 10.4 Notes and follow-ups
+
+- **Threshold tuning was never the problem.** `NAM_REFUSE_RT_FACTOR` 0.9
+  was reasonable all along; it was being fed a number ~6x too pessimistic.
+  Leave it alone.
+- **Probe duration is fine.** A separate sweep (0.25s → 8s renders) showed
+  cold-start/tiering costs only ~9-12% at the shipping 0.25s, and
+  no-model baseline overhead is negligible (rtFactor 0.0017). The probe's
+  structure was sound.
+- **Every earlier RTF number in this document measured the JS engine** for
+  anything running through a worklet. §8.3's comparison against
+  `@opendaw/nam-wasm` was Node-to-Node and used our WASM path directly, so
+  its ~1.9x conclusion stands — but the real in-browser gap was even wider
+  than that section implied, since our shipped browser path was the JS one.
+- **The `.nam` schema gap is separate and still open** — see §11.
+
+---
+
+## 11. Separate, still open: current-schema `.nam` files won't parse
+
+Found while building §10's test fixtures, unrelated to the WASM bug and
+**not fixed yet**.
+
+`nam-processor.js`'s reader was written against the legacy `.nam` config
+layout. The official format has since changed, and the current exporter
+(verified against `neural-amp-modeler` 0.13.0, file `version: "0.7.0"`)
+writes fields our reader doesn't understand:
+
+| legacy (what we read) | current (what's written) |
+|---|---|
+| `kernel_size`: `3` | `kernel_sizes`: `[3,3,…]` |
+| `activation`: `"Tanh"` | `activation`: `[{"type":"Tanh"}, …]` |
+| `gated`: `true` | `gating_mode`: `["gated", …]` + `secondary_activation` |
+| `head_size`, `head_bias` | `head`: `{out_channels, kernel_size, bias}` |
+
+NAM's own loader (`nam/models/_from_nam.py`) explicitly handles both —
+*"support legacy `kernel_size` (int or list) and new `kernel_sizes`"* — so
+this is a real, acknowledged format migration, not an exporter quirk.
+
+**Symptom.** `makeActivation()` gets `{type:"Tanh"}` instead of a string
+and throws `(name || "").toLowerCase is not a function`. That propagates
+badly: `paProbeNamModel`'s blanket `catch` turns it into
+`rtFactor: null`, which *skips the refusal check entirely*, so the load
+proceeds and fails at the worklet instead — surfacing to the user as
+**"Failed to load: (name || "").toLowerCase is not a function"**. A raw
+internal JS error, with nothing pointing at "this capture uses a newer
+file format".
+
+**Impact is real but bounded, and unquantified.** Most captures circulating
+today were exported by older NAM versions and still use the legacy layout —
+which is why this hasn't been the dominant complaint, and why §10's bug was
+the bigger one. But anything exported by a current trainer fails, and that
+share only grows.
+
+**Suggested fix (small, self-contained):** normalize the config once at the
+top of `buildModel`/`buildModelWasm` — collapse `kernel_sizes[0]` →
+`kernel_size`, `activation[0].type` → activation string,
+`gating_mode[0]==="gated"` → `gated`, `head.out_channels`/`head.bias` →
+`head_size`/`head_bias`. A shim of exactly this shape was used throughout
+§8-§10's harnesses and drove every architecture tested here correctly, so
+the mapping is already validated; it just needs to move into the shipped
+reader with real fixtures and a friendlier error for genuinely unsupported
+schemas.
+
+**Caveat worth checking before relying on that shim:** it takes element
+`[0]` of the per-layer arrays, i.e. it assumes every layer in an array
+shares one kernel size / activation / gating mode. That's true for every
+standard architecture (and was true for all fixtures here), but the new
+format exists precisely to allow per-layer variation. The shipped version
+should either honour the per-layer values or explicitly refuse files that
+vary them, rather than silently reading layer 0's and applying it to all.

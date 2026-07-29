@@ -818,17 +818,29 @@ class NAMProcessor extends AudioWorkletProcessor {
     this.liveCheckAudioMs = 0;
   }
 
-  // playalong.js compiles nam.wasm on the main thread (AudioWorkletGlobalScope
-  // can't reliably fetch/streaming-compile it itself) and posts the compiled
-  // WebAssembly.Module here — structured-clone-transferable, no bytes need
-  // re-parsing on this side. Instantiating a ~30KB standalone module with no
-  // imports is fast, but "load" awaits this promise first (see below) so a
-  // "wasm-module" message sent immediately before a "load" message for the
-  // same model still gets a chance to land before that load decides which
-  // engine to use — never a hard requirement either way, just a preference.
-  _onWasmModule(wasmModule) {
-    this.wasmInstantiating = WebAssembly.instantiate(wasmModule, {})
-      .then((instance) => { this.wasmExports = instance.exports; })
+  // playalong.js fetches nam.wasm on the main thread (AudioWorkletGlobalScope
+  // has no fetch) and posts the raw BYTES here; we compile + instantiate them
+  // ourselves. Compiling a ~31KB standalone module with no imports is
+  // sub-millisecond and happens at load time, never on the render path.
+  //
+  // This used to receive a pre-compiled `WebAssembly.Module` instead. That
+  // never worked: a Module posted to an AudioWorklet is SILENTLY DROPPED by
+  // Chrome — no throw at the sender, no `messageerror`, this handler simply
+  // never ran — so `wasmExports` stayed null forever and every model
+  // silently fell back to the JS engine. See playalong.js's
+  // paGetNamWasmBytes() for the full write-up. Keep this on bytes.
+  //
+  // NOTE the shape difference that made the old bug easy to miss:
+  // `WebAssembly.instantiate(Module)` resolves to an Instance, but
+  // `WebAssembly.instantiate(BufferSource)` resolves to `{module, instance}`.
+  // Read `.instance.exports`, not `.exports`.
+  //
+  // "load" awaits this promise first (see below) so a "wasm-bytes" message
+  // sent immediately before a "load" message for the same model still lands
+  // before that load decides which engine to use.
+  _onWasmBytes(bytes) {
+    this.wasmInstantiating = WebAssembly.instantiate(bytes, {})
+      .then((result) => { this.wasmExports = result.instance.exports; })
       .catch((err) => {
         this.wasmExports = null;
         this.port.postMessage({ type: "wasm-instantiate-failed", error: String(err && err.message || err) });
@@ -836,8 +848,8 @@ class NAMProcessor extends AudioWorkletProcessor {
   }
 
   async _onMessage(msg) {
-    if (msg.type === "wasm-module") {
-      this._onWasmModule(msg.module);
+    if (msg.type === "wasm-bytes") {
+      this._onWasmBytes(msg.bytes);
       return;
     }
     if (msg.type === "load") {

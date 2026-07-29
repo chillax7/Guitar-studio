@@ -61,45 +61,74 @@ const PA = {
 };
 
 // ---------------------------------------------------------------------------
-// NAM WASM/SIMD module — compiled once here on the main thread and handed
-// to every "nam-processor" AudioWorkletNode we create (the live node in
-// ensurePAGraph, plus every throwaway probe node in paProbeNamModel and the
-// Suggest loop below). AudioWorkletGlobalScope can't reliably fetch or
-// streaming-compile wasm itself in every browser, so this is the one place
-// that ever touches the network for it; a compiled WebAssembly.Module is
-// structured-clone-transferable over a MessagePort, so each worklet
-// instantiates its own Instance (its own private linear memory) from the
-// same compiled Module, cheaply.
+// NAM WASM/SIMD module — fetched once here on the main thread as raw BYTES
+// and handed to every "nam-processor" AudioWorkletNode we create (the live
+// node in ensurePAGraph, plus every throwaway probe node in
+// paProbeNamModel and the Suggest loop below). AudioWorkletGlobalScope has
+// no fetch, so this is the one place that ever touches the network for it;
+// each worklet compiles + instantiates its own Instance (its own private
+// linear memory) from these bytes.
+//
+// *** Why bytes and not a compiled WebAssembly.Module ***
+// This used to send a pre-compiled `WebAssembly.Module`, on the reasoning
+// that a Module is structured-clone-transferable so each worklet could skip
+// re-compiling. It is transferable to a *Worker* — but posting one to an
+// **AudioWorklet** does not work in Chrome: the message is **silently
+// dropped**. No exception at the postMessage call, no `messageerror` event
+// on either port, no console warning — the worklet's onmessage handler
+// simply never fires for it (verified directly: a port that received a
+// Module-carrying message never logged it, while a plain-ArrayBuffer
+// message posted to the same port immediately after arrived fine).
+//
+// The consequence was severe and completely silent: `wasmExports` in
+// nam-processor.js stayed null forever, so `buildModelAny()` took its
+// "no wasm — fall back" branch on *every* load. The WASM/SIMD engine
+// therefore never actually ran in the browser at all; everything, live and
+// probed, was rendered by the ~6x slower JS engine. That in turn made the
+// offline speed probe measure JS-engine cost, which is what pushed
+// ordinary standard-architecture captures past NAM_REFUSE_RT_FACTOR and
+// got them refused as "too heavy" — see research/nam-engine-review-spec.md
+// §10 for the measurements.
+//
+// ArrayBuffers clone to an AudioWorklet without complaint, so the bytes go
+// over instead and the worklet compiles them itself. Compiling this ~31KB
+// standalone module is sub-millisecond and happens at load time, never on
+// the render path, so the "save a re-compile" motivation the Module
+// approach was reaching for was never worth anything anyway.
 //
 // Strictly best-effort: any failure here (fetch fails, browser lacks wasm
-// SIMD, compile throws) just leaves paNamWasmModulePromise resolved to
-// null, and every call site below skips sending a "wasm-module" message —
+// SIMD, compile throws) just leaves paNamWasmBytesPromise resolved to
+// null, and every call site below skips sending the message —
 // nam-processor.js's own fallback (buildModelAny/forwardBlockAny) then
 // silently stays on the JS engine, exactly like it does for a model whose
 // architecture the WASM path can't handle. Never a hard failure.
-let paNamWasmModulePromise = null;
-function paGetNamWasmModule() {
-  if (!paNamWasmModulePromise) {
-    paNamWasmModulePromise = (async () => {
+let paNamWasmBytesPromise = null;
+function paGetNamWasmBytes() {
+  if (!paNamWasmBytesPromise) {
+    paNamWasmBytesPromise = (async () => {
       try {
-        const bytes = await (await fetch("nam.wasm")).arrayBuffer();
-        return await WebAssembly.compile(bytes);
+        return await (await fetch("nam.wasm")).arrayBuffer();
       } catch (e) {
         console.warn("NAM WASM engine unavailable, falling back to JS engine:", e);
         return null;
       }
     })();
   }
-  return paNamWasmModulePromise;
+  return paNamWasmBytesPromise;
 }
-// Sends the compiled module (if available) to a freshly-created nam-processor
+// Sends the wasm bytes (if available) to a freshly-created nam-processor
 // node's port, BEFORE any "load" message for the same node — nam-processor.js
 // awaits its own in-flight instantiation before deciding which engine a
 // pending "load" uses, so message order (not a round-trip ack) is what makes
 // this race-free.
+//
+// slice(0) because structured clone would otherwise be handed the same
+// cached ArrayBuffer every time; copying keeps the cached original intact
+// for the next node (and leaves the door open to transferring instead, if
+// this ever needs to be cheaper — 31KB per node does not).
 async function paSendNamWasmModule(node) {
-  const mod = await paGetNamWasmModule();
-  if (mod) node.port.postMessage({ type: "wasm-module", module: mod });
+  const bytes = await paGetNamWasmBytes();
+  if (bytes) node.port.postMessage({ type: "wasm-bytes", bytes: bytes.slice(0) });
 }
 
 // ---------------------------------------------------------------------------
