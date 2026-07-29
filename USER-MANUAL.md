@@ -1,4 +1,4 @@
-# Orpheus Guitar Studio — User Manual (v6)
+# Orpheus Guitar Studio — User Manual (v8)
 
 Everything in this manual exists and works today — nothing here is
 aspirational, and nothing below covers how the app used to work. An
