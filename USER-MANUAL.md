@@ -1061,25 +1061,48 @@ treat it as a rough indicator, not a lab result. If playing feels laggy,
 try a smaller audio-interface buffer size in your interface's own control
 panel software.
 
-### 4.9 NAM performance — why some captures won't load
+### 4.9 NAM captures — A1, A2, and why one might not load
 
-Real-time neural amp inference is genuinely demanding, and not every
-`.nam` capture in a large community library can run live on every Mac.
-Before a model goes live, it's benchmarked automatically; if it can't keep
-up in real time, you'll see a plain message instead of it silently
-breaking your audio:
+**If you remember most captures being refused as "too heavy" — that was a
+bug, and it's fixed.** The fast WebAssembly engine was silently never
+starting, so every capture was being rendered by a roughly 4–8× slower
+fallback, and the speed check was measuring *that*. Ordinary "standard"
+captures were failing a test they should have passed comfortably. After
+the fix, captures that used to be rejected load with room to spare. If you
+still see refusals on captures you think should work, that's worth
+reporting rather than working around.
+
+**A1 vs A2 captures.** NAM's original architectures — "standard", "lite",
+"feather", "nano" — are now collectively called **A1**, and there's a newer
+**A2** architecture (the default download on some sites). A2 sounds better
+*and* costs less CPU, because it's built to run on small embedded chips.
+Both work here, and the app picks the right engine automatically per
+capture — nothing to configure:
+
+- **A1** runs on this app's own engine, which is faster than the official
+  one on these models and matches the reference implementation essentially
+  exactly (§10).
+- **A2**, plus a few other variants, runs on a bundled copy of the
+  *official* NAM inference core, because A2 uses architecture features
+  this app's own engine doesn't implement. Rather than render those
+  slightly wrong, they're handed to the reference implementation.
+
+If a capture uses something neither engine can render, you'll get a
+specific reason rather than a generic failure.
+
+**The speed check still exists**, because real-time neural inference is
+genuinely demanding and no engine makes an arbitrarily heavy capture free.
+If a model truly can't keep up, you'll see a plain message instead of it
+silently breaking your audio:
 
 > Not loaded: this capture needs ~97% of this machine's audio budget — it
 > can't run live and would cut ALL sound. Look for a "Lite" or "Feather"
 > version of the same amp instead.
 
 Most amp packs that publish a "Standard" capture also publish "Lite" or
-"Feather" variants of the same tone — those are built to be lighter to run
-and are usually the better choice for live playing anyway. The engine
-itself runs on WebAssembly with SIMD where your browser supports it (about
-10× faster than the pure-JavaScript fallback it silently drops back to
-otherwise) — if a capture is refused, it's genuinely too heavy for this
-machine right now, not a bug to work around.
+"Feather" variants of the same tone — lighter to run, and often the better
+choice for live playing anyway. An A2 version, where one exists, is
+usually lighter still.
 
 ---
 
@@ -1811,7 +1834,9 @@ current song has attached.
 | An imported file does nothing and shows no error | Fixed in this build — a file that can't actually be read (e.g. a cloud-storage placeholder that isn't downloaded yet) is now reported clearly instead of silently doing nothing. If you still see this, please report it. |
 | MP3 export fails | `ffmpeg` isn't installed — `brew install ffmpeg`. |
 | No sound in Play Along | Check the input device is actually enabled (not just selected), and that the gate threshold isn't cutting off a quiet signal. |
-| A NAM model won't load / shows a "not loaded" message | It's too demanding to run live on this machine (§4.9) — try a "Lite" or "Feather" version of the same amp. |
+| A NAM model won't load / shows a "not loaded" message | **Most of these were a bug, now fixed** — the fast engine wasn't starting, so the speed check measured a ~4–8× slower fallback and rejected captures that were never actually too heavy (§4.9). Update and try again before hunting for a "Lite" version. If it still refuses after updating, it genuinely is too demanding for this machine. |
+| A NAM capture fails with a raw error mentioning `toLowerCase` | An out-of-date build meeting a capture saved in the current NAM file format. Update — newer-format files parse correctly now (§4.9). |
+| An A2 capture sounds wrong or won't load | A2 support is verified against the NAM project's own example models but **not yet against a real-world download**, so this is the most likely place for a genuine bug. Worth reporting with the capture name rather than assuming it's your file. |
 | Tuner works but I can't hear anything | Expected — the tuner mutes the backing track and your amp tone while it's on (§5.1); turn the tuner off to hear audio again. |
 | Camera/mic permission denied | System Settings → Privacy & Security → Camera / Microphone → enable for your browser. |
 | Guitar Studio.app won't open | Right-click → Open once, to get past Gatekeeper (it's unsigned). If that's not it, run the server by hand (§1.6) to see the actual error. |
@@ -1829,24 +1854,30 @@ current song has attached.
   is normal, not a bug.
 - Guitar split is a panning guess, never a guaranteed lead/rhythm
   separation.
-- NAM inference uses **two** engines. Ordinary "A1" captures (the
-  standard/lite/feather/nano WaveNet family — nearly everything shared
-  today) run on this app's own from-scratch WebAssembly/SIMD engine, which
-  is measurably faster than the official one. Newer **"A2"** captures, plus
-  a few other variants (slimmable containers, LSTM), use a bundled copy of
-  the *official* NAM inference core instead, because they rely on
-  architecture features this app's own engine doesn't implement. The choice
-  is automatic and per-capture; nothing to configure. Our own engine is,
-  however, now **measured** against the official reference: on a standard-architecture capture its steady-state output matches
-  the official NAM reference implementation to within 0.00001% (f32
-  rounding noise — effectively exact). That's a recent improvement; an
-  earlier build's tanh approximation put it 1.16% off, roughly a −39 dB
-  error layer over the amp tone, which is why captures may sound slightly
-  cleaner/more defined than you remember. Two honest caveats remain:
-  the first ~40ms after a model loads is a warm-up transient that doesn't
-  match the reference (inaudible in practice — it settles long before you
-  play), and heavier captures may still be refused on slower machines
-  rather than glitch your audio (§4.9).
+- NAM inference uses **two** engines, chosen automatically per capture
+  (§4.9). **A1** captures — the original standard/lite/feather/nano
+  WaveNet family — run on this app's own from-scratch WebAssembly/SIMD
+  engine, which is faster than the official one on those models. **A2**
+  captures, plus a few other variants (slimmable containers, LSTM), run on
+  a bundled copy of the *official* NAM inference core, because they use
+  architecture features this app's own engine doesn't implement — handing
+  them to the reference implementation is better than rendering them
+  slightly wrong.
+- The app's own A1 engine is a reimplementation, not the official runtime,
+  but it is now **measured** against it: steady-state output matches the
+  official NAM reference to within 0.00001% — f32 rounding noise,
+  effectively exact. That's recent; an earlier build's tanh approximation
+  sat 1.16% off (roughly a −39 dB error layer over the amp tone), which is
+  why captures may sound cleaner and more defined than you remember. Two
+  honest caveats remain: the first ~40 ms after a capture loads is a
+  warm-up transient that doesn't match the reference (inaudible in
+  practice — it settles long before you play a note), and a genuinely
+  heavy capture can still be refused on a slower machine rather than
+  glitch your audio (§4.9).
+- A2 support has been verified against the official NAM project's own
+  example models, but **not yet against a real-world A2 download** from a
+  capture-sharing site. If an A2 capture misbehaves, that's worth
+  reporting rather than assuming it's your file.
 - The tone-suggestion feature is a cheap heuristic, explicitly not a
   guaranteed match — always finish tone-matching by ear.
 - Tone Lab's Output-card latency figure (§4.8) is a browser-reported

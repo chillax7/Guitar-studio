@@ -255,7 +255,7 @@ exhaustive top-to-bottom playthrough of the entire app in one sitting
 - [ ] **Icon chain (v4.7 redesign):** the chain row shows one icon per stage (Gate, Amp, all 12 pedals, Output) in signal order, wrapping to a second row on a narrow window; exactly one panel is open below at a time; clicking a different icon swaps which panel is showing; on first opening Tone Lab, Gate's panel is open by default (its bypass checkbox is the first thing visible). An icon lights up (blue) when its stage is unbypassed and dims when bypassed, updating live as you toggle that stage's own bypass checkbox — including via a loaded rig preset, not just a manual click.
 - [ ] **Scroll position on panel/mode switch (real user report — no active repositioning):** scroll down within Tone Lab (e.g. with a tall Neural-mode Amp panel open), then click a different, much shorter pedal icon (e.g. Gate) — the scroll position stays exactly where it was; nothing snaps back to the icon-chain row. The only exception is the browser's own unavoidable clamp: if the new (shorter) panel's content ends above the old scroll position, the page can't stay scrolled past its own bottom, so it settles at the new max instead — that's a side effect of the content being shorter, not code deliberately moving you there. Same check switching Amp mode between Pass Through/Analog/Neural while scrolled down. A within-the-same-panel action (moving a slider, toggling a bypass checkbox) should NOT move the scroll position at all.
 - [ ] Amp modes (Pass Through/Analog/Neural) switch cleanly with no clicks/pops; only the active mode's chain produces sound.
-- [ ] **NAM Tweaker:** loading a `.nam` capture shows its metadata (or an honest "no metadata" message), architecture, and speed-probe percentage; Drive (-24..+48dB) audibly changes distortion character; the post-NAM Bass/Mid/Treble/Presence tone stack is flat by default and audibly shapes tone when moved; Output level shows an auto-calibration readout when the capture has no loudness metadata; loading a parametric (non-WaveNet) capture shows the "not yet supported" message instead of a confusing failure.
+- [ ] **NAM Tweaker:** loading a `.nam` capture shows its metadata (or an honest "no metadata" message), architecture, and speed-probe percentage; Drive (-24..+48dB) audibly changes distortion character; the post-NAM Bass/Mid/Treble/Presence tone stack is flat by default and audibly shapes tone when moved; Output level shows an auto-calibration readout when the capture has no loudness metadata; loading a capture whose architecture NEITHER engine can render shows a specific reason rather than a confusing internal failure. (Note: "non-WaveNet" is no longer automatically unsupported — A2 captures report `SlimmableContainer`, and those load via the official core. See §17.)
 - [ ] **NAM live-overrun guardrail:** a capture that clears the offline speed probe but turns out too slow live rolls back automatically within ~100ms of going live, restoring the previous rig state and updating the status text — verify on a friend's/older Mac if possible, since this is exactly the case the offline probe alone can miss.
 - [ ] **Add NAM models via the UI (real user ask):** above the model browser, a drop zone accepts a single `.nam` file, a whole folder (including nested subfolders — a pack organized into sub-packs lands the same way it's organized on disk), or a `.zip` pack; **choose files**/**choose a folder** links do the same via a file dialog. Whichever way, new models appear in the picker immediately, no reopening the panel needed. Drop a folder containing a mix of `.nam` files and unrelated files (a readme, a `.zip`'s `__MACOSX/` junk) — the `.nam` files land correctly and everything else is silently skipped, not reported as an error. Do the same for Cab IR below with `.wav` files instead — same drop zone, same folder/zip/nested-folder support, targeting `models/ir/` instead of `models/nam/`.
 - [ ] Cab IR: picking one turns bypass off automatically; bypass toggle is audible.
@@ -536,3 +536,79 @@ showing whatever was already rendered.
   repeats only the selected bars instead of the whole tab. Clicking
   "Clear selection" (or loading a different tab) removes the highlight
   and playback goes back to covering the whole tab.
+
+## 17. NAM engines — accuracy, the WASM path, and A1/A2 routing
+
+Covers three fixes that landed together. All three were **silent** faults,
+so most of these checks are about confirming something is now *happening*,
+not that an error stopped appearing.
+
+### Accuracy (the tanh fix)
+
+- [ ] **Tone quality on a cranked capture:** load a high-gain A1 capture
+  you know well and play. The previous build added a broad error layer
+  about 39 dB below the signal (worst on hard-driven captures, where the
+  old approximation had a standing error); it should now sound cleaner and
+  more defined, most noticeably on note decays and pick attack, and on
+  clean tones in quiet passages. Purely subjective — the objective check is
+  below.
+- [ ] **Objective (dev):** re-run the null test against the official NAM
+  PyTorch reference. Steady-state (past the receptive field) relative RMSE
+  should be ~0.00001%, not ~1.16%. See research/nam-engine-review-spec.md
+  §9 for the harness.
+- [ ] **No speed regression:** the speed-probe percentage shown for a
+  given capture should not be materially higher than before the change
+  (the more accurate activation measured marginally *faster*, not slower).
+- [ ] **Rebuild reproducibility (dev):** `nam-wasm-src/build.sh` with Zig
+  **0.16.x** reproduces a byte-identical-output `nam.wasm`. Zig 0.13
+  compiles but produces a module that traps — pin 0.16.
+
+### The WASM engine actually running (the refusal fix)
+
+- [ ] **Heavy captures load again:** a "standard"-size capture that used to
+  be refused as "needs ~180% of this machine's audio budget" now loads,
+  reporting roughly a third of that. This is the headline symptom — if
+  standard captures are still refused, the WASM path is not running.
+- [ ] **Lite/feather still load** (they always did) and report lower
+  percentages than standard, which reports lower than a heavy capture —
+  i.e. the ordering is sane, not all-identical.
+- [ ] **The fallback still works:** the JS engine remains a real fallback.
+  Hard to force from the UI; the check that matters is that nothing throws
+  if `nam.wasm` fails to fetch (rename it and confirm captures still load,
+  just slower / with more refusals).
+- [ ] **Refusal guardrail intact:** the speed check hasn't been disabled —
+  a genuinely too-heavy capture (or an old machine) should still refuse
+  rather than cutting all audio, and the live-overrun rollback (§8's
+  existing check) should still fire.
+
+### A1 / A2 routing and schema compatibility
+
+- [ ] **A2 capture loads and plays** (download one from TONE3000 — A2 is
+  the default there). It should load without special handling and sound
+  correct. **Not yet verified against a real-world A2 download** — only
+  against the official repo's example models — so this check is the real
+  one.
+- [ ] **A1 capture still loads** and is routed to *our* engine (it should
+  report a lower budget percentage than the same-size model would through
+  the official core — A1 through our engine is the faster path).
+- [ ] **Current-schema files parse at all:** a `.nam` exported by a recent
+  official trainer (schema 0.6/0.7 — `kernel_sizes`, `activation` as a
+  list of objects, `gating_mode`, `head{}`) loads. Previously these died
+  with the raw internal error `(name || "").toLowerCase is not a function`.
+- [ ] **Legacy files unaffected:** an older capture (flat `kernel_size`,
+  string `activation`, `gated`) still loads exactly as before. This is the
+  regression risk of the schema work.
+- [ ] **Unsupported architectures fail politely:** a capture neither engine
+  can render reports a specific reason, not a raw JS error.
+- [ ] **No silent mis-rendering (dev):** the capability gate must refuse —
+  not approximate — FiLM conditioning, grouped convolutions, head1x1,
+  disabled/grouped layer1x1, blended gating, per-layer-varying kernel
+  sizes or activations, `condition_dsp`, and slimmable/packed layers.
+  Each previously produced wrong audio or NaN *without throwing*. Re-run
+  the §12.2 feature-probe harness after any reader change; a feature
+  silently moving from "refused" to "accepted" is the failure mode to
+  watch for.
+- [ ] **Both engines coexist:** loading an A1 capture, then an A2 one, then
+  A1 again in the same session works with no clicks, no stuck audio, and
+  correct levels each time (each engine applies the same loudness
+  normalization).

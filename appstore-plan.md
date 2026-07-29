@@ -63,8 +63,11 @@ The current `Guitar Studio.app` (built by `scripts/build_app.sh`) plus:
   working unchanged.
 
 **Gate before shipping Tier A: licensing audit.** Demucs and NAM core
-are MIT; `audio-separator` is MIT; but the **BS-RoFormer checkpoint's
-weight license must be verified** before any public distribution (some
+are MIT; `audio-separator` is MIT; the vendored official NAM core used for
+A2 captures (`static/vendor/nam-official/`, from `@opendaw/nam-wasm`) is
+MIT, as is the alphaTab bundle behind Tab View and its FluidR3Mono
+soundfont — all four carry their upstream LICENSE files in-tree. But the
+**BS-RoFormer checkpoint's weight license must be verified** before any public distribution (some
 community separation checkpoints are research/non-commercial). If it
 fails the check, ship with Demucs as the bundled default and make
 bs_roformer_sw a user-initiated download with the license shown. ffmpeg
@@ -115,7 +118,10 @@ What a real iOS Orpheus looks like:
 - **Rig:** rewrite on AVAudioEngine/CoreAudio. The NAM inference core
   (`NeuralAmpModelerCore`, C++) compiles for iOS — several shipping iOS
   NAM players prove the path — and our WASM kernel's Zig source is
-  portable too. Convolution IRs, EQ, comp, delay/reverb all map to
+  portable too. Note the web build now runs **two** NAM engines (ours for
+  A1, the official core for A2 — see research/nam-engine-review-spec.md
+  §12); a native port could simplify to just `NeuralAmpModelerCore`, which
+  handles both, at the cost of A1 speed, or carry the same split. Convolution IRs, EQ, comp, delay/reverb all map to
   AVAudioEngine nodes. This is the genuinely valuable rewrite: native
   CoreAudio gets guitar monitoring to <10 ms, better than the browser
   version will ever be (the same argument as XC-05's original pitch).

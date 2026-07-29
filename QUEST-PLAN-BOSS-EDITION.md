@@ -1190,6 +1190,68 @@ bar Boss 16 set for the v5 batch, now met for v6.
 
 ---
 
+## Boss 18 — The Two Engines (the NAM accuracy/routing batch)
+
+*Three faults landed together, and all three were **silent** — nothing
+errored, nothing logged, the app just quietly did the wrong thing. So this
+fight is mostly about confirming something now HAPPENS, not that a message
+stopped appearing. Fight it with a real capture library, not one file.*
+
+**The three:** (1) the fast WASM engine was never actually starting, so
+everything ran ~4-8x slower than it should and ordinary captures were
+refused as "too heavy"; (2) the tanh approximation was ~5x less accurate
+than its own comment claimed, laying a −39 dB error layer over every amp
+tone; (3) newer "A2" captures either wouldn't parse at all or would have
+been rendered wrong.
+
+- [ ] **The refusal wall is gone.** Load the heaviest captures you own —
+  the ones you'd previously given up on. Standard-size captures that
+  reported ~180% of the audio budget should now report roughly a third of
+  that and load. If standard captures are still being refused, stop here:
+  the WASM engine isn't running and nothing else in this boss is
+  meaningful.
+- [ ] **Sanity-check the ordering**, not just individual numbers: feather <
+  lite < standard < heavy in reported budget. All-identical percentages
+  across very different model sizes is the signature of the old bug.
+- [ ] **Listen for the accuracy fix.** A/B a cranked high-gain capture
+  against your memory of it — the old error was worst exactly there, since
+  the approximation had a standing error above its clamp. Then a clean
+  tone: listen to note decays and pick attack in quiet passages, where a
+  −39 dB artifact is easiest to catch. Subjective, but it's the reason the
+  fix exists.
+- [ ] **Responsiveness unchanged.** The more accurate activation measured
+  marginally *faster*, so playing feel should be identical. Any new
+  latency or crackle here is a regression, not a trade-off.
+- [ ] **A2 end to end.** Download an A2 capture (the default on TONE3000
+  now), load it, play it. **This is the least-verified path in the app** —
+  A2 was tested only against the NAM project's own example models, never a
+  real-world download. Treat anything odd as a genuine finding.
+- [ ] **Mix the two engines in one session.** A1 capture → A2 capture → back
+  to A1, without reloading: no clicks, no stuck or dead audio, and levels
+  consistent across the switches (both engines apply the same loudness
+  normalization, so a capture shouldn't jump in volume just because a
+  different engine rendered it).
+- [ ] **Old captures still fine.** Your existing library — all legacy-schema
+  files — must load exactly as before. The schema work touched the shared
+  reader, so this is the real regression risk, not the new stuff.
+- [ ] **Save a rig preset with an A2 capture**, load a different preset,
+  come back to it. The capture, its Tweaker knobs and its level all
+  restore — preset persistence never knew about engines and shouldn't
+  start caring now.
+- [ ] **A polite failure, at least once.** Find or fabricate a capture
+  neither engine handles; it should name a reason, not throw a raw JS
+  error like `(name || "").toLowerCase is not a function` (the literal
+  pre-fix symptom).
+
+**Victory condition:** captures that used to be refused now load, the rig
+sounds cleaner rather than merely different, an A2 capture works
+end-to-end, and switching between A1 and A2 mid-session is uneventful.
+
+**Loot:** the NAM engine finally doing what it always claimed to — and a
+real-world A2 verification the automated work explicitly couldn't provide.
+
+---
+
 ## FINAL BOSS — The Grand Session
 
 *One sitting. No restart. Every system at once. This is the fight the
