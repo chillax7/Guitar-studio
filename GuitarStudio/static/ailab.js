@@ -1638,9 +1638,12 @@ function wireAiLab() {
   document.getElementById("ailab-rmt-stop-btn").addEventListener("click", aiLabStopDryRecording);
   document.getElementById("ailab-rmt-score-btn").addEventListener("click", aiLabScoreTake);
   document.getElementById("ailab-rmt-take-select").addEventListener("change", aiLabRmtOnTakeSelectChange);
-  // The whole point of this screen's Backing Track card: find the actual
-  // spot the take starts (scrub the timeline, or just play up to it) and
-  // drop it straight into Offset, instead of typing seconds by eye/ear.
+  // Find the actual spot the take starts (scrub the shared transport bar
+  // above, or just play up to it) and drop it straight into Offset,
+  // instead of typing seconds by eye/ear. Lives in the Score a take card
+  // now, next to the field it fills in, rather than on the transport bar
+  // itself now that that's the same shared component every other screen
+  // uses (it has no room for an ailab-specific action button).
   document.getElementById("ailab-rmt-use-position-btn").addEventListener("click", () => {
     document.getElementById("ailab-rmt-offset").value = currentPosition().toFixed(2);
   });

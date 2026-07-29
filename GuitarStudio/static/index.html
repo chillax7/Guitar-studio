@@ -1117,29 +1117,44 @@
              rather than reusing the Play Along Takes list. -->
         <div id="ailab-ratemytake-panel" class="ailab-column" style="display:none;">
 
-          <!-- Same mirrored-transport idiom as Play Along's own Backing
-               Track card (app.js's transportEls/onTransportInput) — every
-               data-transport="..." element anywhere in the DOM stays in
-               sync automatically, so this is a real 4th copy of the same
-               controls (Mixer, Play Along, and now here), not a separate
-               mini-player with its own state to keep in sync by hand. Kept
-               small on purpose: just enough to find and confirm the right
-               spot without a trip back to the Mixer, not the full Speed/
-               Tune/Volume rig Play Along's copy also has. -->
-          <section class="pa-card pa-top-card" style="max-width:300px;">
-            <h3>Backing Track</h3>
-            <div class="row">
-              <button data-transport="play-btn" class="primary">▶</button>
-              <button data-transport="stop-btn">■</button>
-              <span data-transport="time-display">0:00 / 0:00</span>
-            </div>
-            <input type="range" data-transport="timeline" class="transport-timeline" min="0" max="0" step="0.01" value="0">
-            <div class="row">
-              <button data-transport="loop-toggle-btn">Loop</button>
-              <button data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
-            </div>
-            <button id="ailab-rmt-use-position-btn" style="margin-top:8px; width:100%;">↓ Use current position as Offset</button>
-          </section>
+          <!-- orpheus-transport-spec.md follow-up: same shared .transport-bar
+               as Mixer/Play Along/Tone Lab, replacing what used to be a
+               deliberately-small standalone "Backing Track" card here (play/
+               stop/timeline/loop/count-in only, no Speed/Tune/Volume) — now
+               that every other screen uses the full bar, this one should
+               too, for the same "one shared component, not four different
+               presentations" reasoning. data-transport wiring is unchanged
+               (app.js's transportEls/onTransportInput already pick up any
+               element anywhere in the DOM), so this is still just another
+               mirrored copy, not new plumbing.
+               Deliberately OUTSIDE #ailab-ratemytake-grid below (a CSS grid
+               container, unlike this plain wrapper) — an early version put
+               it inside as the grid's first child and it silently became an
+               unplaced grid item (no nth-of-type rule matches a <div>, only
+               the grid's own `> section`s), auto-placed into whatever row
+               was left over, i.e. dead last, not pinned to the top like
+               every other screen's copy. -->
+          <div id="ailab-bt-transport-bar" class="transport-bar">
+            <input type="range" id="ailab-bt-timeline" data-transport="timeline" class="transport-timeline" min="0" max="0" step="0.01" value="0">
+            <button id="ailab-bt-play-btn" data-transport="play-btn" class="primary">▶</button>
+            <button id="ailab-bt-stop-btn" data-transport="stop-btn">■</button>
+            <span id="ailab-bt-time-display" data-transport="time-display">0:00 / 0:00</span>
+            <button id="ailab-bt-loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
+            <button id="ailab-bt-count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
+            <span class="transport-label">BPM</span>
+            <span id="ailab-bt-bpm-display" data-transport="bpm-display">—</span>
+            <span class="transport-label">Speed</span>
+            <input type="range" id="ailab-bt-speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
+            <span id="ailab-bt-speed-display" data-transport="speed-display">1.00×</span>
+            <span class="transport-label">Tune</span>
+            <input type="range" id="ailab-bt-tune-slider" data-transport="tune-slider" min="-1200" max="1200" step="1" value="0">
+            <span id="ailab-bt-tune-display" data-transport="tune-display">0¢</span>
+            <span class="transport-label">Volume</span>
+            <input type="range" id="ailab-bt-volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
+            <span id="ailab-bt-volume-display" data-transport="volume-display">100%</span>
+          </div>
+
+          <div id="ailab-ratemytake-grid">
 
           <section class="pa-card">
             <h3>Dry takes for this song</h3>
@@ -1174,6 +1189,7 @@
             </div>
             <label>Offset (seconds into the song this take starts)</label>
             <input type="number" id="ailab-rmt-offset" step="0.1" value="0">
+            <button id="ailab-rmt-use-position-btn" style="margin-top:6px; width:100%;">↓ Use current position as Offset</button>
             <label>Offset search (auto-fine-tune within +/- this many seconds; 0 = off)</label>
             <input type="number" id="ailab-rmt-offset-search" step="0.5" value="3">
             <button id="ailab-rmt-score-btn" class="primary" style="margin-top:10px;">Score this take</button>
@@ -1186,6 +1202,8 @@
             <p class="hint" id="ailab-rmt-breakdown"></p>
             <img id="ailab-rmt-heatmap-img" alt="Rate My Take heatmap">
           </section>
+
+          </div>
 
         </div>
 
