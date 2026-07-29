@@ -69,43 +69,61 @@
       <button id="tabview-open-btn" class="nav-screen-btn">🎼 Tab View</button>
       <button id="help-open-btn" class="nav-screen-btn">❓ Help</button>
     </div>
-    <!-- A playlist is just an ordering over a subset of the same Library
-         list — no separate "current playlist" view, and no standalone
-         "new playlist" control here either: that's created via the "+" on
-         a track's own row (renderAddToPlaylistControl in app.js), the same
-         place a track gets added to one. #track-list renders "All Tracks"
-         (anything not in any playlist) followed by each playlist as its
-         own collapsible group (see renderTrackList in app.js). A track can
-         belong to any number of playlists at once; nothing about a song's
-         own settings lives here — selecting a row still goes through the
-         normal selectTrack() -> /api/project auto-recall. -->
-    <h2>Library</h2>
-    <div id="track-list"></div>
-    <!-- ui-review-v5-full.md §2.3: one smart drop zone instead of two — the
-         file's own extension (checked in wireImport's drop/change handlers)
-         decides whether it's a single audio file or a stem-pack .zip, so
-         the user never has to pick the right box. -->
-    <div id="import-drop">Drop a song here<br><span class="import-drop-sub">audio file or stem-pack .zip</span><br>or click to import</div>
-    <input type="file" id="import-input" accept="audio/*,.zip" style="display:none">
+    <!-- orpheus-tabview-spec.md follow-up (direct request): this whole
+         panel swaps out for #tab-library-panel below while Tab View is the
+         open screen, replacing the song Library/import zone entirely
+         rather than adding a second sidebar next to it — toggled by
+         openTabView/closeTabView (tabview.js). -->
+    <div id="song-library-panel">
+      <!-- A playlist is just an ordering over a subset of the same Library
+           list — no separate "current playlist" view, and no standalone
+           "new playlist" control here either: that's created via the "+" on
+           a track's own row (renderAddToPlaylistControl in app.js), the same
+           place a track gets added to one. #track-list renders "All Tracks"
+           (anything not in any playlist) followed by each playlist as its
+           own collapsible group (see renderTrackList in app.js). A track can
+           belong to any number of playlists at once; nothing about a song's
+           own settings lives here — selecting a row still goes through the
+           normal selectTrack() -> /api/project auto-recall. -->
+      <h2>Library</h2>
+      <div id="track-list"></div>
+      <!-- ui-review-v5-full.md §2.3: one smart drop zone instead of two — the
+           file's own extension (checked in wireImport's drop/change handlers)
+           decides whether it's a single audio file or a stem-pack .zip, so
+           the user never has to pick the right box. -->
+      <div id="import-drop">Drop a song here<br><span class="import-drop-sub">audio file or stem-pack .zip</span><br>or click to import</div>
+      <input type="file" id="import-input" accept="audio/*,.zip" style="display:none">
 
-    <!-- system-audio-rip-spec.md: captures whatever's currently playing on
-         the Mac (a streaming tab, another app) via a BlackHole virtual
-         audio device, straight into input/ as a new song — a second way to
-         get a song in when you don't have the file itself in hand.
-         ui-review-v5-full.md §2.3: collapsed by default (remembers open/
-         closed state) — it was previously permanently expanded, showing an
-         error-looking "No input devices listed yet" hint on every launch
-         even for users who will never install BlackHole. -->
-    <details id="rip-details">
-      <summary>Rip system audio…</summary>
-      <div id="rip-panel">
-        <select id="rip-device-select"></select>
-        <div id="rip-hint">Checking for a BlackHole input device…</div>
-        <button id="rip-start-btn">● Start Rip</button>
-        <button id="rip-stop-btn" style="display:none">■ Stop Rip</button>
-        <span id="rip-elapsed" style="display:none">0:00</span>
-      </div>
-    </details>
+      <!-- system-audio-rip-spec.md: captures whatever's currently playing on
+           the Mac (a streaming tab, another app) via a BlackHole virtual
+           audio device, straight into input/ as a new song — a second way to
+           get a song in when you don't have the file itself in hand.
+           ui-review-v5-full.md §2.3: collapsed by default (remembers open/
+           closed state) — it was previously permanently expanded, showing an
+           error-looking "No input devices listed yet" hint on every launch
+           even for users who will never install BlackHole. -->
+      <details id="rip-details">
+        <summary>Rip system audio…</summary>
+        <div id="rip-panel">
+          <select id="rip-device-select"></select>
+          <div id="rip-hint">Checking for a BlackHole input device…</div>
+          <button id="rip-start-btn">● Start Rip</button>
+          <button id="rip-stop-btn" style="display:none">■ Stop Rip</button>
+          <span id="rip-elapsed" style="display:none">0:00</span>
+        </div>
+      </details>
+    </div>
+
+    <!-- Tab View's own library — same "+New playlist" via each row's own
+         "+" popover as the song Library above (no standalone button here
+         either, for the same reason). Hidden until Tab View is open. -->
+    <div id="tab-library-panel" style="display:none;">
+      <h2>Library</h2>
+      <div id="tabview-library-list"></div>
+      <div id="tabview-dropzone">Drop a Guitar Pro file here<br><span class="import-drop-sub">.gp3 / .gp4 / .gp5 / .gpx</span><br>or click to import</div>
+      <input type="file" id="tabview-import-input" accept=".gp3,.gp4,.gp5,.gpx,.gp" style="display:none">
+      <p class="hint" id="tabview-import-hint"></p>
+    </div>
   </div>
 
   <!-- Drag to resize the sidebar (wireSidebarResize in app.js); double-click
@@ -1404,53 +1422,43 @@
         <button id="tabview-close-btn">✕ Close</button>
       </div>
       <div id="tabview-body" class="screen-body">
-        <div id="tabview-workspace">
+        <div id="tabview-empty-state">
+          <p>Select a tab from the Library, or drop a Guitar Pro file to import one.</p>
+        </div>
 
-          <div id="tabview-sidebar">
-            <div id="tabview-dropzone">Drop a Guitar Pro file here<br><span class="import-drop-sub">.gp3 / .gp4 / .gp5 / .gpx</span><br>or click to import</div>
-            <input type="file" id="tabview-import-input" accept=".gp3,.gp4,.gp5,.gpx,.gp" style="display:none">
-            <p class="hint" id="tabview-import-hint"></p>
-
-            <h2>Library</h2>
-            <div id="tabview-library-list"></div>
-
-            <h2>Playlists</h2>
-            <button id="tabview-new-playlist-btn">+ New playlist</button>
-            <div id="tabview-playlists-list"></div>
+        <div id="tabview-player" style="display:none;">
+          <!-- Same shared .transport-bar as Mixer/Play Along/Tone Lab/AI
+               Lab, minimal subset (this screen has no backing-track audio
+               to loop/count-in against, no BPM detection, no tuning
+               reference) — bound to alphaTab's own api.playPause/stop/
+               playbackSpeed/isLooping instead of Audio/State. Zoom has no
+               transport-bar precedent elsewhere (nothing else in this app
+               zooms a rendered page), so it's a plain +/- pair rather than
+               forcing it into the Speed slider's shape for a control that
+               works completely differently (discrete steps, not a
+               continuous 0.5-1.5 range). -->
+          <div id="tabview-transport-bar" class="transport-bar">
+            <button id="tabview-play-btn" class="primary">▶</button>
+            <button id="tabview-stop-btn">■</button>
+            <button id="tabview-loop-btn" title="Loop the selected bars, or the whole tab if none are selected">Loop</button>
+            <span class="transport-label">Speed</span>
+            <input type="range" id="tabview-speed-slider" min="0.5" max="1.5" step="0.05" value="1">
+            <span id="tabview-speed-display" data-transport="speed-display">100%</span>
+            <span class="transport-label">Zoom</span>
+            <button id="tabview-zoom-out-btn" title="Zoom out">−</button>
+            <span id="tabview-zoom-display">100%</span>
+            <button id="tabview-zoom-in-btn" title="Zoom in">+</button>
+            <span id="tabview-track-title"></span>
           </div>
-
-          <div id="tabview-main">
-            <div id="tabview-empty-state">
-              <p>Select a tab from the Library, or drop a Guitar Pro file to import one.</p>
-            </div>
-
-            <div id="tabview-player" style="display:none;">
-              <!-- Same shared .transport-bar as Mixer/Play Along/Tone Lab/AI
-                   Lab, minimal subset (this screen has no backing-track
-                   audio to loop/count-in against, no BPM detection, no
-                   tuning reference) — bound to alphaTab's own api.playPause/
-                   stop/playbackSpeed/isLooping instead of Audio/State. -->
-              <div id="tabview-transport-bar" class="transport-bar">
-                <button id="tabview-play-btn" class="primary">▶</button>
-                <button id="tabview-stop-btn">■</button>
-                <button id="tabview-loop-btn" title="Loop the selected bars, or the whole tab if none are selected">Loop</button>
-                <span class="transport-label">Speed</span>
-                <input type="range" id="tabview-speed-slider" min="0.5" max="1.5" step="0.05" value="1">
-                <span id="tabview-speed-display" data-transport="speed-display">100%</span>
-                <span id="tabview-track-title"></span>
-              </div>
-              <p class="hint" id="tabview-track-artist"></p>
-              <div id="tabview-canvas-wrap">
-                <div id="tabview-canvas"></div>
-              </div>
-            </div>
-
-            <div id="tabview-loading-state" style="display:none;">
-              <div class="spinner"></div>
-              <p>Loading tab…</p>
-            </div>
+          <p class="hint" id="tabview-track-artist"></p>
+          <div id="tabview-canvas-wrap">
+            <div id="tabview-canvas"></div>
           </div>
+        </div>
 
+        <div id="tabview-loading-state" style="display:none;">
+          <div class="spinner"></div>
+          <p>Loading tab…</p>
         </div>
       </div>
     </div>

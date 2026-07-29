@@ -6,8 +6,14 @@
 // for viewing and playback, rendered client-side by alphaTab (self-hosted,
 // see static/vendor/alphatab/README.txt — never a CDN, matching this app's
 // local-first design). A tab file has no stems/mix/rig, so it gets its own
-// small library scoped to this screen rather than living in the main
-// sidebar's song Library — see server.py's "Tab View" section for the
+// library — but per direct follow-up request, that library REPLACES the
+// main sidebar's song Library/import zone while Tab View is open (rather
+// than living in a second, separate sidebar the way the first version of
+// this screen had it) — #song-library-panel/#tab-library-panel in
+// index.html are toggled by openTabView/closeTabView below. Reuses the
+// song Library's exact CSS classes (.track-row/.playlist-group/
+// .track-add-to-playlist etc.) so it reads as the same component, just
+// showing different data. Backend: server.py's "Tab View" section, the
 // matching tabs/ directory + _tab_library.json sidecar.
 //
 // Deliberately its own JS file (matching the app.js=Mixer/playalong.js=
@@ -144,17 +150,35 @@ function wireTabViewTransport() {
     document.getElementById("tabview-speed-display").textContent = `${Math.round(val * 100)}%`;
     if (TabView.api) TabView.api.playbackSpeed = val;
   });
+
+  // Zoom — discrete steps rather than a slider, same as Mixer's Zoom to
+  // loop/Zoom out pair conceptually, just re-rendering alphaTab's own
+  // layout at a new scale instead of resizing a waveform view. 50%-200%,
+  // same step size both directions so the two buttons feel symmetric.
+  document.getElementById("tabview-zoom-in-btn").addEventListener("click", () => setTabViewZoom(TabViewZoom.scale + 0.1));
+  document.getElementById("tabview-zoom-out-btn").addEventListener("click", () => setTabViewZoom(TabViewZoom.scale - 0.1));
+}
+
+const TabViewZoom = { scale: 1.0, min: 0.5, max: 2.0 };
+
+function setTabViewZoom(scale) {
+  TabViewZoom.scale = Math.min(TabViewZoom.max, Math.max(TabViewZoom.min, scale));
+  document.getElementById("tabview-zoom-display").textContent = `${Math.round(TabViewZoom.scale * 100)}%`;
+  if (!TabView.api) return;
+  TabView.api.settings.display.scale = TabViewZoom.scale;
+  TabView.api.updateSettings();
+  TabView.api.render();
 }
 
 // ---------------------------------------------------------------------------
 // Import (drag & drop or click-to-browse) — same smart-dropzone idiom as
-// the sidebar's song import (wireImport, app.js), scoped to this screen's
-// own dropzone/sidebar instead.
+// the sidebar's song import (wireImport, app.js), scoped to
+// #tab-library-panel (the sidebar panel this screen swaps in) instead.
 // ---------------------------------------------------------------------------
 
 function wireTabViewImport() {
   const dropEl = document.getElementById("tabview-dropzone");
-  const sidebarEl = document.getElementById("tabview-sidebar");
+  const panelEl = document.getElementById("tab-library-panel");
   const inputEl = document.getElementById("tabview-import-input");
 
   dropEl.addEventListener("click", () => inputEl.click());
@@ -164,18 +188,25 @@ function wireTabViewImport() {
     inputEl.value = "";
   });
 
-  // The document-level dragover/drop preventDefault() that stops an
-  // off-target drop from navigating the whole tab away is already installed
-  // once by wireImport() (app.js) — no need for a second copy here.
-  sidebarEl.addEventListener("dragover", (e) => {
+  // stopPropagation, not just preventDefault: #tab-library-panel lives
+  // inside #sidebar, which already has its OWN dragover/drop listeners for
+  // the song Library's import zone (wireImport, app.js) — those are only
+  // hidden (via #song-library-panel's display:none while Tab View is open),
+  // not removed, so a drop here would otherwise bubble up and also trigger
+  // the song importer, incorrectly trying to import a .gp5 as an audio
+  // track. Stopping it here is simpler and more robust than teaching
+  // wireImport's own handlers to check which screen is currently open.
+  panelEl.addEventListener("dragover", (e) => {
     e.preventDefault();
+    e.stopPropagation();
     dropEl.classList.add("dragover");
   });
-  sidebarEl.addEventListener("dragleave", (e) => {
-    if (!sidebarEl.contains(e.relatedTarget)) dropEl.classList.remove("dragover");
+  panelEl.addEventListener("dragleave", (e) => {
+    if (!panelEl.contains(e.relatedTarget)) dropEl.classList.remove("dragover");
   });
-  sidebarEl.addEventListener("drop", (e) => {
+  panelEl.addEventListener("drop", (e) => {
     e.preventDefault();
+    e.stopPropagation();
     dropEl.classList.remove("dragover");
     const f = e.dataTransfer.files[0];
     if (f) uploadTabFile(f);
@@ -229,15 +260,17 @@ async function refreshTabLibrary() {
   renderTabLibrary();
 }
 
+// Same shape as renderTrackList (app.js): "All Tabs" first, then each
+// playlist as its own collapsible group, all in the one list — no separate
+// "Playlists" heading/list, matching the song Library's own layout exactly
+// now that this replaces it in the same sidebar spot.
 function renderTabLibrary() {
   const el = document.getElementById("tabview-library-list");
   el.innerHTML = "";
   el.appendChild(renderTabAllGroup());
 
-  const playlistsEl = document.getElementById("tabview-playlists-list");
-  playlistsEl.innerHTML = "";
   const names = Object.keys(TabView.playlists).sort((a, b) => a.localeCompare(b));
-  for (const name of names) playlistsEl.appendChild(renderTabPlaylistGroup(name));
+  for (const name of names) el.appendChild(renderTabPlaylistGroup(name));
 }
 
 function renderTabAllGroup() {
@@ -479,12 +512,20 @@ async function openTabView() {
   document.getElementById("tonelab-overlay").classList.remove("show");
   document.getElementById("playalong-overlay").classList.remove("show");
   if (typeof closeAiLab === "function") closeAiLab();
+  // Swap the main sidebar over to this screen's own library — direct
+  // request: Tab View's library/dropzone should replace the song Library/
+  // import zone entirely while this screen is open, not sit in a second
+  // sidebar next to it.
+  document.getElementById("song-library-panel").style.display = "none";
+  document.getElementById("tab-library-panel").style.display = "";
   paSetActiveScreen("tabview-open-btn");
   await refreshTabLibrary();
 }
 
 function closeTabView() {
   document.getElementById("tabview-overlay").classList.remove("show");
+  document.getElementById("tab-library-panel").style.display = "none";
+  document.getElementById("song-library-panel").style.display = "";
   // Stops alphaTab's own synth so leaving this screen doesn't leave audio
   // playing from a hidden one — this screen's playback is entirely
   // separate from the rest of the app's Audio/State.
@@ -494,16 +535,6 @@ function closeTabView() {
 function wireTabView() {
   document.getElementById("tabview-open-btn").addEventListener("click", openTabView);
   document.getElementById("tabview-close-btn").addEventListener("click", closeTabView);
-  document.getElementById("tabview-new-playlist-btn").addEventListener("click", async () => {
-    const name = await textPrompt("New playlist name:");
-    if (!name || !name.trim()) return;
-    const trimmed = name.trim();
-    if (TabView.playlists[trimmed]) { alert(`A playlist named "${trimmed}" already exists.`); return; }
-    TabView.playlists[trimmed] = [];
-    TabView.expandedPlaylists.add(trimmed);
-    await persistTabPlaylists();
-    renderTabLibrary();
-  });
   wireTabViewImport();
   wireTabViewTransport();
 }

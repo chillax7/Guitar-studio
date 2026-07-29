@@ -2629,36 +2629,24 @@ svg.ailab-fretboard { display: block; }
 
 /* ---------- Tab View (orpheus-tabview-spec.md, adapted) ---------- */
 
-/* Fixed-width sidebar + flex-grow main, inside .screen-body's own padding —
-   same "~320px library, rest is content" split the spec asked for, just
-   scoped to this screen's own workspace instead of the top-level app grid
-   (#sidebar/#canvas) the Mixer uses. */
-#tabview-workspace {
+/* This screen's library REPLACES the main sidebar's song Library/import
+   zone (direct request) rather than getting a second sidebar of its own —
+   #song-library-panel/#tab-library-panel are siblings inside the real
+   #sidebar, toggled by openTabView/closeTabView (tabview.js). Each needs
+   to be a flex column filling #sidebar's remaining height (mirroring what
+   #sidebar itself used to do directly) so #track-list/#tabview-library-
+   list's own flex:1+overflow-y:auto still work one level down. #sidebar
+   h2 and #import-drop's existing rules already reach through to these
+   panels' own <h2>/dropzone by plain descendant selectors — only the
+   things genuinely new here (the library list's own scroll behavior, the
+   tab-flavored dropzone's copy) need new rules at all. */
+#song-library-panel, #tab-library-panel {
   display: flex;
-  gap: 20px;
-  align-items: flex-start;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
-#tabview-sidebar {
-  flex: none;
-  width: 300px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding-bottom: 10px;
-}
-/* Same look as #sidebar h2 (LIBRARY) — this screen's own library/playlists
-   headings, just not literally #sidebar (that's the song Library, a
-   different list entirely). */
-#tabview-sidebar h2 {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  padding: 12px 12px 4px;
-  margin: 0;
-}
-#tabview-library-list, #tabview-playlists-list { padding: 0 0 4px; }
-#tabview-new-playlist-btn { margin: 0 12px 6px; width: calc(100% - 24px); }
+#tabview-library-list { flex: 1; overflow-y: auto; min-height: 0; }
 
 /* Same dashed-box drop-zone idiom as #import-drop (the song sidebar's own
    import zone) — .import-drop-sub (used inline in index.html) is already
@@ -2679,7 +2667,6 @@ svg.ailab-fretboard { display: block; }
 #tabview-dropzone.dragover { border-color: var(--accent); color: var(--accent); }
 #tabview-import-hint { margin: 0 10px 6px; font-size: 11px; }
 
-#tabview-main { flex: 1; min-width: 0; }
 #tabview-empty-state, #tabview-loading-state {
   color: var(--text-dim);
   text-align: center;
@@ -2702,8 +2689,23 @@ svg.ailab-fretboard { display: block; }
 }
 #tabview-track-title { font-weight: 700; margin-left: auto; }
 #tabview-track-artist { margin: 4px 0 0; }
+#tabview-zoom-out-btn, #tabview-zoom-in-btn { padding: 5px 9px; }
+#tabview-zoom-display { font-variant-numeric: tabular-nums; min-width: 38px; text-align: center; }
 /* Same "green = actively running" convention as Loop/Count-in/Click
    elsewhere (button.running / [data-transport="loop-toggle-btn"].active) —
    not tagged data-transport since alphaTab's own isLooping isn't part of
    that mirrored-copy system, so it needs its own explicit rule here. */
 #tabview-loop-btn.active { background: var(--success); border-color: var(--success); color: #fff; }
+
+/* Real user request: a playhead superimposed on the tab during playback.
+   alphaTab's player.enableCursor:true (tabview.js) already creates and
+   animates these elements as playback advances — verified via their
+   inline transform/transition updating in real time — but ships them
+   fully transparent (rgba(0,0,0,0)) with no default color of its own, so
+   without this they exist in the DOM but are invisible. Bar cursor is a
+   soft highlight wash over the whole current bar; beat cursor is a solid
+   line at the exact current beat position — same convention most alphaTab
+   integrations use. Tied to --accent so it matches whichever theme is
+   active, same as everything else in this app. */
+.at-cursor-bar { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.at-cursor-beat { background: var(--accent); }
