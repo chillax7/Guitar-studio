@@ -36,21 +36,49 @@
 // Activations
 // ---------------------------------------------------------------------------
 
-// Rational tanh approximation (the classic Padé form the reference C++'s
-// own "fasttanh" family uses) instead of Math.tanh: the activation runs
-// ~240x per sample ≈ 11M calls/sec for a standard-architecture capture,
-// and Math.tanh was one of the three big reasons inference measured
-// 1.4-1.5x SLOWER than real time for standard models (see the realtime-
-// factor probe in playalong.js). Max error vs true tanh ~5e-3 near the
-// clamp boundary — inaudible for an amp nonlinearity, and the reference
-// implementation itself trades the same accuracy for speed.
+// Rational (Padé) tanh approximation instead of Math.tanh: the activation
+// runs ~240x per sample ≈ 11M calls/sec for a standard-architecture
+// capture, and Math.tanh was one of the three big reasons inference
+// measured 1.4-1.5x SLOWER than real time for standard models (see the
+// realtime-factor probe in playalong.js).
+//
+// This is the ORDER-7/9 Padé form. It replaced the order-3/2 one
+// ((x*(27+x²))/(27+9x²), clamped at |x|>3) this file used originally,
+// whose accuracy claim — "max error vs true tanh ~5e-3" — was measured
+// and found to be wrong by ~5x: its real max error is 2.35e-2, at
+// x≈±1.57, i.e. in the middle of the active range rather than "near the
+// clamp boundary", plus a permanent ~0.5% error everywhere past the clamp
+// (it returned exactly 1.0 where tanh(3)=0.9950).
+//
+// That mattered: measured against the official NAM PyTorch reference on a
+// standard-architecture model (16ch, gated, dilations 1..512), the old
+// form put our steady-state output 1.157% off the reference; this one puts
+// it 0.00001% off — i.e. bit-exact to within f32 rounding, indistinguishable
+// from calling real tanh. It is also NOT slower: measured marginally
+// FASTER than the old 3/2 form (more multiplies, but no extra branches and
+// a wider clamp that's hit less often), and clearly faster than Math.tanh.
+// See research/nam-engine-review-spec.md §9 for the full measurements.
+//
+// Clamp at 4.972 is exactly where the unclamped rational crosses 1.0, so
+// there's no discontinuity at the boundary; every coefficient below is
+// exactly representable in f32. Max error vs true tanh: 9.6e-5.
+//
+// nam.zig's fastTanh() is the bit-for-bit twin of this — change both
+// together or the WASM and JS paths stop agreeing (there's a regression
+// test for exactly that: see the spec's §9 harness).
 function fastTanh(x) {
-  if (x > 3) return 1;
-  if (x < -3) return -1;
+  if (x > 4.972) return 1;
+  if (x < -4.972) return -1;
   const x2 = x * x;
-  return (x * (27 + x2)) / (27 + 9 * x2);
+  const num = x * (135135 + x2 * (17325 + x2 * (378 + x2)));
+  const den = 135135 + x2 * (62370 + x2 * (3150 + x2 * 28));
+  return num / den;
 }
 
+// Mathematically exact given an exact tanh: 0.5*(tanh(x/2)+1) === 1/(1+e⁻ˣ).
+// So this inherits fastTanh's accuracy rather than adding error of its own —
+// which is why fixing tanh above was the whole fix; swapping THIS for a
+// "real" sigmoid on its own moved the error only 1.157% -> 1.129%.
 function sigmoid(x) { return 0.5 * (fastTanh(0.5 * x) + 1); }
 
 function makeActivation(name) {

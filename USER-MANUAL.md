@@ -1831,9 +1831,17 @@ current song has attached.
   separation.
 - NAM inference here is a from-scratch reimplementation of the standard
   WaveNet architecture (with an optional WebAssembly/SIMD fast path), not
-  the official reference runtime — quality is good but this isn't a
-  certified bit-exact match to official NAM plugins, and heavier captures
-  may be refused on slower machines rather than glitch your audio (§4.9).
+  the official reference runtime. It is, however, now **measured** against
+  it: on a standard-architecture capture its steady-state output matches
+  the official NAM reference implementation to within 0.00001% (f32
+  rounding noise — effectively exact). That's a recent improvement; an
+  earlier build's tanh approximation put it 1.16% off, roughly a −39 dB
+  error layer over the amp tone, which is why captures may sound slightly
+  cleaner/more defined than you remember. Two honest caveats remain:
+  the first ~40ms after a model loads is a warm-up transient that doesn't
+  match the reference (inaudible in practice — it settles long before you
+  play), and heavier captures may still be refused on slower machines
+  rather than glitch your audio (§4.9).
 - The tone-suggestion feature is a cheap heuristic, explicitly not a
   guaranteed match — always finish tone-matching by ear.
 - Tone Lab's Output-card latency figure (§4.8) is a browser-reported

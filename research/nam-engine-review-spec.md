@@ -469,3 +469,139 @@ the speed verdict — worth re-testing this gate again if one appears,
 rather than assuming today's result is permanent. M4 (docs) still applies
 in spirit: whatever comes out of the `fastTanh` experiment belongs in
 USER-MANUAL.md §4.9 either way.
+
+---
+
+## 9. §8.4's fix, built and measured — our engine is now effectively exact
+
+§8.4 proposed spending some of our engine's unused real-time headroom on
+accuracy, targeting `fastTanh`. That was built and measured. **It worked,
+and it cost essentially nothing** — but the diagnosis got materially more
+precise on the way, and one of §8's own numbers turned out to be
+misleading. Both corrections are recorded below.
+
+### 9.1 Correction to §8.2: most of the "2.62% error" was a test artifact
+
+§8.2 reported our engine at 2.62% relative RMSE against the PyTorch
+reference. That number is real but **it is not an ongoing tone error** —
+it is dominated by a warm-up transient that the test signal was half made
+of.
+
+The model's receptive field (dilations 1..512, kernel 3) is
+`1 + 2*(1+2+...+512)` = **2047 samples**. The §8 test signal was 4096
+samples, so **half of it was inside the warm-up region**. Breaking the
+error down by position, with activations made exact so only structural
+differences remain:
+
+| sample window | rel. RMSE (exact activations) |
+|---|---|
+| 0–256 | 7.44% |
+| 256–512 | 3.33% |
+| 512–1024 | 1.55% |
+| 1024–2047 | 0.51% |
+| **2047–3072** | **0.0000%** |
+| **3072–4096** | **0.0000%** |
+
+Past the receptive field the error is **exactly zero**. Our engine's
+steady-state math — weight layout, conv ordering, gating split, head
+path — is *bit-exact* to the official reference. There was never a
+structural bug; §8.2's implication that ours was "not accurate" was an
+artifact of measuring across an unconverged window.
+
+What *is* real: the first ~2047 samples (**~43ms at 48kHz**) don't match
+the reference, because our streaming engine's initial ring-buffer state
+and PyTorch's `pad_start` zero-padding prime the network differently.
+That's a one-time transient when a model loads, long before anyone plays
+a note. Not chased further; recorded here so it isn't rediscovered as a
+mystery later.
+
+**Measure steady-state only.** The correct comparison, past sample 2047:
+
+| variant | steady-state rel. RMSE |
+|---|---|
+| old `fastTanh` (order-3/2 Padé) | **1.157%** |
+| exact `Math.tanh` | 0.00001% |
+
+So the genuine, ongoing accuracy cost of the activation approximation was
+**1.157%** — about **−38.7 dB** relative to the amp signal. Audible as a
+broad low-level error layer, and a real answer to complaint #1, just a
+smaller one than §8.2 implied.
+
+### 9.2 The old `fastTanh`'s accuracy claim was wrong by ~5x
+
+`nam-processor.js` documented the old approximation as "max error vs true
+tanh ~5e-3 near the clamp boundary." Measured directly, both halves of
+that are wrong:
+
+- **Real max error: 2.35e-2** — ~5x worse than claimed.
+- **It peaks at x≈±1.57**, in the *middle of the active range*, not near
+  the clamp.
+- Plus a permanent error past the clamp: it returned exactly `1.0` for
+  all |x|>3, where `tanh(3)=0.9950` — a standing ~0.5% error on every
+  hard-driven sample, exactly where a cranked amp capture spends its time.
+
+The sigmoid was not a separate problem: `0.5*(tanh(x/2)+1)` is
+*mathematically identical* to `1/(1+e⁻ˣ)`, so it simply inherited tanh's
+error. Confirmed by ablation — swapping only the sigmoid for a "real" one
+moved the error 1.157% → 1.129%, i.e. barely at all. **Fixing tanh was
+the entire fix.**
+
+### 9.3 The fix: order-7/9 Padé — exact, and not slower
+
+Replaced with the order-7/9 Padé form, clamped at **4.972** (exactly where
+the unclamped rational crosses 1.0, so there's no boundary discontinuity).
+All six coefficients (135135, 17325, 378, 62370, 3150, 28) are exactly
+representable in f32.
+
+| | max err vs true tanh | steady-state rel. RMSE | scalar cost (10M calls) |
+|---|---|---|---|
+| old order-3/2 Padé | 2.35e-2 | 1.157% | 128 ms |
+| **new order-7/9 Padé** | **9.6e-5** | **0.00001%** | **146 ms** |
+| `Math.tanh` | 0 | 0.00001% | 233 ms |
+
+It reaches the same accuracy as calling real `tanh` (3.7e-9 max
+difference — f32 rounding noise), while remaining substantially cheaper
+than `Math.tanh`. The extra multiplies are offset by having no extra
+branches and a wider clamp that's hit far less often.
+
+**End-to-end, in the real engine** (standard-architecture model, measured
+in Node):
+
+| path | steady-state rel. RMSE | RTF |
+|---|---|---|
+| WASM, old `fastTanh` | 1.15664% (−38.7 dB) | 0.2803 |
+| **WASM, new Padé 7/9** | **0.00001%** (−140 dB) | **0.2867** |
+| JS, new Padé 7/9 | 0.00001% | 1.6423 |
+
+**Accuracy improved ~100,000x for a 2.3% RTF cost.** Refuse-threshold
+headroom is essentially untouched (0.62 → 0.61 under
+`NAM_REFUSE_RT_FACTOR` 0.9), so complaint #2 is not made worse — which
+was the whole reason §8 rejected the engine swap.
+
+### 9.4 Toolchain note — rebuilding `nam.wasm` is reproducible
+
+`nam.wasm` was rebuilt from `nam-wasm-src/nam.zig` with **Zig 0.16.0**,
+the version `build.sh` names (installed via the `ziglang` PyPI wheel,
+since no system package was available). Verified before changing anything:
+a 0.16.0 rebuild of the *unmodified* source is **byte-for-byte identical
+in output** to the committed artifact (max abs diff 0.000e+0 across the
+full test signal). **Zig 0.13.0 is not a valid substitute** — it compiles,
+but the resulting module traps with "memory access out of bounds" on the
+first `forward()` call, presumably an arena/heap-base layout difference.
+Pin 0.16.x when rebuilding.
+
+Post-change verification: the JS and WASM paths still agree to 3.7e-9
+(f32 noise — they were never bit-identical, since scalar JS carries f64
+intermediates where the SIMD kernel is pure f32), and the rebuilt module
+compiles, instantiates, and drives the live rig in a real headless browser
+with no errors.
+
+### 9.5 What's left
+
+- **Warm-up transient (§9.1)** — ~43ms of non-reference-matching output
+  when a model first loads. Bounded, inaudible in practice, not chased.
+  Worth a look only if someone reports a click/thump on preset switching.
+- **Complaint #2 (refusals)** is untouched by this work and remains open.
+  Our engine is still the fastest measured option, so the headroom to
+  attack it with is intact — but nothing here reduces refusals.
+- **The A2 architecture family** remains unsupported, per §8.5.

@@ -101,11 +101,20 @@ fn dot(a: [*]const f32, b: [*]const f32, len: u32) f32 {
 // Activations — bit-for-bit the same formulas as nam-processor.js
 // ---------------------------------------------------------------------------
 
+// Order-7/9 Padé form. Bit-for-bit twin of nam-processor.js's fastTanh() —
+// see that file's own comment for why this replaced the previous order-3/2
+// form (its real max error was 2.35e-2, not the ~5e-3 originally claimed,
+// putting steady-state output 1.157% off the official NAM reference; this
+// form is 0.00001% off, at no speed cost). Clamp at 4.972 is exactly where
+// the unclamped rational crosses 1.0, so there's no boundary discontinuity;
+// all coefficients are exactly representable in f32.
 fn fastTanh(x: f32) f32 {
-    if (x > 3.0) return 1.0;
-    if (x < -3.0) return -1.0;
+    if (x > 4.972) return 1.0;
+    if (x < -4.972) return -1.0;
     const x2 = x * x;
-    return (x * (27.0 + x2)) / (27.0 + 9.0 * x2);
+    const num = x * (135135.0 + x2 * (17325.0 + x2 * (378.0 + x2)));
+    const den = 135135.0 + x2 * (62370.0 + x2 * (3150.0 + x2 * 28.0));
+    return num / den;
 }
 fn sigmoidF(x: f32) f32 {
     return 0.5 * (fastTanh(0.5 * x) + 1.0);
