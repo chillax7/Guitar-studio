@@ -1422,24 +1422,57 @@
         <button id="tabview-close-btn">✕ Close</button>
       </div>
       <div id="tabview-body" class="screen-body">
+        <!-- Direct request: control over the loaded SONG track (whatever's
+             in State.track, same as Mixer/Play Along/Tone Lab) from here
+             too, not just the tab's own playback — same shared
+             .transport-bar/data-transport mirrored-copy idiom as those
+             screens (app.js's transportEls/onTransportInput already picks
+             up any element anywhere in the DOM), full control set since
+             this is the same "backing track" every other screen's copy is.
+             Always shown, independent of whether a tab is loaded below —
+             this is the app's song playback, not tab playback. -->
+        <div id="tabview-song-transport-bar" class="transport-bar">
+          <input type="range" id="tabview-song-bt-timeline" data-transport="timeline" class="transport-timeline" min="0" max="0" step="0.01" value="0">
+          <button id="tabview-song-bt-play-btn" data-transport="play-btn" class="primary">▶</button>
+          <button id="tabview-song-bt-stop-btn" data-transport="stop-btn">■</button>
+          <span id="tabview-song-bt-time-display" data-transport="time-display">0:00 / 0:00</span>
+          <button id="tabview-song-bt-loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
+          <button id="tabview-song-bt-count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
+          <span class="transport-label">BPM</span>
+          <span id="tabview-song-bt-bpm-display" data-transport="bpm-display">—</span>
+          <span class="transport-label">Speed</span>
+          <input type="range" id="tabview-song-bt-speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
+          <span id="tabview-song-bt-speed-display" data-transport="speed-display">1.00×</span>
+          <span class="transport-label">Tune</span>
+          <input type="range" id="tabview-song-bt-tune-slider" data-transport="tune-slider" min="-1200" max="1200" step="1" value="0">
+          <span id="tabview-song-bt-tune-display" data-transport="tune-display">0¢</span>
+          <span class="transport-label">Volume</span>
+          <input type="range" id="tabview-song-bt-volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
+          <span id="tabview-song-bt-volume-display" data-transport="volume-display">100%</span>
+        </div>
+
         <div id="tabview-empty-state">
           <p>Select a tab from the Library, or drop a Guitar Pro file to import one.</p>
         </div>
 
         <div id="tabview-player" style="display:none;">
-          <!-- Same shared .transport-bar as Mixer/Play Along/Tone Lab/AI
-               Lab, minimal subset (this screen has no backing-track audio
-               to loop/count-in against, no BPM detection, no tuning
-               reference) — bound to alphaTab's own api.playPause/stop/
-               playbackSpeed/isLooping instead of Audio/State. Zoom has no
-               transport-bar precedent elsewhere (nothing else in this app
-               zooms a rendered page), so it's a plain +/- pair rather than
-               forcing it into the Speed slider's shape for a control that
-               works completely differently (discrete steps, not a
-               continuous 0.5-1.5 range). -->
+          <!-- The TAB's own playback (alphaTab's synth against its bundled
+               soundfont) — a separate transport from the song bar above on
+               purpose, since they're two independent audio sources (the
+               backing track vs. the tab notation's own MIDI playback), not
+               one shared position. Same .transport-bar shape/format as the
+               song bar, just bound to alphaTab's api.playPause/stop/
+               playbackSpeed/isLooping/timePosition instead of Audio/State.
+               Zoom has no transport-bar precedent elsewhere (nothing else
+               in this app zooms a rendered page), so it's a plain +/- pair
+               rather than forcing it into the Speed slider's shape for a
+               control that works completely differently (discrete steps,
+               not a continuous 0.5-1.5 range). -->
           <div id="tabview-transport-bar" class="transport-bar">
+            <input type="range" id="tabview-scrub" class="transport-timeline" min="0" max="0" step="1" value="0">
             <button id="tabview-play-btn" class="primary">▶</button>
             <button id="tabview-stop-btn">■</button>
+            <span id="tabview-time-display">0:00 / 0:00</span>
             <button id="tabview-loop-btn" title="Loop the selected bars, or the whole tab if none are selected">Loop</button>
             <span class="transport-label">Speed</span>
             <input type="range" id="tabview-speed-slider" min="0.5" max="1.5" step="0.05" value="1">

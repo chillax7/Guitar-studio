@@ -79,6 +79,22 @@ async function ensureTabViewApi() {
     document.getElementById("tabview-empty-state").style.display = "";
   });
 
+  // Scrub bar + time readout for the TAB's own playback (separate from the
+  // song transport bar's timeline above, which scrubs the backing track).
+  // Guarded by tabviewScrubbing so this doesn't fight the user's own drag —
+  // alphaTab fires playerPositionChanged continuously during playback,
+  // which would otherwise yank the slider (and the user's finger with it)
+  // back to the actually-playing position on every tick while dragging.
+  api.playerPositionChanged.on((args) => {
+    const scrub = document.getElementById("tabview-scrub");
+    if (!tabviewScrubbing) {
+      scrub.max = String(Math.round(args.endTime));
+      scrub.value = String(Math.round(args.currentTime));
+    }
+    document.getElementById("tabview-time-display").textContent =
+      `${formatTabViewTime(args.currentTime)} / ${formatTabViewTime(args.endTime)}`;
+  });
+
   TabView.api = api;
   return api;
 }
@@ -133,6 +149,18 @@ async function selectTab(name) {
 // completely separate audio path from the rest of the app).
 // ---------------------------------------------------------------------------
 
+// True while the user has the scrub bar's thumb down — guards
+// playerPositionChanged (above) from yanking the slider back to the
+// actually-playing position mid-drag.
+let tabviewScrubbing = false;
+
+function formatTabViewTime(ms) {
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 function wireTabViewTransport() {
   document.getElementById("tabview-play-btn").addEventListener("click", () => {
     if (TabView.api) TabView.api.playPause();
@@ -149,6 +177,26 @@ function wireTabViewTransport() {
     const val = parseFloat(e.target.value);
     document.getElementById("tabview-speed-display").textContent = `${Math.round(val * 100)}%`;
     if (TabView.api) TabView.api.playbackSpeed = val;
+  });
+
+  // Scrub bar — seeks the TAB's own playback (api.timePosition, in ms),
+  // separate from the song transport bar's timeline above (which seeks the
+  // backing track via State/Audio). mousedown/up (not just "input") bracket
+  // the whole drag gesture so playerPositionChanged doesn't fight a still-
+  // in-progress drag between individual input events.
+  const scrubEl = document.getElementById("tabview-scrub");
+  scrubEl.addEventListener("mousedown", () => { tabviewScrubbing = true; });
+  scrubEl.addEventListener("touchstart", () => { tabviewScrubbing = true; });
+  const endScrub = () => {
+    if (!tabviewScrubbing) return;
+    tabviewScrubbing = false;
+    if (TabView.api) TabView.api.timePosition = parseFloat(scrubEl.value);
+  };
+  scrubEl.addEventListener("mouseup", endScrub);
+  scrubEl.addEventListener("touchend", endScrub);
+  scrubEl.addEventListener("input", () => {
+    document.getElementById("tabview-time-display").textContent =
+      `${formatTabViewTime(parseFloat(scrubEl.value))} / ${formatTabViewTime(parseFloat(scrubEl.max))}`;
   });
 
   // Zoom — discrete steps rather than a slider, same as Mixer's Zoom to
