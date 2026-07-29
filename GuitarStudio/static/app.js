@@ -1156,6 +1156,7 @@ function showState(name) {
     document.getElementById(s).classList.toggle("show", s === name);
   }
   document.getElementById("transport").classList.toggle("show", name === "workspace");
+  document.getElementById("transport-title").classList.toggle("show", name === "workspace");
   document.getElementById("toolbar-tools").classList.toggle("show", name === "workspace");
   // ui-review-v5-full.md §2.2/§4: Quest Log takes over the inspector's
   // no-track space (Speed Trainer/Export are dead controls until a track
@@ -1243,6 +1244,19 @@ function renderAllTracksGroup() {
 const AUDIO_EXT_RE = /\.(mp3|wav|m4a|aac|flac|ogg|opus|aiff?|wma|webm)$/i;
 function displayTrackName(name) {
   return name.replace(AUDIO_EXT_RE, "");
+}
+
+// The "Track Play Bar — <name>" caption sits above every screen's copy of
+// the transport bar (Mixer, Tone Lab, Play Along, AI Lab's Rate My Take,
+// plus Tab View's own track-bar copy). selectTrack() already closes every
+// other screen before loading a new track (closeAllScreens above), so this
+// only needs to run once per selection rather than being live-bound.
+function updateTrackPlayBarTitles() {
+  const label = State.track ? displayTrackName(State.track) : "No track loaded";
+  for (const id of ["mixer-track-name", "tl-track-name", "pa-track-name", "ailab-track-name", "tabview-bar-track-name"]) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = label;
+  }
 }
 
 function renderLibraryTrackRow(t) {
@@ -1806,6 +1820,7 @@ async function selectTrack(name) {
 
   State.track = name;
   renderTrackList();
+  updateTrackPlayBarTitles();
   stopPlayback();
   zoomWindow = null; // BT-17 — same reasoning as Speed/Tune resetting below: a leftover zoom from the last song would be a trap
   document.getElementById("zoom-to-loop-btn").style.display = "inline-block";
@@ -4211,6 +4226,7 @@ function wireAutoShutdownSession() {
 
 async function init() {
   wireAutoShutdownSession();
+  updateTrackPlayBarTitles();
   initRuler();
   wireTransport();
   wireModelBadge();

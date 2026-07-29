@@ -1040,6 +1040,8 @@ button:disabled:hover { filter: none; }
 }
 #transport { display: none; }
 #transport.show { display: flex; }
+#transport-title { display: none; }
+#transport-title.show { display: block; }
 [data-transport="time-display"] { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--text-dim); min-width: 90px; }
 .transport-bar input[type=range] { width: 90px; }
 /* Play Along/Tone Lab's copies (no waveform to click-to-seek on, unlike
@@ -2704,8 +2706,15 @@ svg.ailab-fretboard { display: block; }
   margin: 4px 2px;
 }
 #tabview-track-artist { margin: 4px 0 0; }
-#tabview-zoom-out-btn, #tabview-zoom-in-btn { padding: 5px 9px; }
 #tabview-zoom-display { font-variant-numeric: tabular-nums; min-width: 38px; text-align: center; }
+/* Not tagged data-transport="time-display" — that attribute means "mirrored
+   copy driven by the shared transport sync system" (transportEls/
+   onTransportInput), but this readout is driven by alphaTab's own
+   playerPositionChanged event instead, a different data source entirely.
+   Same visual rule duplicated here (rather than reusing the attribute) so
+   the Tab Play Bar matches the Track Play Bar's format without implying
+   this element is part of that mirrored system. */
+#tabview-time-display { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--text-dim); min-width: 90px; }
 /* Same "green = actively running" convention as Loop/Count-in/Click
    elsewhere (button.running / [data-transport="loop-toggle-btn"].active) —
    not tagged data-transport since alphaTab's own isLooping isn't part of

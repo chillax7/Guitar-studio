@@ -571,8 +571,7 @@ async function openTabView() {
   // selectTrack) — since that includes this screen, State.track can only
   // actually change while Tab View is closed, so a one-time read on open is
   // enough; no live-update hook needed for the rest of this screen's visit.
-  document.getElementById("tabview-bar-track-name").textContent =
-    State.track ? displayTrackName(State.track) : "No track loaded";
+  updateTrackPlayBarTitles();
   await refreshTabLibrary();
 }
 

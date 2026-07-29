@@ -132,6 +132,40 @@
   <div id="sidebar-resize-handle" title="Drag to resize — double-click to reset"></div>
 
   <div id="canvas">
+    <!-- Direct request: the Track Play Bar sits at the very top, just under
+         the app title/screen-label banner, with the editing toolbar (Marker/
+         Zoom to loop/Click/model/Separate) below it — the reverse of the
+         previous order. Title (Track Play Bar — name) shown/hidden in step
+         with #transport itself (showState, app.js) rather than always
+         visible, since there's nothing to play until a track is loaded. -->
+    <div id="transport-title" class="transport-bar-title">Track Play Bar — <span id="mixer-track-name">No track loaded</span></div>
+    <!-- orpheus-transport-spec.md: play/pause/stop, loop, BPM, speed, tune,
+         volume all live in this one bar now — Loop/Count-in moved here from
+         #toolbar-tools below, which used to split them across two rows.
+         #toolbar-tools keeps only Mixer-specific editing tools (markers,
+         zoom, click, model/Separate) that don't belong on Play Along/Tone
+         Lab's copies of this same bar. -->
+    <div id="transport" class="transport-bar">
+      <button id="play-btn" data-transport="play-btn">▶</button>
+      <button id="stop-btn" data-transport="stop-btn">■</button>
+      <span id="time-display" data-transport="time-display">0:00 / 0:00</span>
+      <button id="loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
+      <button id="count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
+      <span class="transport-label">BPM</span>
+      <span id="bpm-display" data-transport="bpm-display">—</span>
+      <button id="bpm-half-btn" title="Detected tempo looks like double the real one? Halve it" style="padding:2px 6px;font-size:10px;">½×</button>
+      <button id="bpm-double-btn" title="Detected tempo looks like half the real one? Double it" style="padding:2px 6px;font-size:10px;">2×</button>
+      <span class="transport-label">Speed</span>
+      <input type="range" id="speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
+      <span id="speed-display" data-transport="speed-display">1.00×</span>
+      <span class="transport-label">Tune</span>
+      <input type="range" id="tune-slider" data-transport="tune-slider" min="-1200" max="1200" step="1" value="0">
+      <span id="tune-display" data-transport="tune-display">0¢</span>
+      <span class="transport-label">Volume</span>
+      <input type="range" id="volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
+      <span id="volume-display" data-transport="volume-display">100%</span>
+    </div>
+
     <div id="toolbar">
       <button id="rec-pill" style="display:none">● REC</button>
       <div id="toolbar-tools">
@@ -160,33 +194,6 @@
       <span>⚠️ The source file has changed since these stems were separated. Existing stems may not match the current file.</span>
       <button id="reseparate-btn">Re-separate</button>
       <button id="dismiss-stale-btn">Dismiss</button>
-    </div>
-
-    <!-- orpheus-transport-spec.md: play/pause/stop, loop, BPM, speed, tune,
-         volume all live in this one bar now — Loop/Count-in moved here from
-         #toolbar-tools above, which used to split them across two rows.
-         #toolbar-tools keeps only Mixer-specific editing tools (markers,
-         zoom, click, model/Separate) that don't belong on Play Along/Tone
-         Lab's copies of this same bar. -->
-    <div id="transport" class="transport-bar">
-      <button id="play-btn" data-transport="play-btn">▶</button>
-      <button id="stop-btn" data-transport="stop-btn">■</button>
-      <span id="time-display" data-transport="time-display">0:00 / 0:00</span>
-      <button id="loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
-      <button id="count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
-      <span class="transport-label">BPM</span>
-      <span id="bpm-display" data-transport="bpm-display">—</span>
-      <button id="bpm-half-btn" title="Detected tempo looks like double the real one? Halve it" style="padding:2px 6px;font-size:10px;">½×</button>
-      <button id="bpm-double-btn" title="Detected tempo looks like half the real one? Double it" style="padding:2px 6px;font-size:10px;">2×</button>
-      <span class="transport-label">Speed</span>
-      <input type="range" id="speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
-      <span id="speed-display" data-transport="speed-display">1.00×</span>
-      <span class="transport-label">Tune</span>
-      <input type="range" id="tune-slider" data-transport="tune-slider" min="-1200" max="1200" step="1" value="0">
-      <span id="tune-display" data-transport="tune-display">0¢</span>
-      <span class="transport-label">Volume</span>
-      <input type="range" id="volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
-      <span id="volume-display" data-transport="volume-display">100%</span>
     </div>
 
     <div id="empty-state" class="show">
@@ -407,6 +414,7 @@
              row, same position as Mixer's. Adds a timeline scrubber Mixer's
              own copy doesn't have (Play Along has no waveform to click-to-
              seek on) — see .transport-bar .transport-timeline in styles.css. -->
+        <div class="transport-bar-title">Track Play Bar — <span id="pa-track-name">No track loaded</span></div>
         <div id="pa-transport-bar" class="transport-bar">
           <input type="range" id="pa-bt-timeline" data-transport="timeline" class="transport-timeline" min="0" max="0" step="0.01" value="0">
           <button id="pa-bt-play-btn" data-transport="play-btn" class="primary">▶</button>
@@ -655,6 +663,7 @@
              .transport-bar as Mixer/Play Along, same position (top of
              screen), same controls, including the timeline scrubber Play
              Along's copy also has (no waveform here either). -->
+        <div class="transport-bar-title">Track Play Bar — <span id="tl-track-name">No track loaded</span></div>
         <div id="tl-transport-bar" class="transport-bar">
           <input type="range" id="tl-bt-timeline" data-transport="timeline" class="transport-timeline" min="0" max="0" step="0.01" value="0">
           <button id="tl-bt-play-btn" data-transport="play-btn" class="primary">▶</button>
@@ -1152,6 +1161,7 @@
                the grid's own `> section`s), auto-placed into whatever row
                was left over, i.e. dead last, not pinned to the top like
                every other screen's copy. -->
+          <div class="transport-bar-title">Track Play Bar — <span id="ailab-track-name">No track loaded</span></div>
           <div id="ailab-bt-transport-bar" class="transport-bar">
             <input type="range" id="ailab-bt-timeline" data-transport="timeline" class="transport-timeline" min="0" max="0" step="0.01" value="0">
             <button id="ailab-bt-play-btn" data-transport="play-btn" class="primary">▶</button>
