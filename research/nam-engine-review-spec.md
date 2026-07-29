@@ -1,13 +1,37 @@
 # NAM Engine Review — replace, or boost what we have?
 
 **Status:** research + recommendation, written 2026-07-29 at the user's
-request. Two concrete complaints drove it: **(1) tone quality isn't where
-it should be**, and **(2) too many public captures are refused as too
-heavy to run live.**
+request; **updated the same day with real bake-off measurements (§8) that
+reverse the headline recommendation.** Two concrete complaints drove the
+original review: **(1) tone quality isn't where it should be**, and **(2)
+too many public captures are refused as too heavy to run live.**
 
-**Conclusion up front:** the reason we built our own engine was real and
-correctly reasoned *at the time*, but **it has since expired**. A headless,
-MIT-licensed WASM build of the *official* NAM inference core — callable
+**Revised conclusion (§8 supersedes this):** the bake-off this spec's own
+§6 called for was run against `@opendaw/nam-wasm`, gated exactly as
+written. It **passed decisively on correctness** (relative RMSE 0.05% vs.
+our own engine's 2.62% against the same PyTorch ground truth — the
+official core is essentially bit-accurate, ours is not) but **failed
+decisively on speed** (real-time factor ≈0.83 vs. our own engine's ≈0.44 —
+the official Eigen-based core measured **~1.9x slower**, on the identical
+model and input, confirmed twice with two benchmark methodologies). §6's
+own gate says explicitly: *"proceed only on a materially better real-time
+factor. A marginal win does not justify +350KB and a new dependency."*
+This is not a marginal win — it's a regression, and on exactly the axis
+complaint #2 is about. **Adopting this engine wholesale would make
+complaint #2 (refusals) worse, not better.** §8 lays out the revised,
+narrower recommendation: fix the *specific, now-quantified* source of our
+own engine's inaccuracy (§8.3) instead of replacing the engine.
+
+---
+
+*(Original §1-§7 below, preserved as written before the bake-off ran —
+the reasoning in §1-§4 about why we built our own engine and what exists
+now is unchanged and still correct; only the recommendation coming out of
+it changes, per §8.)*
+
+**Original conclusion up front:** the reason we built our own engine was
+real and correctly reasoned *at the time*, but **it has since expired**. A
+headless, MIT-licensed WASM build of the *official* NAM inference core — callable
 from inside our own AudioWorklet, with no separate AudioContext — now
 exists on npm. Adopting it as a drop-in replacement for our inference
 kernel (keeping every layer we built around it) addresses both complaints
@@ -273,3 +297,175 @@ M1 answers the only question that matters.
   it. Adopting the official core doesn't change this — but the new API's
   explicit `_nam_setSampleRate()` at least makes our handling of it
   deliberate rather than implicit.
+
+---
+
+## 8. Bake-off results (M0/M1, run 2026-07-29) — the gate fails on speed
+
+M0 and M1 from §6 were executed. Full methodology, then the numbers, then
+what they mean for the recommendation.
+
+### 8.0 Test setup
+
+No real community `.nam` capture was available in this environment (no
+general internet access beyond the npm/PyPI registries — the same
+constraint that already shaped how alphaTab's soundfont was sourced this
+session), and the two `.nam` files previously in this repo were already
+removed per the free-distribution license audit's own recommendation.
+Rather than risk a hand-rolled test file silently encoding the same
+misunderstanding on both sides of a comparison, the **official
+`neural-amp-modeler` Python package (pip install, v0.13.0)** was installed
+and used to build and export a real model through its own genuine
+`BaseNet.export()` code path — the same path every real capture's creator
+uses — guaranteeing schema/weight-order correctness by construction
+rather than by manual reverse-engineering:
+
+- **Architecture:** NAM's well-known "standard" WaveNet config (matches
+  its own `standard.json` training preset most public guitar/amp captures
+  use) — one layer array, 16 channels, gated, dilation doubling 1→512 (10
+  layers), kernel size 3. Not a toy: 18,754 weights, comparable to this
+  file's own header note that a real downloaded capture (TONE3000's
+  `deluxe.nam`) has 13,801.
+- **Ground truth:** the same PyTorch model's own forward pass, on a
+  4096-sample deterministic test signal (two summed sine tones), run
+  directly in Python — the actual reference implementation's actual
+  output, not a re-derivation of it.
+- **Compared:** our engine (both `nam-processor.js`'s hand-written JS path
+  and `nam.wasm`'s Zig/SIMD path — confirmed numerically identical to each
+  other, as documented) and `@opendaw/nam-wasm` 1.2.0 (chosen over
+  `@happysoftware/nam-web` as the primary candidate — its plain
+  buffer-in/buffer-out C ABI needed no protocol reverse-engineering to
+  drive standalone; `nam-web`'s bundled worklet-only interface would have
+  needed a real `AudioWorkletProcessor.process()` audio-graph harness to
+  drive fairly, out of proportion to what the gate needed to answer).
+
+### 8.1 M1 item 1 — does it instantiate in `AudioWorkletGlobalScope`? Yes, after one fix
+
+It does **not** work out of the box. `@opendaw/nam-wasm`'s Emscripten glue
+executes `new URL("nam.wasm", import.meta.url)` unconditionally at
+module-init time whenever no `locateFile` option is supplied — and
+**`URL` is not a global in `AudioWorkletGlobalScope`** (confirmed directly:
+`typeof URL === "undefined"` inside a real worklet in this session's
+headless Chromium). This threw synchronously on every attempt, with no
+error ever reaching our own `.catch()` — the module simply never
+initialized, silently.
+
+**Fix:** pass a `locateFile: (path) => path` option, which routes the glue
+down its *other* branch (`if (Module["locateFile"]) {...}`) and skips the
+`new URL(...)` call entirely. Confirmed working after that one line —
+tested end to end in a real `AudioWorkletProcessor`, in a real headless
+browser, with `instantiateWasm` wired to `WebAssembly.instantiate()`
+directly for good measure. Independent corroboration this is a real,
+known class of issue and not an artifact of this test rig:
+`@happysoftware/nam-web`'s own shipped `worklet.js` opens with a
+hand-rolled `URL` polyfill (`if(typeof URL==='undefined'){globalThis.URL=
+class{...}}`) — its author hit and worked around the exact same gap.
+
+**Verdict:** passes, with a one-line, well-understood fix. Not a blocker.
+
+### 8.2 M1 item 3 — null test: decisive win for the official core
+
+| | vs. PyTorch ground truth (relative RMSE) |
+|---|---|
+| Our engine (JS and WASM — identical to each other) | **2.62%** |
+| `@opendaw/nam-wasm` (official core) | **0.05%** |
+
+0.05% is essentially f32-vs-f64 rounding noise — the official core is
+bit-accurate to the reference. Our own reimplementation's 2.62% is a real,
+now-precisely-quantified gap, not noise (max instantaneous error ≈17% of
+the reference's RMS level at points). The most likely single cause: the
+prior audit's own honestly-flagged `fastTanh` approximation error (~5e-3
+per call) compounding across 10 sequentially-connected dilation layers —
+consistent with a bounded, non-exploding several-percent output error
+rather than a structural bug, but not confirmed further within this pass.
+
+**This is a real, previously-unmeasured answer to complaint #1** — some
+of "the tone isn't right" is genuinely us, independent of the cab-IR
+question in §3.
+
+### 8.3 M1 item 2 — real-time factor: the official core is ~1.9x *slower*
+
+| | Real-time factor (lower is better) | Headroom under `NAM_REFUSE_RT_FACTOR` (0.9) |
+|---|---|---|
+| Our engine (`nam.wasm`, Zig/SIMD) | **≈0.44** | wide (0.46) |
+| `@opendaw/nam-wasm` (official core) | **≈0.83** | thin (0.07) |
+
+Measured twice, independently: the first pass, then again after fixing a
+benchmark-methodology asymmetry (the official core's loop was recreating
+a `Float32Array` heap view every block where ours reused one — the same
+optimization our own `forwardBlockWasm` already documents under its own
+"V3-E5" comment). Both runs agree closely (RTF ≈0.41-0.43 vs. ≈0.82-0.83).
+This is not measurement noise; **the official Eigen-backed core is
+consistently, substantially slower than our hand-tuned SIMD Zig kernel on
+identical input.**
+
+Plausible reasons (not confirmed further — out of scope to chase without
+the package's own build pipeline): Eigen's dynamic-size matrix ops may not
+autovectorize as tightly under Emscripten as a hand-written
+`@Vector(4,f32)` dot product tuned specifically for this shape; the
+general-purpose multi-instance C++ core likely carries overhead our
+single-purpose arena-based module doesn't.
+
+**§6's own gate, verbatim: "proceed only on a materially better real-time
+factor. A marginal win does not justify +350KB and a new dependency."**
+This is not a marginal win — it is a clear loss, and specifically on the
+axis complaint #2 is about. Adopting `@opendaw/nam-wasm` as the live
+kernel would **shrink the refuse-threshold's headroom from 0.46 to 0.07**,
+meaning **more** captures would cross `NAM_REFUSE_RT_FACTOR` and get
+refused, not fewer — the direct opposite of what complaint #2 is asking
+for.
+
+### 8.4 Revised recommendation: fix the real bug, don't adopt the engine
+
+**§6's Path B is rejected — the bake-off it was gated on failed.** Do not
+swap the inference kernel.
+
+Both original complaints are still worth addressing, and §8.2 just
+supplied a concrete, targeted answer for the tone one:
+
+- **Complaint 1 (quality):** our engine's own `nam.wasm` currently spends
+  only 44% of the real-time budget (0.44 RTF) — **56% headroom is sitting
+  unused.** The most direct next step, cheap and low-risk compared to a
+  wholesale swap: spend some of that headroom on accuracy specifically
+  where §8.2 points — replace `fastTanh`'s rational Padé approximation
+  with a more accurate one (or real `tanh`) in the WASM path only (the JS
+  path's own `Math.tanh` cost was already the documented reason
+  `fastTanh` was adopted there — the WASM path, with SIMD and 56%
+  headroom to spare, is a different cost/accuracy trade-off than the one
+  that motivated the original choice). Re-run this exact null test after
+  the change — a real, checkable pass/fail on whether it closes the 2.62%
+  gap without pushing RTF materially closer to 0.9.
+- **Complaint 2 (refusals):** unaffected by anything above — our own
+  engine is already the faster of the two measured, so improving its
+  accuracy without touching its speed (or improving both, if the
+  `fastTanh` swap turns out cheap) is strictly better for the refusal
+  problem than adopting a slower kernel would have been. If accuracy
+  headroom-spending pushes the standard-architecture RTF up
+  meaningfully, that trade needs to be weighed explicitly against how
+  many currently-marginal captures it would newly refuse — measure both
+  before deciding, the same discipline this bake-off just modeled.
+
+**Not pursued, and why:**
+- **@happysoftware/nam-web speed wasn't measured.** Its bundled
+  worklet-only interface has no plain buffer-in/buffer-out entry point
+  to drive fairly outside a real audio graph without materially more
+  harness work than the gate needed. Given @opendaw/nam-wasm already
+  supplied a clear, decisive answer (both packages wrap the same
+  official C++ core, so a similar performance profile is the reasonable
+  prior), this wasn't chased further. Worth a quick check if the
+  `fastTanh` fix in Path A turns out insufficient and Path B needs
+  reopening.
+- **Path C (native helper)** — unaffected by this data; already rejected
+  in §5 on the latency/zero-install grounds, which nothing here changes.
+
+### 8.5 What to do with §6's plan (M2-M4)
+
+M2 (swap the kernel behind a flag) and M3 (A2 support, oversampling) as
+written both assumed Path B. **Do not execute them as written.** A2
+support in particular was one of Path B's most attractive properties (a
+direct architecture-level answer to the aliasing/quality complaint) and
+is now off the table unless a future, faster official-core build changes
+the speed verdict — worth re-testing this gate again if one appears,
+rather than assuming today's result is permanent. M4 (docs) still applies
+in spirit: whatever comes out of the `fastTanh` experiment belongs in
+USER-MANUAL.md §4.9 either way.
