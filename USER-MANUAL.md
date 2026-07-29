@@ -32,6 +32,10 @@ machine — nothing is uploaded anywhere.
 9. [Troubleshooting](#9-troubleshooting)
 10. [Known limitations](#10-known-limitations-by-design-not-oversights)
 11. [File locations reference](#11-file-locations-reference)
+12. [Appendix A: Control glossary](#appendix-a-control-glossary) — every
+    button, slider, dropdown, and checkbox in the app, one or two
+    sentences each — reference material, not meant to be read top to
+    bottom.
 
 [TEST-PLAN.md](TEST-PLAN.md) covers the same ground as this manual the
 other way round — a regression checklist grouped by app area, for after a
@@ -1871,3 +1875,392 @@ GuitarStudio/projects/          autosaved per-song mix state, playlists, practic
 tabs/                           imported Guitar Pro files (§7)
 GuitarStudio/projects/_tab_library.json   tab titles/artists + tab playlists (§7)
 ```
+
+---
+
+## Appendix A: Control glossary
+
+Every button, slider, dropdown, and checkbox in the app, grouped by where
+it lives, one or two sentences each. Reference material for design/review
+work — not meant to be read start to finish the way the numbered sections
+above are. Format: **Control** — description.
+
+### Global (visible on every screen)
+
+- **🎚 Mixer / 🎛 Tone Lab / 🎸 Play Along / 🧠 AI Lab / 🎼 Tab View** —
+  the five main screens. Mixer is the base view; the other four open as
+  full-screen overlays on top of it.
+- **❓ Help** — opens the onboarding/help modal (also shown automatically
+  on first launch).
+- **Rig silent / Rig live pill** (top right) — glances at whether the
+  guitar input is enabled and receiving signal. Grey when silent, the
+  theme's "live" color when signal is present; click it to jump straight
+  to Tone Lab's Input card.
+- **Theme toggle** (fire/sun/moon/gear/castle icon, top right) — cycles
+  through the app's 5 visual themes (Studio, Molten Obsidian, Bright
+  Spark, Future Metal, Castle Rock). Purely cosmetic, persisted across
+  sessions.
+- **Library / ALL TRACKS list** — every imported song. Click a row to
+  load it into the workspace; the currently-loaded song gets a
+  highlighted row.
+- **+ (on a track row)** — adds that track to one or more playlists (a
+  track can belong to any number).
+- **✎ (on a track row)** — renames that track's underlying audio file.
+- **✕ (on a track row)** — deletes the track: its audio file, separated
+  stems, exports, and recordings. Cannot be undone.
+- **Drop a song here / click to import** — imports a new song, either a
+  single audio file or a stem-pack .zip (the file extension decides
+  which).
+- **Rip system audio…** (collapsible) — captures whatever audio is
+  currently playing on the computer (e.g. a streaming tab) via a virtual
+  audio device, saving it as a new imported song.
+  - **Device dropdown** — picks which system-audio capture device to
+    record from.
+  - **● Start Rip / ■ Stop Rip** — starts/stops the system-audio capture.
+- **Sidebar resize handle** — drag to widen/narrow the Library sidebar;
+  double-click resets it to the default width.
+- **Inspector collapse arrow (▸)** — collapses/expands the right-hand
+  panel (Track info/Speed Trainer/Export) to free up width for the stem
+  lanes.
+
+### Shared transport bar (Mixer, Play Along, Tone Lab, AI Lab's Rate My Take, Tab View's song bar)
+
+The same bar, same controls, in the same position on all five copies —
+one underlying playback state (State.track/Audio), not five separate
+players. Each copy is captioned **Track Play Bar — `<song name>`** just
+above its own scrub line, so it's never ambiguous which bar controls the
+backing track versus (on Tab View only) the tab's own separate playback.
+
+- **▶ Play / ■ Stop** — starts/stops playback of the current mix.
+- **Timeline scrubber** (Play Along/Tone Lab/AI Lab/Tab View; Mixer
+  scrubs via its waveform instead) — drag to jump to any point in the
+  song.
+- **Loop** — toggles looping of the current loop region (set on the
+  Mixer's ruler).
+- **Count-in** — plays 2 bars of metronome click before playback
+  actually starts, so you're not caught off guard.
+- **BPM readout** — the detected tempo. Not editable directly here (see
+  ½×/2× below).
+- **½× / 2×** (Mixer only) — halves or doubles the displayed BPM, for
+  when detection reads the tempo at double or half the real speed.
+- **Speed slider** — plays the song faster or slower (0.5×–2×) without
+  changing pitch.
+- **Tune slider** — pitch-shifts the whole mix up or down, in cents, to
+  match your guitar's tuning to the recording.
+- **Volume slider** — overall playback level of the backing mix.
+
+### Mixer screen
+
+**Track Play Bar** (the shared bar above) sits at the very top, just
+under the screen title; the toolbar below is Mixer-specific editing
+tools, not part of the shared bar:
+
+- **+ Marker** — drops a named marker at the current playhead position
+  (e.g. to bookmark a solo section).
+- **Zoom to loop** — zooms the waveform/ruler in to fill the view with
+  just the current loop region.
+- **Zoom out** — returns to viewing the whole track (replaces "Zoom to
+  loop" once zoomed in).
+- **Zoom slider** — continuously widens or narrows the visible timeline
+  (like scrubbing a DAW's horizontal zoom), independent of Zoom to loop.
+- **Click** — toggles a metronome click synced to the song's detected
+  beat grid.
+- **Click volume slider** — how loud the metronome click plays.
+- **Model badge / dropdown** — picks which separation model/algorithm to
+  use (e.g. htdemucs_6s, bs_roformer_sw) — each produces a different set
+  of stems.
+- **Separate** — runs the selected model on the current song, splitting
+  it into individual instrument stems (vocals/drums/bass/guitar/etc.).
+- **Re-separate** — re-runs separation after the source file has
+  changed, since existing stems may no longer match it.
+- **Dismiss** (on the stale-stems banner) — hides the "source file
+  changed" warning without re-separating.
+- **Retry** (on a stems-load error) — retries fetching stems after a
+  network hiccup.
+
+**Per-stem lane** (one row per instrument):
+
+- **✎ (lane)** — renames that stem's display name only (doesn't affect
+  the saved mix).
+- **✕ (lane)** — removes that stem from the mix entirely.
+- **🎸 (lane, imported stem packs only)** — marks a non-standard stem as
+  "the guitar," so tone-matching and Rate My Take treat it like a real
+  separated guitar stem.
+- **M** — mutes that one stem.
+- **S** — solos that one stem (mutes every other stem while it's held).
+- **Gain slider** — that stem's volume in the mix; double-click its
+  percentage readout to reset to 100%.
+- **Pan slider** — moves that stem left/right in the stereo field;
+  double-click its readout to reset to center.
+- **EQ** (toggle) — reveals a 3-band (Bass/Mid/Treble) EQ for that one
+  stem.
+- **Mute-lane (blank strip under each stem)** — click-and-drag to mute a
+  specific time range of just that stem (e.g. cut the original guitar
+  out of one section only).
+- **Loop handles (on the ruler)** — drag to set the loop region's
+  start/end points.
+
+**Right-hand inspector panel:**
+
+- **Apply to Tune** — one-click nudges the Tune slider by the amount the
+  song appears to be off from standard A440 pitch.
+- **Root / Mode dropdowns + Set** — manually corrects the detected key
+  if the automatic guess is wrong.
+- **Reset** (key correction) — reverts back to the originally detected
+  key.
+- **Start / Step / Target %** (Speed Trainer) — configures a practice
+  ramp: starting speed, how much to increase each step, and the target
+  speed.
+- **Start at Start%** — jumps the Speed slider straight to the
+  configured starting percentage.
+- **Step up** — increases the Speed slider by the configured step
+  amount (for gradually working a passage up to full tempo).
+- **Spectral / Mid-side / Hybrid** (Guitar split) — three different
+  algorithms for splitting a combined "guitar" stem into lead/rhythm
+  candidates.
+- **Run split** — executes the selected guitar-split algorithm.
+- **Export format** — WAV or MP3 for the bounced mixdown.
+- **Output name** — filename for the exported mix.
+- **Target LUFS** — the loudness level the export is normalized to.
+- **Normalize loudness** — toggles whether the export is
+  loudness-matched to the Target LUFS at all.
+- **Max boost cap (dB)** — limits how much a quiet mix gets boosted
+  during normalization, to avoid amplifying separation artifacts.
+- **Export** — bounces the current mix (exactly what you hear, solo
+  excepted) to a file.
+
+### Play Along screen
+
+- **Guitar Tuner gauge** — shows detected pitch and note name as you
+  play; the semi-circle arc/needle colors red (flat), blue (sharp), or
+  yellow (in tune, within a few cents).
+- **🎤 (tuner mic button)** — turns the tuner on/off; muting the backing
+  track and your amp tone while it's active.
+- **Rig Preset dropdown** (quick-pick) — instantly switches your whole
+  amp/pedal rig to a saved preset without leaving this screen.
+- **● Record / Stop / Undo / Clear** (Looper) — records a loop of your
+  playing in real time, stops it, undoes the last overdub layer, or
+  clears the whole loop.
+- **🎸 Save that!** (Riff Capture) — saves the last ~20 seconds of your
+  playing, which is always rolling in the background once your rig is
+  live — for catching a good idea you just improvised.
+- **● Record** (Record performance) — records a performance take: your
+  guitar rig's output plus (optionally) the backing track and camera,
+  for something watchable afterward.
+- **Go to Rate My Take →** — jumps to AI Lab's Rate My Take tab, for
+  when you want a scored take instead of a watchable one.
+- **Start backing track with recording** — whether playback starts
+  automatically the moment you hit Record.
+- **Start with count-in** — adds 2 bars of click before a recording
+  starts.
+- **Practice mode: auto-retake each loop pass** — with a loop region and
+  Loop enabled, automatically saves each pass through the loop as its
+  own separate take.
+- **Show framing guides** — overlays on-screen guides on the camera
+  preview to help frame the shot.
+- **Camera dropdown + Enable camera** — picks and turns on a webcam for
+  video performance takes.
+- **Quality dropdown** — recording resolution/framerate (720p or
+  1080p).
+- **A/V offset (ms)** — manually delays the audio to match a camera that
+  lags behind, if needed.
+- **Auto-calibrate** — measures and sets that A/V offset automatically
+  by having you strum once after a beat.
+- **Takes list** — every take recorded for this song; check two boxes to
+  compare them side by side.
+- **Trim start / Trim end sliders + Trim** — losslessly cuts a take down
+  to a specific range, saved as a new file.
+- **▶ Play both / Pause / ■ Stop** (Compare takes) — plays two selected
+  takes in sync with each other.
+- **Listening: A / B** — switches which of the two synced takes you're
+  actually hearing (both play, only one is audible at a time).
+- **Compare seek slider** — scrubs both synced takes together.
+- **Exported Tracks list + player** — lets you play back a previously
+  exported mixdown right from this screen.
+
+### Tone Lab screen (amp/pedal rig)
+
+- **Input meter** — shows the live level of your guitar's input signal.
+- **Clear** (clip indicator) — resets the "clipping" warning light,
+  which otherwise stays lit until manually cleared.
+- **Device dropdown + Enable input** — picks your audio interface/input
+  and turns on live monitoring of your guitar.
+- **Calibrate** — sets input gain based on you playing your loudest
+  chord, so the meter's "too hot" zone is accurate for your actual
+  playing.
+- **Measure round-trip latency** — plays a test signal through a
+  physical loopback cable to measure your real hardware's
+  input-to-output delay.
+- **Rig Preset dropdown + Load / Delete** — recalls or removes a saved
+  full rig configuration (amp + every pedal's settings).
+- **New preset name + Save current rig as…** — saves your current
+  amp/pedal chain as a new named preset.
+- **This song's chain (list)** — an ordered list of presets attached to
+  the current song, for cycling between (e.g.) Clean/Rhythm/Lead sounds
+  mid-song.
+- **+ Add to this song's chain** — adds the currently-loaded preset to
+  that ordered list.
+- **Cycle forward/backward (keyboard) — Change…** — sets which keyboard
+  key advances/reverses through this song's preset chain.
+- **MIDI device dropdown** — picks a connected MIDI footswitch for
+  hands-free preset cycling.
+- **Cycle forward/backward (MIDI) — Learn…** — listens for the next MIDI
+  message from your footswitch and binds it to advance/reverse the
+  chain.
+- **Pedal-chain icon row** — one icon per stage in your signal chain, in
+  actual signal order; click an icon to open its controls below, drag to
+  reorder the chain.
+- **Bypass** (every pedal card) — turns that individual effect on or off
+  without removing it from the chain.
+- **Noise Gate — Threshold** — the input level below which the gate cuts
+  signal, to silence hum/hiss between notes.
+- **Amp — Pass Through / Analog / Neural (NAM)** — picks the amp
+  modeling mode: no modeling, a parametric analog-style model, or a real
+  captured amp profile (NAM).
+- **Analog amp — Drive/Bass/Mid/Treble** — the parametric amp model's
+  gain and tone-stack controls.
+- **Suggest from this track's guitar stem** — analyzes the song's guitar
+  stem and recommends a NAM capture likely to match its tone.
+- **NAM drop zone / choose files / choose a folder** — imports amp
+  captures (.nam files, folders, or .zip packs) into the model library.
+- **NAM search / browser** — finds and selects a specific captured amp
+  profile from your library.
+- **Neural amp — Drive/Bass/Mid/Treble/Presence/Output level** — shapes
+  the frozen amp capture: how hard you push it, its post-amp tone stack,
+  and its output level.
+- **Cab IR — bypass, drop zone, search/browser** — loads and applies a
+  cabinet impulse response (the speaker/mic'd-cab part of the tone).
+- **IR tone shape — Low cut / High cut** — a dedicated low/high-pass
+  filter on just the cabinet IR's sound.
+- **EQ — Bass/Mid/Treble** — a general 3-band tone EQ, later in the
+  chain than the amp's own tone stack.
+- **Compressor — Threshold/Ratio** — evens out your dynamics, so quiet
+  notes are boosted and loud ones are tamed.
+- **Delay/Reverb — Time/Feedback/Mix, Size/Mix** — echo and ambience
+  effects, each with its own bypass, timing, and mix-level controls.
+- **Auto-Wah — Rate/Depth/Center freq/Mix** — an LFO-driven (not
+  pedal-controlled) wah-style filter sweep.
+- **Octaver — Blend** — adds a real octave-down signal underneath your
+  playing (monophonic — works best on single notes).
+- **Boost/Overdrive — Drive/Level** — a simple gain-boost/overdrive
+  stage.
+- **Graphic EQ — 5 bands (100Hz–8kHz)** — finer-grained tone shaping
+  than the 3-band EQ above.
+- **Chorus/Phaser/Flanger/Tremolo — Rate/Depth/(Feedback)/Mix** —
+  classic modulation effects, each independently configurable.
+- **Output — Level, meter, device dropdown** — the rig's final volume,
+  a live output level meter, and which physical output device to send
+  the signal to.
+
+### AI Lab screen
+
+Three tabs: **Scales**, **Rate My Take**, and **AI Assistant** (which
+itself has six internal modes, including Song Structure — see below).
+
+**Scales tab:**
+
+- **Chord ribbon** — click any chord chip to jump the scale suggestion
+  to that chord (pins it and turns off Follow song).
+- **Per chord / Whole song** — shows scale suggestions for just the
+  current chord, or one scale for the song's overall key.
+- **Follow song** — re-enables auto-tracking the playhead's current
+  chord as the song plays (turned off automatically when you click a
+  chord chip).
+
+**Rate My Take tab:**
+
+- **Track Play Bar** (the shared bar described above) — controls the
+  backing track directly from this tab, same play/stop/loop/count-in/
+  BPM/Speed/Tune/Volume set as every other screen's copy.
+- **↓ Use current position as Offset** — copies the current playhead
+  time into the Offset field below.
+- **Dry takes list** — every "dry" (guitar-only, no backing track) take
+  for this song, with its last score if any; play/rename/delete work
+  here too.
+- **● Record dry take / ■ Stop** — records a take of just your guitar
+  rig's output (no backing track baked in), specifically so it can be
+  scored accurately.
+- **Go to Play Along →** — jumps to Play Along's Record tab, for a
+  normal watchable performance instead of a scoring-only dry take.
+- **Take dropdown** — picks which recorded dry take to score.
+- **Offset (seconds)** — where in the song this take actually starts,
+  needed to align it against the reference for scoring.
+- **Offset search (+/- seconds)** — lets the scorer auto-fine-tune that
+  offset within a window, instead of trusting your exact number.
+- **Score this take** — compares the take against the original guitar
+  stem's timing and pitch, producing a score and a heatmap.
+
+**AI Assistant tab** (the only feature that makes network calls):
+
+- **Provider dropdown** — picks the LLM service (Claude/Google
+  Gemini/Groq) used for every mode below.
+- **API key field + Save key** — stores that provider's API key
+  locally, used only to call that provider directly.
+- **Artist / Title fields + Save** — the song's artist/title, needed
+  for This Track/This Artist/Song Structure/Ask AI's context;
+  auto-guessed from a filename following an "Artist - Title" convention,
+  editable otherwise.
+- **Practice Tips / Lick Ideas / This Track / Song Structure / This
+  Artist / Ask AI** — switches between the six assistant modes below.
+- **Style/genre field + Get phrasing ideas** (Lick Ideas) — asks for
+  concrete lead-guitar phrasing ideas grounded in this song's detected
+  key/tempo/chords.
+- **Example question chips** (Ask AI) — one-click fills in a sample
+  question to try.
+- **Question field + Ask** (Ask AI) — asks a single free-form question
+  about this song's theory, this track, or this artist; also submits on
+  Enter. Off-topic questions are politely declined.
+- **Get track info** (This Track) — background on this specific song —
+  release info, writing process, notable performances.
+- **See Song Structure for the part-by-part playing map →** — jumps to
+  the Song Structure mode.
+- **✨ Name the parts with AI** (Song Structure) — labels the song's
+  already-detected sections (intro/verse/chorus/etc.) with real part
+  names, role, technique, and difficulty.
+- **Song Structure part list** — click a part to jump the playhead
+  there, or loop it to drill it; follows playback automatically.
+- **Want the story behind this song? → This Track** — jumps back to
+  This Track mode.
+- **Get artist info** (This Artist) — background on the song's
+  guitarist — gear, style, signature licks, and hints toward a matching
+  NAM capture.
+- **Take dropdown + Offset/Offset search** (Practice Tips) — same as
+  Rate My Take's, but feeding a specific scored take into the tips
+  request.
+- **Get practice tips** — asks for exercises targeted at that take's
+  actual weakest moments, not generic advice.
+
+### Tab View screen
+
+- **Drop a Guitar Pro file here / click to import** — imports a
+  .gp3/.gp4/.gp5/.gpx file, replacing the sidebar's song Library with
+  this screen's own tab library while open.
+- **Tab library list** — every imported tab; click a row to load it,
+  same rename/delete/add-to-playlist controls as the song Library.
+- **Track Play Bar** (the shared bar described above) — the backing
+  track's own playback, independent of the tab below it.
+- **▶ Play / ■ Stop** (Tab Play Bar) — plays/stops alphaTab's own synth
+  rendition of the loaded tab (a bundled soundfont, not your Tone Lab
+  rig).
+- **Loop** (Tab Play Bar) — repeats the whole tab, or just the
+  drag-selected range if one is set (see below).
+- **Speed slider** (Tab Play Bar) — plays the tab's own notation
+  faster/slower (50%-150%) without affecting the Track Play Bar.
+- **Zoom −/+** — re-lays the notation out at a smaller/larger scale
+  (50%-200%).
+- **Drag across the notation** — selects a range of bars, highlighted
+  in blue; with Loop on, playback repeats only that range.
+- **Clear selection** — removes a drag-selected range, appears only
+  once one is set.
+
+### Modals
+
+- **Keyboard shortcuts** (press `?`) — a reference card for every
+  keyboard shortcut (Space/L/[/]/M/S/R/arrow keys).
+- **Help / Welcome** — the onboarding walkthrough, shown once
+  automatically and reachable any time from the sidebar.
+- **View Quest Log** — opens a checklist of app features to try, each
+  auto-checked off as you use it.
+- **Text prompt (Cancel/OK)** — the app's own non-blocking rename/
+  name-entry dialog, used everywhere a native browser prompt would
+  otherwise freeze a backgrounded tab.
