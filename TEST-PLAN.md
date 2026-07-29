@@ -117,13 +117,13 @@ exhaustive top-to-bottom playthrough of the entire app in one sitting
 - [ ] Hybrid falls back gracefully (no error) on a track with no beat grid.
 - [ ] **Split loudness leveller (real user report — "Blackbird," Alter Bridge):** on a song where the source guitar is only lightly/partially panned (not hard stereo-spread), both Candidate A and Candidate B should sound like usable, comparable loudness at 100% gain — neither should need pushing anywhere near the mixer's 300% split-stem gain cap just to be audible. Confirm by ear on at least one real song where you know the split candidates used to come out lopsided.
 
-## 6. Screen nav (Mixer / Tone Lab / Play Along / AI Lab / Help)
+## 6. Screen nav (Mixer / Tone Lab / Play Along / AI Lab / Tab View / Help)
 
-- [ ] The 4 real-screen sidebar buttons (🎚 Mixer, 🎛 Tone Lab, 🎸 Play Along, 🧠 AI Lab) are visually identical in size/shape and sit together in one 2x2 group; ❓ Help sits on its own row underneath them, same button style, never gets an active/highlighted state.
-- [ ] The current screen's button (Mixer/Tone Lab/Play Along/AI Lab) shows an active/highlighted state that updates as you switch screens.
-- [ ] The top banner shows the app name/version on the left and the current screen name (Mixer/Tone Lab/Play Along/AI Lab) centered on the full window width, in all four screens — no overlap between the banner and any rig screen's own header.
-- [ ] Opening any one of Tone Lab / Play Along / AI Lab closes whichever of the other two was open — never two visible at once; Mixer closes whichever is open.
-- [ ] Selecting a track in the Library from Tone Lab, Play Along, or AI Lab drops back to the Mixer (all overlays close).
+- [ ] The 5 real-screen sidebar buttons (🎚 Mixer, 🎛 Tone Lab, 🎸 Play Along, 🧠 AI Lab, 🎼 Tab View) are visually identical in size/shape and sit together in one group; ❓ Help sits on its own row underneath them, same button style, never gets an active/highlighted state.
+- [ ] The current screen's button (Mixer/Tone Lab/Play Along/AI Lab/Tab View) shows an active/highlighted state that updates as you switch screens.
+- [ ] The top banner shows the app name/version on the left and the current screen name (Mixer/Tone Lab/Play Along/AI Lab/Tab View) centered on the full window width, in all five screens — no overlap between the banner and any rig screen's own header.
+- [ ] Opening any one of Tone Lab / Play Along / AI Lab / Tab View closes whichever of the others was open — never two visible at once; Mixer closes whichever is open.
+- [ ] Selecting a track in the Library from Tone Lab, Play Along, AI Lab, or Tab View drops back to the Mixer (all overlays close).
 - [ ] Opening either Tone Lab or Play Along for the first time after a track loads builds the rig (Enable Input becomes usable, meters move) without needing to visit the other screen first.
 - [ ] **Sidebar resize:** dragging the seam where the sidebar meets the canvas (cursor turns to ↔) resizes it live; it won't go narrower/wider than the set min/max; double-clicking the seam resets it to the default width; the chosen width survives a page reload; nothing in the sidebar (buttons, track rows, playlist names) overlaps or clips oddly at a much narrower or much wider setting.
 
@@ -499,3 +499,40 @@ showing whatever was already rendered.
   to confirm it's not just Lick Ideas that was fixed. Practice Tips
   specifically: switching to a different take with no cached tips for it
   hides the card (not just switching songs).
+
+## 16. Tab View (5th screen — Guitar Pro tab import/playback)
+
+- [ ] **Import:** drop a .gp3/.gp4/.gp5/.gpx file on the dropzone (or
+  click it to browse) — it appears in the All Tabs list and loads
+  immediately; a non-tab file shows a clear rejection message instead of
+  silently doing nothing.
+- [ ] **Sidebar swap:** opening Tab View replaces the song Library/import
+  zone in the sidebar with the tab library/import zone (same as
+  Tone Lab/Play Along taking over the canvas); closing Tab View restores
+  the song Library. Opening any other real screen from Tab View closes
+  it (§6).
+- [ ] **Library:** rename/delete a tab, add it to a playlist, create a
+  new playlist — same row layout and controls as the song Library.
+  Deleting the currently-loaded tab clears the player back to the empty
+  state.
+- [ ] **Two independent transport bars**, each captioned above its own
+  scrub line: **Track Play Bar — `<name>`** (the shared song bar — same
+  play/stop/loop/count-in/BPM/Speed/Tune/Volume set mirrored on
+  Mixer/Tone Lab/Play Along/AI Lab's Rate My Take) and **Tab Play Bar —
+  `<name>`** (alphaTab's own play/stop/loop/speed/zoom, playing the tab's
+  bundled-soundfont synth). Both buttons rows are the same size/spacing
+  as the shared Track Play Bar. Confirm they're genuinely independent:
+  starting one doesn't start/stop the other, and each has its own correct
+  time readout.
+- [ ] **Zoom:** the +/− buttons re-lay the notation out at a new scale
+  (50%-200%), no reload needed.
+- [ ] **Playhead auto-scroll:** start the Tab Play Bar on a tab long
+  enough to span several lines of notation — the view scrolls so the
+  current line stays near the top of the screen as playback advances
+  into a new line, instead of the cursor drifting off the bottom.
+- [ ] **Section loop:** click-drag across the notation to select a range
+  of bars — the range highlights (blue) as you drag, and a "Clear
+  selection" control appears once one is set. With Loop on, pressing play
+  repeats only the selected bars instead of the whole tab. Clicking
+  "Clear selection" (or loading a different tab) removes the highlight
+  and playback goes back to covering the whole tab.

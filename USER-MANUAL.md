@@ -26,10 +26,12 @@ machine — nothing is uploaded anywhere.
 5. [Play Along](#5-play-along) — practice and record with that rig.
 6. [AI Lab](#6-ai-lab) — scales/theory, Rate My Take scoring, and an
    opt-in AI Assistant.
-7. [Keyboard shortcuts](#7-keyboard-shortcuts)
-8. [Troubleshooting](#8-troubleshooting)
-9. [Known limitations](#9-known-limitations-by-design-not-oversights)
-10. [File locations reference](#10-file-locations-reference)
+7. [Tab View](#7-tab-view) — import and read Guitar Pro tabs, with a
+   playhead cursor and section looping.
+8. [Keyboard shortcuts](#8-keyboard-shortcuts)
+9. [Troubleshooting](#9-troubleshooting)
+10. [Known limitations](#10-known-limitations-by-design-not-oversights)
+11. [File locations reference](#11-file-locations-reference)
 
 [TEST-PLAN.md](TEST-PLAN.md) covers the same ground as this manual the
 other way round — a regression checklist grouped by app area, for after a
@@ -1348,9 +1350,9 @@ at the time.
 
 ## 6. AI Lab
 
-A fourth screen alongside Mixer / Tone Lab / Play Along, opened with the
-🧠 **AI Lab** button in the sidebar. A tab bar along the top switches
-between its three functions: **Scales** (deterministic music theory, no
+One of five screens alongside Mixer / Tone Lab / Play Along / Tab View,
+opened with the 🧠 **AI Lab** button in the sidebar. A tab bar along the
+top switches between its three functions: **Scales** (deterministic music theory, no
 network call), **Rate My Take** (note-by-note scoring against the
 original), and **AI Assistant** (an opt-in LLM tier — lick ideas,
 practice tips, and Q&A about the song/artist — needs a free API key from
@@ -1714,7 +1716,65 @@ to report.
 
 ---
 
-## 7. Keyboard shortcuts
+## 7. Tab View
+
+A fifth screen, opened with the 🎼 **Tab View** button in the sidebar —
+for reading a Guitar Pro tab (.gp3/.gp4/.gp5/.gpx) alongside whatever's
+playing, rather than mixing/practicing with it. Its own library replaces
+the sidebar's song Library while this screen is open (same reasoning as
+Tone Lab/Play Along taking over the canvas: one focused view at a time,
+not two sidebars stacked). Rendering and playback are both handled by
+[alphaTab](https://www.alphatab.net/), vendored locally like everything
+else in this app — no CDN, nothing uploaded.
+
+**Importing.** Drop a .gp3/.gp4/.gp5/.gpx file on the dropzone (or click
+it to browse), same drag-and-drop convention as the song Library's own
+import. Tabs get their own library list — All Tabs plus playlists you
+build for them — with rename/delete and add-to-playlist controls
+matching the song Library's row layout exactly.
+
+**Two independent transports.** This screen shows *two* transport bars,
+each captioned above its own scrub line so it's clear which is which:
+
+- **Track Play Bar** — the same shared song-playback bar every other
+  screen has (Mixer/Tone Lab/Play Along/AI Lab's Rate My Take all mirror
+  this one control set — play/stop/loop/count-in/BPM/Speed/Tune/Volume).
+  Controls whatever song is currently loaded in State, same track name
+  shown in its caption as everywhere else. Independent of the tab below
+  it — nothing here plays the tab's own notation.
+- **Tab Play Bar** — the loaded Guitar Pro file's own playback, via
+  alphaTab's built-in synth (a bundled soundfont, not your DAW/amp
+  chain). Play/Stop/Loop, a Speed slider (50%-150%), and Zoom (50%-200%,
+  re-laying out the notation at a new scale) all apply only to this
+  bar's own audio, a completely separate source from the Track Play Bar
+  above it.
+
+These are deliberately two unrelated audio sources — playing the
+backing track and reading/hearing the tab's own MIDI rendition are two
+different practice modes, not one synced pair. If you want to read along
+with a real backing track's audio, start the Track Play Bar; if you want
+to hear the tab's own notated part in isolation (to check a tricky
+passage note-by-note, say), use the Tab Play Bar instead — you can run
+either one, or both, independently.
+
+**Playhead auto-scroll.** During Tab Play Bar playback, the view
+auto-scrolls so the current line of notation stays pinned near the top
+of the screen instead of drifting off the bottom — the same "always
+readable, never chase the page" behavior a real sheet-music app gives
+you, care of alphaTab's own cursor-follow scrolling wired to this
+screen's actual scroll container.
+
+**Loop just a section.** Click-drag across the notation to select a
+range of bars — the selection highlights in blue as you drag. Turn on
+**Loop** and press play, and the Tab Play Bar repeats only that selected
+range instead of the whole tab, useful for drilling one tricky lick
+without waiting through the rest of the song each pass. A **Clear
+selection** button appears next to the hint text once a range is picked;
+loading a different tab clears any leftover selection automatically.
+
+---
+
+## 8. Keyboard shortcuts
 
 Press **?** anywhere in the mixer to bring up the full legend on-screen.
 For reference:
@@ -1738,7 +1798,7 @@ current song has attached.
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
@@ -1759,7 +1819,7 @@ current song has attached.
 | Browser tab (or the whole browser) becomes completely unresponsive during normal use — clicks/tab-switching stop working, only the OS window itself can still be moved | **Under active investigation — two real user reports, not yet root-caused** (a third, separate report in this same row turned out to have a real cause — see below). One report happened muting/unmuting stems then soloing the guitar stem on a ripped song; a second happened after using AI Lab's Song Structure mode, switching away, then back. A real, related performance bug *was* found and fixed in the second case (Song Structure used to fully re-decode every stem's audio from scratch on every visit, with no caching — now cached, near-instant on repeat visits), but that isn't confirmed as the actual freeze cause, just a genuine cost removed from the same code path. A thorough code review of the mute/solo path (listener leaks, audio-graph node leaks, blocking dialogs, runaway loops) didn't turn up a definitive cause either. **If this recurs, the most useful things to capture are:** Chrome's Task Manager (Shift+Esc) reading for the tab right before/as it locks up (climbing memory = a leak; pegged CPU with flat memory = a runaway loop); whether it happens on a normal (non-ripped) imported song too; and roughly how long you'd been interacting (many rapid mute/solo toggles vs. just a couple) before it hit. |
 | Browser tab became completely unresponsive (Chrome's Task Manager showing 7+GB of memory for the tab) during a long Play Along session with a video take or a Rate My Take dry take recording | **Fixed.** A real user report, root-caused: recording (both Play Along's video/audio takes and Rate My Take's dry takes) used to hold every MediaRecorder chunk for the WHOLE take in a browser-memory array, only ever turning it into one file and uploading it when Stop was pressed — a several-hour take (especially with the camera on, at ~5.2 Mbps) could genuinely balloon into multiple GB sitting in the tab, exactly matching the reported numbers. Each chunk now streams to the server and is written to disk as it arrives (still ~1s after it's captured), so the tab never holds more than one chunk at a time regardless of how long the take runs. |
 
-## 9. Known limitations (by design, not oversights)
+## 10. Known limitations (by design, not oversights)
 
 - Separation has an inherent quality ceiling — a mild "processed" texture
   is normal, not a bug.
@@ -1792,8 +1852,12 @@ current song has attached.
   transient-heavy material at the extremes. Anything that sounds
   genuinely broken (crackle, pumping, dropouts) is a bug worth
   reporting, not the expected ceiling.
+- Tab View's own playback (§7) is alphaTab's bundled soundfont synth, not
+  your Tone Lab rig or a real audio recording of the song — useful for
+  reading/hearing a part in isolation, not a substitute for the actual
+  backing track.
 
-## 10. File locations reference
+## 11. File locations reference
 
 ```
 input/                          source songs you've imported
@@ -1804,4 +1868,6 @@ output/<song>/recordings/       takes (video + audio-only), saved riffs, and sav
 GuitarStudio/models/nam/        .nam amp captures (subfolders OK)
 GuitarStudio/models/ir/         cabinet impulse responses (subfolders OK)
 GuitarStudio/projects/          autosaved per-song mix state, playlists, practice log
+tabs/                           imported Guitar Pro files (§7)
+GuitarStudio/projects/_tab_library.json   tab titles/artists + tab playlists (§7)
 ```
