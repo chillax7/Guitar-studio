@@ -352,10 +352,16 @@
   --track-other: #2f8f96;
   --track-candidate-a: #3ad0ee;
   --track-candidate-b: #5c78a0;
-  /* Same "real functional distinction, not decorative" reasoning as every
-     other theme's dry-take-accent — a magenta reads as clearly apart from
-     this theme's cyan as teal did from Molten's orange. */
-  --dry-take-accent: #d162c4;
+  /* R3-3: was a dedicated magenta (#d162c4) on the same "distinct hue, not
+     decorative" reasoning every other theme's dry-take-accent uses — real
+     design feedback was that it reads as off-palette/inconsistent
+     specifically in this theme (Future Metal's whole identity is its
+     cyan/ice-blue family; every other accent-bearing control uses
+     --accent, so a magenta one-off stood out as a mistake rather than a
+     deliberate distinction the way teal-vs-orange did in Molten). Routed
+     through --accent here, scoped to this theme only — Studio/Molten/
+     Bright Spark/Castle Rock keep their own distinct dry-take-accent hue. */
+  --dry-take-accent: var(--accent);
   --heading-font: "Orbitron", var(--font-ui);
   --heading-transform: none;
   --heading-tracking: 0.04em; /* a little extra tracking on nav/app-title suits the HUD character; h3's own tracking already comes from its dedicated rule, unaffected by this */
@@ -492,12 +498,22 @@ body {
   overflow: hidden;
 }
 
-/* R2-5/R2-6: numeric/data-dense readouts (BPM, Hz, cents, fader/pan
-   percentages) get the theme's monospace-leaning companion face where one
-   exists (Future Metal's Share Tech Mono) — a shared attribute/class
-   selector rather than touching each of these individually, so a future
-   readout only needs one of these same selectors to pick it up for free. */
-[data-transport], #pa-tuner-hz, #pa-tuner-cents-val, .lane-gain-val, .lane-pan-val {
+/* R2-5/R2-6/R3-4: numeric/data-dense readouts (BPM, Hz, cents, fader/pan
+   percentages, every pedal parameter's dB/Hz/ms/% value, Speed Trainer's
+   %, Export's LUFS, Rate My Take's offsets, …) get the theme's
+   monospace-leaning companion face where one exists (Future Metal's Share
+   Tech Mono) — a shared attribute/class selector rather than touching each
+   of these individually, so a future readout only needs to match one of
+   these same selectors to pick it up for free, not a new per-instance
+   rule here. [id$="-val"] alone covers every pedal-card readout (they all
+   share that naming convention already — see any `pa-*-val` span in
+   index.html) plus the Play Along takes-trim readouts; #pa-tuner-cents-val
+   used to be listed explicitly here but is redundant with it now.
+   input[type="number"] covers Speed Trainer, Export's Target LUFS/boost
+   cap, Rate My Take/Practice Tips' offset fields, and the A/V offset field
+   the same way. */
+[data-transport], #pa-tuner-hz, .lane-gain-val, .lane-pan-val,
+input[type="number"], [id$="-val"] {
   font-family: var(--font-mono);
 }
 
@@ -894,19 +910,27 @@ button.running {
   color: #fff;
 }
 button.running:hover { background: var(--success); filter: brightness(1.1); }
-/* PRIMARY: the main action in its area (Separate, Run split, Export, Record).
-   Stays quiet at rest per the house rule, but an accent-coloured border marks
-   it as the primary thing to do without the loud fill of an active state. */
-button.primary { border-color: var(--accent); }
+/* PRIMARY: the main action in its area (Separate, Run split, Export, Record,
+   Save current rig as…). R3-2: used to stay quiet at rest — just an accent-
+   coloured border, deliberately short of LIT's solid fill, so "primary"
+   and "actively engaged" stayed visually distinct concepts. Real feedback
+   on dense multi-button cards (Rig Presets' Load/Delete/Save/Change…/
+   Learn…) was that this read as one flat wall of equally-quiet buttons —
+   nothing in this app actually needed a third "primary but not filled"
+   tier separate from LIT, so primary now gets the same solid-fill
+   treatment as .active/.on/.selected and nav-screen-btn.active. Exactly
+   one button per group should carry this class. */
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: var(--accent); filter: brightness(1.1); }
 /* UI-4 (design review v1): AI Lab's "Record dry take" vs Play Along's plain
    "Record" (#rec-toggle-btn, unstyled here — stays the house .primary
-   baseline). Distinct border/text color plus a small leading icon
-   (::before, so the button's actual label text is untouched) — the two are
-   meant to be tellable apart without reading the paragraph above them each
-   time, since they capture fundamentally different things (an isolated dry
-   take for scoring vs. a normal mixed-in performance video). */
-button.primary.record-dry-btn { border-color: var(--dry-take-accent); color: var(--dry-take-accent); }
-button.primary.record-dry-btn:hover { background: color-mix(in srgb, var(--dry-take-accent) 16%, var(--panel-2)); border-color: var(--dry-take-accent); color: var(--dry-take-accent); }
+   baseline). Distinct fill color plus a small leading icon (::before, so
+   the button's actual label text is untouched) — the two are meant to be
+   tellable apart without reading the paragraph above them each time, since
+   they capture fundamentally different things (an isolated dry take for
+   scoring vs. a normal mixed-in performance video). */
+button.primary.record-dry-btn { background: var(--dry-take-accent); border-color: var(--dry-take-accent); color: #fff; }
+button.primary.record-dry-btn:hover { background: var(--dry-take-accent); filter: brightness(1.1); }
 .record-dry-btn::before { content: "🎧"; margin-right: 5px; }
 button:disabled {
   opacity: 0.5;
@@ -1860,6 +1884,7 @@ h3:first-child { margin-top: 0; }
   padding: 8px 10px;
   color: var(--text-dim);
   cursor: pointer;
+  position: relative; /* R3-1: anchors the bypassed-state dot below */
 }
 .pa-chain-icon svg { width: 22px; height: 22px; }
 .pa-chain-icon-label {
@@ -1874,8 +1899,29 @@ h3:first-child { margin-top: 0; }
    independent of its on/off color, since "open" and "on" are different
    facts about a stage. */
 .pa-chain-icon.pa-chain-on { color: var(--accent); }
+/* R3-1: bypassed vs. active-but-unselected used to differ only by the icon's
+   text color (dim grey vs. accent) — real enough on close inspection, but
+   not a strong enough signal at a glance, and not one an off-dot/color-blind
+   -unfriendly reading of the icon strip alone would catch. Bypassed stages
+   (":not(.pa-chain-on)", excluding Amp, which paChainStageIsOn always
+   reports "on" for) now also dim slightly and get a small hollow dot,
+   independent of — and layered on top of — the .pa-chain-open selection
+   border, so selecting a bypassed pedal to edit it doesn't make it look
+   active. */
+.pa-chain-icon:not(.pa-chain-on) { opacity: 0.6; }
+.pa-chain-icon:not(.pa-chain-on)::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1.5px solid var(--mute);
+  background: var(--panel);
+}
 .pa-chain-icon.pa-chain-open { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.pa-chain-icon:hover { color: var(--text); }
+.pa-chain-icon:hover { color: var(--text); opacity: 1; }
 .pa-chain-icon.pa-chain-on:hover { color: var(--accent); }
 .pa-chain-icon.dragging { opacity: 0.4; }
 .pa-chain-icon.drag-over { outline: 2px dashed var(--accent); outline-offset: 2px; }
