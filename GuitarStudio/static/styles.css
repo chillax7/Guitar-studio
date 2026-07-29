@@ -2687,7 +2687,22 @@ svg.ailab-fretboard { display: block; }
   padding: 12px;
   overflow-x: auto;
 }
-#tabview-track-title { font-weight: 700; margin-left: auto; }
+/* Real user request: a title identifying which of this screen's two
+   transport bars is which, plus the actual name, sitting just above each
+   bar's own scrub line — "Track Play Bar" for the song bar (State.track,
+   set once on openTabView — see its own comment for why a live-update
+   hook isn't needed) and "Tab Play Bar" for alphaTab's own (set in
+   onTabScoreLoaded once the file's parsed). Plain text, not another
+   .transport-label (that class is for short inline knob labels like
+   "Speed" sitting INSIDE a bar, not a caption above one). */
+.transport-bar-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  margin: 4px 2px;
+}
 #tabview-track-artist { margin: 4px 0 0; }
 #tabview-zoom-out-btn, #tabview-zoom-in-btn { padding: 5px 9px; }
 #tabview-zoom-display { font-variant-numeric: tabular-nums; min-width: 38px; text-align: center; }

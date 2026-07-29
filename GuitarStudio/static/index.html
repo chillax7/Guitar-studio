@@ -1431,6 +1431,7 @@
              this is the same "backing track" every other screen's copy is.
              Always shown, independent of whether a tab is loaded below —
              this is the app's song playback, not tab playback. -->
+        <div class="transport-bar-title">Track Play Bar — <span id="tabview-bar-track-name">—</span></div>
         <div id="tabview-song-transport-bar" class="transport-bar">
           <input type="range" id="tabview-song-bt-timeline" data-transport="timeline" class="transport-timeline" min="0" max="0" step="0.01" value="0">
           <button id="tabview-song-bt-play-btn" data-transport="play-btn" class="primary">▶</button>
@@ -1468,6 +1469,7 @@
                rather than forcing it into the Speed slider's shape for a
                control that works completely differently (discrete steps,
                not a continuous 0.5-1.5 range). -->
+          <div class="transport-bar-title">Tab Play Bar — <span id="tabview-bar-tab-name">—</span></div>
           <div id="tabview-transport-bar" class="transport-bar">
             <input type="range" id="tabview-scrub" class="transport-timeline" min="0" max="0" step="1" value="0">
             <button id="tabview-play-btn" class="primary">▶</button>
@@ -1481,7 +1483,6 @@
             <button id="tabview-zoom-out-btn" title="Zoom out">−</button>
             <span id="tabview-zoom-display">100%</span>
             <button id="tabview-zoom-in-btn" title="Zoom in">+</button>
-            <span id="tabview-track-title"></span>
           </div>
           <p class="hint" id="tabview-track-artist"></p>
           <div id="tabview-canvas-wrap">

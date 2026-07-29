@@ -102,7 +102,7 @@ async function ensureTabViewApi() {
 function onTabScoreLoaded(score) {
   const title = score.title || "";
   const artist = score.artist || "";
-  document.getElementById("tabview-track-title").textContent = title || TabView.currentTab;
+  document.getElementById("tabview-bar-tab-name").textContent = title || TabView.currentTab;
   document.getElementById("tabview-track-artist").textContent = artist;
 
   // alphaTab already parsed this metadata as part of loading the file for
@@ -567,6 +567,12 @@ async function openTabView() {
   document.getElementById("song-library-panel").style.display = "none";
   document.getElementById("tab-library-panel").style.display = "";
   paSetActiveScreen("tabview-open-btn");
+  // Picking a track from the Library always calls closeAllScreens (app.js's
+  // selectTrack) — since that includes this screen, State.track can only
+  // actually change while Tab View is closed, so a one-time read on open is
+  // enough; no live-update hook needed for the rest of this screen's visit.
+  document.getElementById("tabview-bar-track-name").textContent =
+    State.track ? displayTrackName(State.track) : "No track loaded";
   await refreshTabLibrary();
 }
 
