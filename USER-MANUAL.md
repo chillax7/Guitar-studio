@@ -1829,10 +1829,15 @@ current song has attached.
   is normal, not a bug.
 - Guitar split is a panning guess, never a guaranteed lead/rhythm
   separation.
-- NAM inference here is a from-scratch reimplementation of the standard
-  WaveNet architecture (with an optional WebAssembly/SIMD fast path), not
-  the official reference runtime. It is, however, now **measured** against
-  it: on a standard-architecture capture its steady-state output matches
+- NAM inference uses **two** engines. Ordinary "A1" captures (the
+  standard/lite/feather/nano WaveNet family — nearly everything shared
+  today) run on this app's own from-scratch WebAssembly/SIMD engine, which
+  is measurably faster than the official one. Newer **"A2"** captures, plus
+  a few other variants (slimmable containers, LSTM), use a bundled copy of
+  the *official* NAM inference core instead, because they rely on
+  architecture features this app's own engine doesn't implement. The choice
+  is automatic and per-capture; nothing to configure. Our own engine is,
+  however, now **measured** against the official reference: on a standard-architecture capture its steady-state output matches
   the official NAM reference implementation to within 0.00001% (f32
   rounding noise — effectively exact). That's a recent improvement; an
   earlier build's tanh approximation put it 1.16% off, roughly a −39 dB

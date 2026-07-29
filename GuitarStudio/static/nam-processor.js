@@ -232,10 +232,153 @@ function buildLayerArray(cfg, reader) {
   };
 }
 
-function buildModel(namJson) {
+// ---------------------------------------------------------------------------
+// Config normalization + capability gate (NAM "A1" only)
+// ---------------------------------------------------------------------------
+//
+// Two jobs, and the second one matters more than the first:
+//
+// 1. ACCEPT BOTH SCHEMAS. The official .nam config layout changed (legacy
+//    files, ~v0.5.x, are still the bulk of what's circulating; current
+//    exporters write v0.6/v0.7). Renamed/reshaped fields:
+//        kernel_size: 3          -> kernel_sizes: [3,3,...]
+//        activation: "Tanh"      -> activation: [{"type":"Tanh"}, ...]
+//        gated: true             -> gating_mode: ["gated", ...]
+//        head_size / head_bias   -> head: {out_channels, kernel_size, bias}
+//    NAM's own loader (nam/models/_from_nam.py) reads both; so do we now.
+//    Before this, a current-format file died with the raw internal error
+//    `(name || "").toLowerCase is not a function`.
+//
+// 2. REFUSE WHAT WE'D OTHERWISE GET WRONG. This is the important half. The
+//    newer format can express architectural features this engine does not
+//    implement — and, verified by rendering against the official PyTorch
+//    reference, feeding them in did NOT throw: it silently produced wrong
+//    audio (measured: blended gating ~1060% off, head1x1 ~173% off,
+//    per-layer kernel sizes ~110% off, per-layer activations ~76% off,
+//    grouped convs and layer1x1-disabled produced NaN). Silently wrong
+//    audio is far worse than a refusal, so every one of those is an
+//    explicit throw now.
+//
+//    Callers treat a throw here as "our engine can't do this one" and route
+//    the model to the official-core engine instead (see buildModelAny) —
+//    which is exactly why these checks must be exhaustive rather than
+//    best-effort. Anything newly supported here must be REMOVED from the
+//    refusal list, never left to fall through.
+//
+// Returns a normalized shallow copy in the legacy shape the readers below
+// expect. Throws Error on anything unsupported.
+const NAM_SUPPORTED_ACTIVATIONS = new Set(["tanh", "fasttanh", "sigmoid", "softsign", "relu", "identity", ""]);
+
+function normalizeNamConfig(namJson) {
   if (namJson.architecture !== "WaveNet") {
-    throw new Error(`Unsupported architecture '${namJson.architecture}' — only WaveNet .nam files are supported`);
+    // Covers LSTM/Linear/ConvNet, and A2's "SlimmableContainer" wrapper.
+    throw new Error(`unsupported architecture '${namJson.architecture}' (this engine handles standard WaveNet only)`);
   }
+  const config = namJson.config || {};
+  if (config.condition_dsp) {
+    // A2 conditions the network with a whole nested WaveNet; we have no
+    // machinery for a second network feeding the condition input.
+    throw new Error("model uses condition_dsp (a nested conditioning network) — not supported");
+  }
+  if (!Array.isArray(config.layers) || !config.layers.length) {
+    throw new Error("model has no layer arrays");
+  }
+
+  // All-equal helper: the new format allows PER-LAYER variation of these,
+  // but this engine applies one value across a whole layer array (see
+  // buildLayerArray). Reading element [0] and applying it to every layer
+  // would silently mis-render a file that actually varies them, so a
+  // varying file is refused rather than approximated.
+  const uniform = (arr, label) => {
+    const first = JSON.stringify(arr[0]);
+    for (let i = 1; i < arr.length; i++) {
+      if (JSON.stringify(arr[i]) !== first) {
+        throw new Error(`model varies ${label} per layer — not supported`);
+      }
+    }
+    return arr[0];
+  };
+
+  const layers = config.layers.map((lc, li) => {
+    const where = `layer array ${li}`;
+
+    // --- A2 / advanced features we do not implement ---
+    const filmKeys = ["conv_pre_film", "conv_post_film", "input_mixin_pre_film", "input_mixin_post_film",
+                      "activation_pre_film", "activation_post_film", "layer1x1_post_film", "head1x1_post_film"];
+    for (const k of filmKeys) {
+      const v = lc[k];
+      if (v && (v.active === undefined ? Object.keys(v).length > 0 : v.active)) {
+        throw new Error(`${where} uses FiLM conditioning (${k}) — not supported`);
+      }
+    }
+    if (lc.head1x1 && lc.head1x1.active) throw new Error(`${where} uses head1x1 — not supported`);
+    // layer1x1 is read unconditionally by buildLayer, so a file that turns
+    // it OFF has fewer weights than we'd consume — misreads everything
+    // after it (measured: NaN output).
+    if (lc.layer1x1 && lc.layer1x1.active === false) throw new Error(`${where} disables layer1x1 — not supported`);
+    if (lc.layer1x1 && lc.layer1x1.groups && lc.layer1x1.groups !== 1) throw new Error(`${where} uses grouped layer1x1 — not supported`);
+    if ((lc.groups_input ?? 1) !== 1 || (lc.groups_input_mixin ?? 1) !== 1) {
+      throw new Error(`${where} uses grouped convolutions — not supported`);
+    }
+    if (lc.slimmable) throw new Error(`${where} is slimmable — not supported`);
+    if (lc.packing) throw new Error(`${where} uses packed convolutions — not supported`);
+
+    // --- gating ---
+    let gated;
+    if (lc.gating_mode !== undefined && lc.gating_mode !== null) {
+      const modes = Array.isArray(lc.gating_mode) ? lc.gating_mode : [lc.gating_mode];
+      const mode = uniform(modes, "gating mode");
+      if (mode === "blended") throw new Error(`${where} uses blended gating — not supported`);
+      if (mode !== "gated" && mode !== "none") throw new Error(`${where} uses unknown gating mode '${mode}'`);
+      gated = mode === "gated";
+    } else {
+      gated = !!lc.gated; // legacy
+    }
+
+    // --- kernel size ---
+    let kernelSize;
+    if (Array.isArray(lc.kernel_sizes)) kernelSize = uniform(lc.kernel_sizes, "kernel size");
+    else if (Array.isArray(lc.kernel_size)) kernelSize = uniform(lc.kernel_size, "kernel size");
+    else kernelSize = lc.kernel_sizes ?? lc.kernel_size;
+    if (!Number.isFinite(kernelSize)) throw new Error(`${where} has no usable kernel size`);
+
+    // --- activation ---
+    let act = lc.activation;
+    if (Array.isArray(act)) act = uniform(act, "activation");
+    if (act && typeof act === "object") {
+      // New format: {"type":"Tanh"} — and a PairMultiply/PairBlend object
+      // here would mean gating expressed activation-side rather than via
+      // gating_mode, which we'd otherwise silently read as its bare name.
+      if (act.primary !== undefined || act.secondary !== undefined || act.name !== undefined) {
+        throw new Error(`${where} uses a paired/gating activation object — not supported`);
+      }
+      act = act.type;
+    }
+    const actName = String(act || "").toLowerCase();
+    if (!NAM_SUPPORTED_ACTIVATIONS.has(actName)) throw new Error(`${where} uses unsupported activation '${act}'`);
+
+    // --- head ---
+    let headSize, headBias;
+    if (lc.head && typeof lc.head === "object") {
+      if (lc.head.kernel_size !== undefined && lc.head.kernel_size !== 1) {
+        throw new Error(`${where} head rechannel kernel_size ${lc.head.kernel_size} — only 1 supported`);
+      }
+      headSize = lc.head.out_channels;
+      headBias = !!lc.head.bias;
+    } else {
+      headSize = lc.head_size;
+      headBias = !!lc.head_bias;
+    }
+    if (!Number.isFinite(headSize)) throw new Error(`${where} has no usable head size`);
+
+    return { ...lc, kernel_size: kernelSize, activation: act, gated, head_size: headSize, head_bias: headBias };
+  });
+
+  return { ...namJson, config: { ...config, layers } };
+}
+
+function buildModel(namJson) {
+  namJson = normalizeNamConfig(namJson);
   const config = namJson.config;
   const reader = new WeightReader(Float32Array.from(namJson.weights));
   const layerArrays = config.layers.map((lc) => buildLayerArray(lc, reader));
@@ -604,9 +747,12 @@ function wasmWriteZeroVector(arena, n) {
 // and fall back to buildModel() exactly like they already catch buildModel
 // itself failing.
 function buildModelWasm(namJson, exports) {
-  if (namJson.architecture !== "WaveNet") {
-    throw new Error(`Unsupported architecture '${namJson.architecture}' — only WaveNet .nam files are supported`);
-  }
+  // Same schema normalization + capability gate as the JS path — the two
+  // engines must accept and refuse exactly the same set of files, or
+  // buildModelAny's "WASM first, JS second, official core last" ladder
+  // would change which engine renders a model depending on which one
+  // happened to be available.
+  namJson = normalizeNamConfig(namJson);
   const arena = new WasmArena(exports);
   const config = namJson.config;
   const reader = new WeightReader(Float32Array.from(namJson.weights));
@@ -735,17 +881,121 @@ function forwardSampleWasm(model, rawInputSample) {
   return model._out1[0];
 }
 
-// Dispatch helpers used by NAMProcessor so its call sites don't need to
-// branch on isWasm themselves.
-function buildModelAny(namJson, wasmExports) {
-  if (wasmExports) {
-    try { return buildModelWasm(namJson, wasmExports); } catch (e) { /* fall through to JS */ }
+// ---------------------------------------------------------------------------
+// Official-core engine (NAM "A2" and friends)
+// ---------------------------------------------------------------------------
+//
+// Everything above implements NAM "A1" — the standard/lite/feather/nano
+// WaveNet family — and is ~1.9x faster than the official core on those, so
+// it stays the primary path. But A1 is now only part of the format: "A2"
+// adds FiLM conditioning at eight insertion points, grouped convolutions,
+// grouped head1x1/layer1x1, a nested condition_dsp network and blended
+// gating, and ships inside a SlimmableContainer wrapper. normalizeNamConfig
+// refuses every one of those (deliberately — we render them wrong), which
+// would otherwise just mean "can't load this model".
+//
+// So models our own engine refuses get handed to a vendored WASM build of
+// the OFFICIAL NeuralAmpModelerCore instead, which handles all of them.
+// A2 models are ~17x smaller than A1 standard by design, so this core
+// being slower per weight doesn't matter there (measured RTF 0.157 for
+// A2-max vs ~0.30 for our own engine on A1 standard).
+//
+// See vendor/nam-official/README.txt for the full rationale, and
+// research/nam-engine-review-spec.md §12.
+//
+// The import is STATIC because dynamic import() is disallowed in
+// WorkletGlobalScope ("import() is disallowed on WorkletGlobalScope").
+// Measured cost of carrying it: +4.3ms per addModule(), at worklet-creation
+// time only, never on the render path.
+import createNamOfficialModule from "./vendor/nam-official/nam.js";
+
+let namOfficialModulePromise = null;
+// bytes: ArrayBuffer of vendor/nam-official/nam.wasm, posted from the main
+// thread (AudioWorkletGlobalScope has no fetch). Instantiated at most once
+// per worklet; the promise is cached so repeated loads reuse it.
+function ensureNamOfficialModule(bytes) {
+  if (!namOfficialModulePromise) {
+    namOfficialModulePromise = createNamOfficialModule({
+      wasmBinary: bytes,
+      // REQUIRED. Without it the glue evaluates
+      // `new URL("nam.wasm", import.meta.url)` at init, and `URL` is not a
+      // global in AudioWorkletGlobalScope — it throws before anything runs.
+      locateFile: (p) => p,
+    });
   }
-  return buildModel(namJson);
+  return namOfficialModulePromise;
+}
+
+function buildModelOfficial(namJson, mod) {
+  const id = mod._nam_createInstance();
+  const json = JSON.stringify(namJson);
+  const len = mod.lengthBytesUTF8(json) + 1;
+  const ptr = mod._malloc(len);
+  mod.stringToUTF8(json, ptr, len);
+  // Both of these are module-global in this core, not per-instance.
+  mod._nam_setSampleRate(sampleRate);
+  mod._nam_setMaxBufferSize(MAX_BLOCK);
+  const ok = mod._nam_loadModel(id, ptr);
+  mod._free(ptr);
+  if (!ok) throw new Error("the official NAM core could not load this model either");
+
+  // Same loudness normalization the JS/WASM paths apply, computed from the
+  // same field, so switching engines doesn't change a capture's level.
+  let outputGainDb = 0;
+  if (namJson.metadata && typeof namJson.metadata.loudness === "number") {
+    outputGainDb = -18 - namJson.metadata.loudness;
+  }
+  return {
+    isOfficial: true, mod, id, outputGainDb,
+    inPtr: mod._malloc(MAX_BLOCK * 4),
+    outPtr: mod._malloc(MAX_BLOCK * 4),
+    _in1: new Float32Array(1), _out1: new Float32Array(1),
+  };
+}
+
+function forwardBlockOfficial(model, inBlock, outBlock, n) {
+  const mod = model.mod;
+  // Re-read HEAPF32 each call: this core is built with memory growth, which
+  // detaches the previous view. Same discipline as forwardBlockWasm's
+  // cached-view invalidation check.
+  let heap = mod.HEAPF32;
+  const inBase = model.inPtr >>> 2;
+  for (let i = 0; i < n; i++) heap[inBase + i] = inBlock[i];
+  mod._nam_process(model.id, model.inPtr, model.outPtr, n);
+  heap = mod.HEAPF32;
+  const outBase = model.outPtr >>> 2;
+  for (let i = 0; i < n; i++) outBlock[i] = heap[outBase + i];
+}
+
+// Dispatch helpers used by NAMProcessor so its call sites don't need to
+// branch on which engine built a model.
+//
+// Ladder: our WASM/SIMD engine (fastest) -> our JS engine (same math, no
+// wasm available) -> the official core (models ours refuses). The first two
+// share normalizeNamConfig, so they accept and refuse exactly the same
+// files; a model reaching the third rung is one we deliberately declined,
+// not one that failed by accident.
+function buildModelAny(namJson, wasmExports, officialMod) {
+  let firstErr = null;
+  if (wasmExports) {
+    try { return buildModelWasm(namJson, wasmExports); } catch (e) { firstErr = e; }
+  }
+  try { return buildModel(namJson); } catch (e) { firstErr = firstErr || e; }
+  if (officialMod) return buildModelOfficial(namJson, officialMod);
+  throw firstErr || new Error("no engine could load this model");
 }
 function forwardBlockAny(model, inBlock, outBlock, n) {
-  if (model.isWasm) forwardBlockWasm(model, inBlock, outBlock, n);
+  if (model.isOfficial) forwardBlockOfficial(model, inBlock, outBlock, n);
+  else if (model.isWasm) forwardBlockWasm(model, inBlock, outBlock, n);
   else forwardBlock(model, inBlock, outBlock, n);
+}
+
+// Single-sample convenience (calibration path) — mirrors forwardSample/
+// forwardSampleWasm for whichever engine built this model.
+function forwardSampleAny(model, rawInputSample) {
+  model._in1[0] = rawInputSample;
+  forwardBlockAny(model, model._in1, model._out1, 1);
+  return model._out1[0];
 }
 
 // ---------------------------------------------------------------------------
@@ -793,8 +1043,10 @@ class NAMProcessor extends AudioWorkletProcessor {
     this.dcCoeff = 0.995;
     this._inBlock = new Float32Array(MAX_BLOCK); // gain-applied input for forwardBlock
     this._outBlock = new Float32Array(MAX_BLOCK);
-    this.wasmExports = null; // set once nam.wasm is instantiated, see "wasm-module" below
+    this.wasmExports = null; // set once nam.wasm is instantiated, see "wasm-bytes" below
     this.wasmInstantiating = null; // Promise while instantiation is in flight
+    this.officialMod = null; // official NeuralAmpModelerCore (A2 etc) — see "official-wasm-bytes"
+    this.officialInstantiating = null;
     this.port.onmessage = (e) => this._onMessage(e.data);
     // V3-E3 live-overrun rollback (see LIVE_CHECK_WINDOW_MS above).
     this.rollbackModel = null;
@@ -847,19 +1099,36 @@ class NAMProcessor extends AudioWorkletProcessor {
       });
   }
 
+  // Bytes of vendor/nam-official/nam.wasm, for the A2/official-core path.
+  // Sent separately from (and usually alongside) our own engine's bytes,
+  // because most models never need it — see buildModelAny's ladder.
+  _onOfficialWasmBytes(bytes) {
+    this.officialInstantiating = ensureNamOfficialModule(bytes)
+      .then((mod) => { this.officialMod = mod; })
+      .catch((err) => {
+        this.officialMod = null;
+        this.port.postMessage({ type: "official-instantiate-failed", error: String(err && err.message || err) });
+      });
+  }
+
   async _onMessage(msg) {
     if (msg.type === "wasm-bytes") {
       this._onWasmBytes(msg.bytes);
       return;
     }
+    if (msg.type === "official-wasm-bytes") {
+      this._onOfficialWasmBytes(msg.bytes);
+      return;
+    }
     if (msg.type === "load") {
       if (this.wasmInstantiating) { try { await this.wasmInstantiating; } catch (e) { /* already logged */ } }
+      if (this.officialInstantiating) { try { await this.officialInstantiating; } catch (e) { /* already logged */ } }
       // V3-E3: whatever is active right now is what a bad live-overrun
       // reading rolls back to — capture it before any reassignment below.
       const prevModel = this.model;
       const prevGainDb = this.modelOutputGainDb;
       try {
-        const model = buildModelAny(msg.nam, this.wasmExports);
+        const model = buildModelAny(msg.nam, this.wasmExports, this.officialMod);
         const cutoffHz = 10.0;
         const omega = (2 * Math.PI * cutoffHz) / sampleRate;
         this.dcCoeff = 1.0 - omega;
@@ -888,7 +1157,7 @@ class NAMProcessor extends AudioWorkletProcessor {
           this.model = null;
           this.calib = {
             pending: model,
-            probe: buildModelAny(msg.nam, this.wasmExports),
+            probe: buildModelAny(msg.nam, this.wasmExports, this.officialMod),
             i: 0, sumSq: 0, measured: 0,
             prevModel, prevGainDb, // V3-E3: for _startLiveCheck once calibration lands
           };

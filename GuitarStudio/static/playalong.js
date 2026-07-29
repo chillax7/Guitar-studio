@@ -127,8 +127,33 @@ function paGetNamWasmBytes() {
 // for the next node (and leaves the door open to transferring instead, if
 // this ever needs to be cheaper — 31KB per node does not).
 async function paSendNamWasmModule(node) {
-  const bytes = await paGetNamWasmBytes();
-  if (bytes) node.port.postMessage({ type: "wasm-bytes", bytes: bytes.slice(0) });
+  const [ours, official] = await Promise.all([paGetNamWasmBytes(), paGetNamOfficialWasmBytes()]);
+  if (ours) node.port.postMessage({ type: "wasm-bytes", bytes: ours.slice(0) });
+  if (official) node.port.postMessage({ type: "official-wasm-bytes", bytes: official.slice(0) });
+}
+
+// The OFFICIAL NeuralAmpModelerCore (vendor/nam-official/), used only for
+// models our own engine deliberately refuses — NAM "A2", slimmable
+// containers, condition_dsp, LSTM. See vendor/nam-official/README.txt for
+// why both engines exist: ours is ~1.9x faster on the A1 WaveNet family and
+// stays primary; this one covers everything else, which we'd otherwise be
+// unable to load at all.
+//
+// Same best-effort contract as paGetNamWasmBytes above: a failure here just
+// means A2-class captures can't load, not that anything breaks.
+let paNamOfficialWasmBytesPromise = null;
+function paGetNamOfficialWasmBytes() {
+  if (!paNamOfficialWasmBytesPromise) {
+    paNamOfficialWasmBytesPromise = (async () => {
+      try {
+        return await (await fetch("vendor/nam-official/nam.wasm")).arrayBuffer();
+      } catch (e) {
+        console.warn("Official NAM core unavailable (A2-class captures won't load):", e);
+        return null;
+      }
+    })();
+  }
+  return paNamOfficialWasmBytesPromise;
 }
 
 // ---------------------------------------------------------------------------
@@ -1694,8 +1719,22 @@ window.gsDiag = gsDiag;
 // doesn't implement; this is a detection stub, not support — an honest
 // message instead of either a confusing generic load failure or (worse)
 // silently misinterpreting the file's weights.
+// Architectures NOTHING here can render, so the picker can say so up front
+// instead of spending a probe render to find out.
+//
+// This used to reject every non-"WaveNet" architecture. That's now wrong:
+// the vendored official core handles NAM "A2" — which ships as
+// `SlimmableContainer` — plus LSTM, so those go to the probe and load
+// normally. Only genuinely unknown architectures fail fast here; the
+// engines themselves remain the real authority (buildModelAny), this is
+// purely a nicer error path.
+const PA_RENDERABLE_NAM_ARCHITECTURES = new Set([
+  "WaveNet",           // A1 (our engine) and A2's inner WaveNets (official core)
+  "SlimmableContainer", // A2's own wrapper
+  "LSTM", "Linear", "ConvNet", // legacy/other families the official core implements
+]);
 function paIsParametricNam(namJson) {
-  return !!namJson.architecture && namJson.architecture !== "WaveNet";
+  return !!namJson.architecture && !PA_RENDERABLE_NAM_ARCHITECTURES.has(namJson.architecture);
 }
 
 // V3-T1: metadata surfaced for "what AM I playing through?" — enumerates

@@ -775,3 +775,143 @@ standard architecture (and was true for all fixtures here), but the new
 format exists precisely to allow per-layer variation. The shipped version
 should either honour the per-layer values or explicitly refuse files that
 vary them, rather than silently reading layer 0's and applying it to all.
+
+---
+
+## 12. NAM "A2" support — hybrid engine (built)
+
+§11's schema gap is fixed, and A2 support landed with it. The approach is a
+**hybrid**, which the evidence below made the clear choice over either
+building A2 ourselves or the wholesale swap §8 already rejected.
+
+### 12.1 What A2 actually is
+
+Established from the official example models in
+`sdatkinson/NeuralAmpModelerCore` (MIT, `example_models/`), since
+tone3000.com blocks automated fetches. A2 is a **different architecture**,
+not a new file format:
+
+| | `wavenet_a1_standard.nam` | `wavenet_a2_max.nam` |
+|---|---|---|
+| layer arrays | 2 (16ch + 8ch) | 1 (4ch) |
+| dilations | 1→512 (10 layers) | [1, 2] |
+| activation | Tanh | Softsign |
+| FiLM conditioning | none | **all 8 insertion points** |
+| grouped convs | none | **yes** (`groups_input_mixin: 4`) |
+| head1x1 / layer1x1 | none | **both active, grouped** |
+| `condition_dsp` | none | **a nested WaveNet** |
+| weights | 13,802 | **818** |
+
+`A2.nam` is different again: `architecture: "SlimmableContainer"`, holding
+submodels. A2 is ~17x smaller than A1 standard by design — it targets
+mass-market embedded hardware, which is how it gets better quality at lower
+CPU.
+
+### 12.2 Our engine renders every one of those features WRONG (silently)
+
+Measured, not assumed. Models exercising each feature were built with the
+official trainer, rendered through PyTorch for ground truth, then through
+our engine:
+
+| feature | our engine, before |
+|---|---|
+| blended gating | **~1060% off** |
+| head1x1 | ~173% off |
+| per-layer kernel sizes | ~110% off |
+| per-layer activations | ~76% off |
+| grouped convs | **NaN** |
+| layer1x1 disabled | **NaN** |
+| plain / gated / bottleneck | correct (0.00001%) |
+
+None of these threw. They produced wrong audio. That is the single most
+important finding in this section: our reader consumed whatever weight
+count its own assumptions implied and carried on.
+
+### 12.3 Fix part 1 — `normalizeNamConfig()`
+
+One function, shared by the JS and WASM builders, doing two jobs:
+
+- **Accepts both schemas** (`kernel_sizes`/`activation:[{type}]`/
+  `gating_mode`/`head{}` as well as the legacy flat fields), so
+  current-exporter files parse at all — closing §11.
+- **Explicitly refuses everything in §12.2's table**, plus `condition_dsp`,
+  slimmable/packed layers, paired-activation objects, non-1 head kernel
+  sizes and unknown activations. Per-layer variation is refused rather than
+  approximated by reading element `[0]` — the caveat §11 flagged.
+
+Re-verified after: every feature we get wrong is refused; everything
+accepted is still correct to 0.00001%; all real A1 example models still
+load. No gate leaks.
+
+### 12.4 Fix part 2 — official core as second engine
+
+Models our engine refuses now go to a vendored WASM build of the official
+`NeuralAmpModelerCore` (`@opendaw/nam-wasm` 1.2.0, MIT — the same package
+§8 benchmarked), in `static/vendor/nam-official/`.
+
+**Why this doesn't contradict §8.** §8 rejected that core as a *replacement*
+for our A1 path, because it measured ~1.9x slower there. That still holds
+and our engine remains primary for A1. Using it as an *additional* path for
+models we currently cannot load at all is a different question, and the
+speed objection doesn't transfer: A2 models are ~17x smaller, so
+
+| | RTF |
+|---|---|
+| official core, A1 standard | 0.453 |
+| **official core, A2 max** | **0.157** |
+| our engine, A1 standard | ~0.30 |
+
+A2 through the official core is *cheaper* than A1 through ours.
+
+`buildModelAny()` is now a ladder: our WASM/SIMD engine → our JS engine →
+official core. The first two share `normalizeNamConfig`, so a model
+reaching the third rung is one we deliberately declined, never one that
+failed by accident.
+
+### 12.5 Implementation notes worth keeping
+
+- **The import must be static.** `import()` inside a worklet fails with
+  *"import() is disallowed on WorkletGlobalScope"*. Measured cost of
+  carrying the glue permanently: **+4.3ms per `addModule()`**, at
+  worklet-creation time only, never on the render path — cheap enough that
+  one node type beats swapping node types in a live graph.
+- **`locateFile` is mandatory**, per §8.1 — without it the glue evaluates
+  `new URL("nam.wasm", import.meta.url)` and `URL` is not a global in
+  `AudioWorkletGlobalScope`.
+- **`instantiate(BufferSource)` resolves to `{module, instance}`**, unlike
+  `instantiate(Module)`. Same shape trap as §10.3.
+- `paIsParametricNam()` no longer rejects every non-WaveNet architecture —
+  `SlimmableContainer`/`LSTM` are renderable now, so only genuinely unknown
+  architectures fail fast.
+
+### 12.6 Verified
+
+Through the real app, end to end:
+
+| model | engine chosen | rtFactor |
+|---|---|---|
+| `wavenet_a1_standard.nam` | **ours (WASM)** | 0.298 |
+| `wavenet_a2_max.nam` | official core | 0.210 |
+| `A2.nam` (SlimmableContainer) | official core | 0.378 |
+| `lstm.nam` | official core | 0.024 |
+
+All load, no console errors, and each refusal reason is explicit
+("model uses condition_dsp…", "unsupported architecture 'SlimmableContainer'").
+
+**Wrapper validated by cross-check:** forcing the *same A1 model* through
+both engines gives 0 non-finite samples and 0.21% relative agreement
+(0.19% after removing a 0.1% level difference) — broadband, consistent
+with the official core's own fast activation approximations rather than a
+wrapper bug. Worth noting the implication: since §9 made our engine
+bit-exact (0.00001% vs PyTorch), **ours is now the more accurate of the two
+on A1**, which independently justifies keeping it primary.
+
+### 12.7 Still open
+
+- **Not tested against a real TONE3000 A2 download.** Everything here used
+  the official repo's example models. tone3000.com blocks automated
+  fetches from this environment, so a real-world A2 capture should be
+  spot-checked by hand.
+- A2 models carry `metadata.loudness` the same way, so auto-calibration
+  applies unchanged — but this hasn't been checked against a real capture's
+  perceived level.
