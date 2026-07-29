@@ -91,7 +91,12 @@ async function ensureTabViewApi() {
       // the whole tab once both are set — no custom loop logic needed,
       // this is exactly what the two combined already do.
       enableUserInteraction: true,
-      soundFont: "vendor/alphatab/soundfont/sonivox.sf3",
+      // Real user report: the library's own default (Sonivox, a low-bitrate
+      // GM soundfont from 2004-06, previously vendored here) sounds nothing
+      // like a real guitar. Swapped for FluidR3Mono — the same well-regarded
+      // free soundfont MuseScore 2 shipped for years — much more realistic
+      // guitar/bass patches at a still-reasonable 14MB.
+      soundFont: "vendor/alphatab/soundfont/FluidR3Mono_GM.sf3",
       scrollElement: "#tabview-overlay",
       scrollOffsetY: -(headerHeight + 8),
     },

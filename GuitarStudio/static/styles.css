@@ -511,9 +511,17 @@ body {
    used to be listed explicitly here but is redundant with it now.
    input[type="number"] covers Speed Trainer, Export's Target LUFS/boost
    cap, Rate My Take/Practice Tips' offset fields, and the A/V offset field
-   the same way. */
+   the same way.
+   Tab View's own tab transport bar is listed explicitly: its controls are
+   deliberately NOT tagged data-transport (they drive alphaTab's separate
+   player, not the mirrored Audio/State system this attribute means), so
+   without this they'd fall back to the browser's default form-control font
+   while the Track Play Bar right above them uses the theme's — a real
+   reported mismatch, most visible on the ■ stop glyph, which renders at a
+   noticeably different size in Arial vs. the system UI font on macOS. */
 [data-transport], #pa-tuner-hz, .lane-gain-val, .lane-pan-val,
-input[type="number"], [id$="-val"] {
+input[type="number"], [id$="-val"],
+#tabview-transport-bar button, #tabview-transport-bar input {
   font-family: var(--font-mono);
 }
 
