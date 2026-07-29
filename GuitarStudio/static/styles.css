@@ -1696,22 +1696,21 @@ h3:first-child { margin-top: 0; }
 #export-result { margin-top: 8px; font-size: 11px; color: var(--text-dim); }
 #export-result.error { color: var(--danger); }
 
-/* ---------- Screen nav (Mixer / Tone Lab / Play Along / AI Lab / Help) ---------- */
+/* ---------- Screen nav (Mixer / Tone Lab / Play Along / AI Lab / Tab View / Help) ---------- */
 
-/* Top-left corner of the sidebar: 4 equally-sized buttons for the app's
-   real screens, plus a second row underneath for Help alone — same
-   .nav-screen-btn class throughout so every button is identical in
-   size/shape by construction rather than styled separately and hoping
-   they stay in sync. */
+/* Top-left corner of the sidebar: 6 equally-sized buttons in one 2-column,
+   3-row grid — same .nav-screen-btn class throughout so every button is
+   identical in size/shape by construction rather than styled separately
+   and hoping they stay in sync. Help used to get its own full-width row
+   below the other four (a deliberate "it's a modal, not a screen" visual
+   demotion) — per direct request, it now sits in the grid at half that
+   size, alongside Tab View, once there were 6 buttons to line up instead
+   of 5. */
 .nav-screen-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
-  padding: 10px 10px 0;
-}
-.nav-screen-row-help {
-  grid-template-columns: 1fr;
-  padding: 6px 10px 10px;
+  padding: 10px 10px;
 }
 /* ui-review-v5-full.md §2.3: inactive screens are quiet (panel-2/dim text)
    so the active one — the only one still solid accent — actually reads as
@@ -2627,3 +2626,84 @@ svg.ailab-fretboard { display: block; }
    not the full waveform/lane ruler. .pa-card input[type=range] already
    covers width:100%; this just adds a little breathing room around it. */
 .transport-timeline { margin: 6px 0; }
+
+/* ---------- Tab View (orpheus-tabview-spec.md, adapted) ---------- */
+
+/* Fixed-width sidebar + flex-grow main, inside .screen-body's own padding —
+   same "~320px library, rest is content" split the spec asked for, just
+   scoped to this screen's own workspace instead of the top-level app grid
+   (#sidebar/#canvas) the Mixer uses. */
+#tabview-workspace {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+#tabview-sidebar {
+  flex: none;
+  width: 300px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding-bottom: 10px;
+}
+/* Same look as #sidebar h2 (LIBRARY) — this screen's own library/playlists
+   headings, just not literally #sidebar (that's the song Library, a
+   different list entirely). */
+#tabview-sidebar h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  padding: 12px 12px 4px;
+  margin: 0;
+}
+#tabview-library-list, #tabview-playlists-list { padding: 0 0 4px; }
+#tabview-new-playlist-btn { margin: 0 12px 6px; width: calc(100% - 24px); }
+
+/* Same dashed-box drop-zone idiom as #import-drop (the song sidebar's own
+   import zone) — .import-drop-sub (used inline in index.html) is already
+   themed via that rule, reused here rather than duplicated. */
+#tabview-dropzone {
+  margin: 10px;
+  padding: 16px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1.6;
+}
+#tabview-dropzone:hover { color: var(--accent); }
+#tabview-dropzone.dragover { border-color: var(--accent); color: var(--accent); }
+#tabview-import-hint { margin: 0 10px 6px; font-size: 11px; }
+
+#tabview-main { flex: 1; min-width: 0; }
+#tabview-empty-state, #tabview-loading-state {
+  color: var(--text-dim);
+  text-align: center;
+  padding: 60px 20px;
+}
+
+/* alphaTab renders music notation in a fixed ink color against a light
+   page, the same convention every notation app/PDF viewer uses regardless
+   of the host app's own theme — matching Studio/Molten/Future Metal/Castle
+   Rock's dark surfaces here would fight the renderer's own glyph colors
+   rather than themeing it, so this one surface is deliberately always
+   light, the same way an embedded document preview would be. */
+#tabview-canvas-wrap {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 12px;
+  padding: 12px;
+  overflow-x: auto;
+}
+#tabview-track-title { font-weight: 700; margin-left: auto; }
+#tabview-track-artist { margin: 4px 0 0; }
+/* Same "green = actively running" convention as Loop/Count-in/Click
+   elsewhere (button.running / [data-transport="loop-toggle-btn"].active) —
+   not tagged data-transport since alphaTab's own isLooping isn't part of
+   that mirrored-copy system, so it needs its own explicit rule here. */
+#tabview-loop-btn.active { background: var(--success); border-color: var(--success); color: #fff; }

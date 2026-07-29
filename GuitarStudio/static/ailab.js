@@ -401,6 +401,7 @@ function openAiLab() {
   document.getElementById("ailab-overlay").classList.add("show");
   document.getElementById("tonelab-overlay").classList.remove("show");
   document.getElementById("playalong-overlay").classList.remove("show");
+  if (typeof closeTabView === "function") closeTabView();
   paSetActiveScreen("ailab-open-btn");
   AiLab.selectedIndex = null; // re-pick the chord under the playhead on open
   aiLabSetFollow(true); // pinning is per-visit — a fresh open follows the song again

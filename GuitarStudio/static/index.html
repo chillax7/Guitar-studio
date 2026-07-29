@@ -54,19 +54,19 @@
 
   <div id="sidebar">
     <!-- Screen nav — top-left corner, one shared .nav-screen-btn class so
-         all 5 are identical in size/shape. Mixer isn't a real overlay
-         (it's just the base grid below), so its button just closes
-         whatever overlay is open. Help stays a modal, not a persistent
-         "screen," so it never gets .active highlighting — kept on its own
-         row below the four real screens so it doesn't visually compete
-         with them for "which screen am I on" scanning. -->
+         all 6 are identical in size/shape, one 2-column grid. Mixer isn't a
+         real overlay (it's just the base grid below), so its button just
+         closes whatever overlay is open. Help stays a modal, not a
+         persistent "screen," so it never gets .active highlighting, but —
+         per direct request — otherwise sits in the grid like any other
+         button (previously its own full-width row below the other four;
+         that row is gone now that Tab View fills the slot next to it). -->
     <div class="nav-screen-row">
       <button id="mixer-open-btn" class="nav-screen-btn">🎚 Mixer</button>
       <button id="tonelab-open-btn" class="nav-screen-btn">🎛 Tone Lab</button>
       <button id="playalong-open-btn" class="nav-screen-btn">🎸 Play Along</button>
       <button id="ailab-open-btn" class="nav-screen-btn">🧠 AI Lab</button>
-    </div>
-    <div class="nav-screen-row nav-screen-row-help">
+      <button id="tabview-open-btn" class="nav-screen-btn">🎼 Tab View</button>
       <button id="help-open-btn" class="nav-screen-btn">❓ Help</button>
     </div>
     <!-- A playlist is just an ordering over a subset of the same Library
@@ -1388,6 +1388,74 @@
     </div>
   </div>
 
+  <!-- orpheus-tabview-spec.md (adapted): a place to drag & drop Guitar Pro
+       tab files (.gp3/.gp4/.gp5/.gpx) for viewing/playback — rendered and
+       played back client-side by alphaTab (self-hosted, see
+       vendor/alphatab/README.txt), never uploaded anywhere beyond this
+       app's own local server. A separate library from the song Library in
+       the main sidebar on purpose: a tab file has no stems, no mix, no
+       rig — it's a fundamentally different asset, so it gets its own
+       small library scoped to this screen instead of being shoehorned
+       into the existing one. Same .screen-overlay/-header/-body shell as
+       Tone Lab/Play Along/AI Lab. -->
+  <div id="tabview-overlay" class="screen-overlay">
+    <div id="tabview-panel" class="screen-panel">
+      <div id="tabview-header" class="screen-header">
+        <button id="tabview-close-btn">✕ Close</button>
+      </div>
+      <div id="tabview-body" class="screen-body">
+        <div id="tabview-workspace">
+
+          <div id="tabview-sidebar">
+            <div id="tabview-dropzone">Drop a Guitar Pro file here<br><span class="import-drop-sub">.gp3 / .gp4 / .gp5 / .gpx</span><br>or click to import</div>
+            <input type="file" id="tabview-import-input" accept=".gp3,.gp4,.gp5,.gpx,.gp" style="display:none">
+            <p class="hint" id="tabview-import-hint"></p>
+
+            <h2>Library</h2>
+            <div id="tabview-library-list"></div>
+
+            <h2>Playlists</h2>
+            <button id="tabview-new-playlist-btn">+ New playlist</button>
+            <div id="tabview-playlists-list"></div>
+          </div>
+
+          <div id="tabview-main">
+            <div id="tabview-empty-state">
+              <p>Select a tab from the Library, or drop a Guitar Pro file to import one.</p>
+            </div>
+
+            <div id="tabview-player" style="display:none;">
+              <!-- Same shared .transport-bar as Mixer/Play Along/Tone Lab/AI
+                   Lab, minimal subset (this screen has no backing-track
+                   audio to loop/count-in against, no BPM detection, no
+                   tuning reference) — bound to alphaTab's own api.playPause/
+                   stop/playbackSpeed/isLooping instead of Audio/State. -->
+              <div id="tabview-transport-bar" class="transport-bar">
+                <button id="tabview-play-btn" class="primary">▶</button>
+                <button id="tabview-stop-btn">■</button>
+                <button id="tabview-loop-btn" title="Loop the selected bars, or the whole tab if none are selected">Loop</button>
+                <span class="transport-label">Speed</span>
+                <input type="range" id="tabview-speed-slider" min="0.5" max="1.5" step="0.05" value="1">
+                <span id="tabview-speed-display" data-transport="speed-display">100%</span>
+                <span id="tabview-track-title"></span>
+              </div>
+              <p class="hint" id="tabview-track-artist"></p>
+              <div id="tabview-canvas-wrap">
+                <div id="tabview-canvas"></div>
+              </div>
+            </div>
+
+            <div id="tabview-loading-state" style="display:none;">
+              <div class="spinner"></div>
+              <p>Loading tab…</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="shortcuts-overlay">
     <div id="shortcuts-panel">
       <h2>Keyboard shortcuts</h2>
@@ -1432,6 +1500,9 @@
           My Take</b> to score a dry take against the original guitar, and the
           <b>AI Assistant</b> (lick ideas, practice tips, song &amp; artist background —
           the one feature that needs an API key).</li>
+        <li><b>Tab View</b> (🎼) — drop in a Guitar Pro file (.gp3/.gp4/.gp5/.gpx) to
+          view and play back its tab notation, with its own small library and
+          playlists separate from the song Library on the left.</li>
         <li><b>Export</b> (right-hand panel) once the mix sounds right.</li>
       </ol>
       <p class="hint">Every heuristic in this app (key/tempo detection, tone
@@ -1480,5 +1551,6 @@
 <script src="ailab.js"></script>
 <script src="playalong.js"></script>
 <script src="recorder.js"></script>
+<script src="tabview.js"></script>
 </body>
 </html>

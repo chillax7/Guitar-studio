@@ -50,11 +50,13 @@ MODELS_DIR = GUITARSTUDIO_DIR / "models"
 NAM_DIR = MODELS_DIR / "nam"
 IR_DIR = MODELS_DIR / "ir"
 INPUT_DIR = PROJECT_ROOT / "input"
+TABS_DIR = PROJECT_ROOT / "tabs"
 
 PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 NAM_DIR.mkdir(parents=True, exist_ok=True)
 IR_DIR.mkdir(parents=True, exist_ok=True)
 INPUT_DIR.mkdir(parents=True, exist_ok=True)
+TABS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Every place input/ needs to tell audio from non-audio (the Library
 # listing, multi-stem zip extraction) — input/ now legitimately holds a
@@ -2848,6 +2850,131 @@ def svc_save_playlists(playlists: dict) -> dict:
     return {"ok": True}
 
 
+# ---------------------------------------------------------------------------
+# Tab View (orpheus-tabview-spec.md, adapted): Guitar Pro tab files
+# (gp3/gp4/gp5/gpx) are a fundamentally different asset from a separated
+# audio track — no stems, no mix, no rig — so they get their own library
+# under tabs/ (parallel to input/) and their own sidecar metadata file,
+# rather than being shoehorned into svc_tracks/the song Library.
+#
+# Title/artist aren't parsed server-side (the original spec suggested
+# pyguitarpro) — alphaTab, the client-side rendering library this screen
+# already needs to load the file at all, parses that same metadata for
+# free as part of loading the score. Reusing that avoids a whole second
+# GP-file parser (a new Python dependency) just to duplicate a read the
+# client was already going to do; the client PUTs the parsed title/artist
+# back via svc_tab_set_metadata once alphaTab's scoreLoaded fires.
+# ---------------------------------------------------------------------------
+
+TAB_EXTS = (".gp3", ".gp4", ".gp5", ".gpx", ".gp")
+TAB_LIBRARY_FILE = PROJECTS_DIR / "_tab_library.json"
+
+
+def _load_tab_library() -> dict:
+    if not TAB_LIBRARY_FILE.exists():
+        return {"tabs": {}, "playlists": {}}
+    try:
+        data = json.loads(TAB_LIBRARY_FILE.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ApiError(500, f"Could not read tab library file: {exc}")
+    data.setdefault("tabs", {})
+    data.setdefault("playlists", {})
+    return data
+
+
+def _save_tab_library(data: dict) -> None:
+    TAB_LIBRARY_FILE.write_text(json.dumps(data, indent=2))
+
+
+def svc_tabs_list() -> dict:
+    """Every .gp* file under tabs/, cross-referenced with the sidecar's
+    title/artist (missing until the client's first load reports them —
+    see the module comment above) — same "plain directory listing, no
+    separate registration step" pattern as svc_nam_models. A library entry
+    for a file that's been deleted from disk by hand is dropped silently
+    rather than surfaced as an error, same spirit as a stale playlist
+    entry elsewhere in this file."""
+    library = _load_tab_library()
+    on_disk = {p.name for p in TABS_DIR.iterdir() if p.is_file() and p.suffix.lower() in TAB_EXTS}
+    tabs = []
+    for name in sorted(on_disk):
+        meta = library["tabs"].get(name, {})
+        tabs.append({
+            "name": name,
+            "title": meta.get("title", ""),
+            "artist": meta.get("artist", ""),
+        })
+    return {"tabs": tabs, "playlists": library["playlists"]}
+
+
+def svc_tab_upload(filename: str, data: bytes) -> dict:
+    if not data:
+        raise ApiError(400, "Empty upload")
+    name = safe_name(filename)
+    if Path(name).suffix.lower() not in TAB_EXTS:
+        raise ApiError(400, f"'{name}' isn't a Guitar Pro tab file ({'/'.join(TAB_EXTS)})")
+    dest = TABS_DIR / name
+    dest.write_bytes(data)
+    return {"name": name, "size": len(data)}
+
+
+def resolve_tab_file(filename: str) -> Path:
+    """Same containment check as resolve_nam_file/resolve_ir_file — filename
+    only (no nested folders, unlike the NAM/IR library), so safe_name's
+    directory-component stripping is enough on its own here."""
+    path = TABS_DIR / safe_name(filename)
+    if not path.exists():
+        raise ApiError(404, f"No tab file named '{filename}'")
+    return path
+
+
+def svc_tab_set_metadata(filename: str, title: str, artist: str) -> dict:
+    name = safe_name(filename)
+    library = _load_tab_library()
+    library["tabs"][name] = {"title": (title or "").strip(), "artist": (artist or "").strip()}
+    _save_tab_library(library)
+    return {"ok": True}
+
+
+def svc_tab_rename(filename: str, new_name: str) -> dict:
+    old_path = resolve_tab_file(filename)
+    new_name_safe = safe_name(new_name)
+    if not Path(new_name_safe).suffix:
+        new_name_safe += old_path.suffix
+    new_path = TABS_DIR / new_name_safe
+    if new_path.exists() and new_path != old_path:
+        raise ApiError(409, f"'{new_name_safe}' already exists")
+    old_path.rename(new_path)
+    library = _load_tab_library()
+    if filename in library["tabs"]:
+        library["tabs"][new_name_safe] = library["tabs"].pop(filename)
+    for tracks in library["playlists"].values():
+        for i, t in enumerate(tracks):
+            if t == filename:
+                tracks[i] = new_name_safe
+    _save_tab_library(library)
+    return {"name": new_name_safe}
+
+
+def svc_tab_delete(filename: str) -> dict:
+    path = resolve_tab_file(filename)
+    path.unlink()
+    library = _load_tab_library()
+    library["tabs"].pop(filename, None)
+    for tracks in library["playlists"].values():
+        if filename in tracks:
+            tracks.remove(filename)
+    _save_tab_library(library)
+    return {"ok": True}
+
+
+def svc_tab_save_playlists(playlists: dict) -> dict:
+    library = _load_tab_library()
+    library["playlists"] = playlists
+    _save_tab_library(library)
+    return {"ok": True}
+
+
 # V4-F4: practice log — honest numbers, no gamification (streaks, badges,
 # goals). Content-hash-keyed like projects/analysis, so a renamed song
 # keeps its history. The client (app.js's practice-time accumulator) sends
@@ -3206,6 +3333,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(200, svc_load_playlists())
             if path == "/api/settings":
                 return self._send_json(200, svc_load_settings())
+            if path == "/api/tabs":
+                return self._send_json(200, svc_tabs_list())
+            if path == "/api/tabs/file":
+                return self._send_file(resolve_tab_file(query.get("filename", "")), cacheable=True)
             if path.startswith("/api/"):
                 return self._send_json(404, {"error": f"Unknown route: {path}"})
             return self._serve_static(path)
@@ -3391,6 +3522,31 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/playlists":
                 body = self._read_json_body()
                 result = svc_save_playlists(body.get("playlists", {}))
+                return self._send_json(200, result)
+
+            if path == "/api/tabs/upload":
+                _, query = self._query()
+                result = svc_tab_upload(query.get("filename", ""), self._read_body())
+                return self._send_json(200, result)
+
+            if path == "/api/tabs/metadata":
+                body = self._read_json_body()
+                result = svc_tab_set_metadata(body.get("filename", ""), body.get("title", ""), body.get("artist", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/tabs/rename":
+                body = self._read_json_body()
+                result = svc_tab_rename(body.get("filename", ""), body.get("new_name", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/tabs/delete":
+                body = self._read_json_body()
+                result = svc_tab_delete(body.get("filename", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/tabs/playlists":
+                body = self._read_json_body()
+                result = svc_tab_save_playlists(body.get("playlists", {}))
                 return self._send_json(200, result)
 
             if path == "/api/settings/provider_key":

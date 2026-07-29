@@ -9,6 +9,8 @@ __pycache__/
 input/
 separated/
 output/
+# User's own Guitar Pro tab library (Tab View) — same reasoning as input/.
+tabs/
 # Per-user saved state (mixes, rig presets, playlists, practice history) —
 # same reasoning as the audio dirs above: personal data, not source, and
 # committing it would leak one user's library/practice habits into the repo.

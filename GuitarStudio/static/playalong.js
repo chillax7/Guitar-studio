@@ -1999,6 +1999,7 @@ const PA_SCREEN_LABELS = {
   "tonelab-open-btn": "Tone Lab",
   "playalong-open-btn": "Play Along",
   "ailab-open-btn": "AI Lab",
+  "tabview-open-btn": "Tab View",
 };
 function paSetActiveScreen(id) {
   document.querySelectorAll(".nav-screen-row .nav-screen-btn").forEach((btn) => {
@@ -2019,6 +2020,7 @@ async function openToneLab() {
   document.getElementById("tonelab-overlay").classList.add("show");
   document.getElementById("playalong-overlay").classList.remove("show");
   if (typeof closeAiLab === "function") closeAiLab();
+  if (typeof closeTabView === "function") closeTabView();
   paRefreshDevices();
   paRefreshOutputDevices();
   paRefreshNamModels();
@@ -2040,6 +2042,7 @@ async function openPlayAlong() {
   document.getElementById("playalong-overlay").classList.add("show");
   document.getElementById("tonelab-overlay").classList.remove("show");
   if (typeof closeAiLab === "function") closeAiLab();
+  if (typeof closeTabView === "function") closeTabView();
   paSetActiveScreen("playalong-open-btn");
   // app.js only fetches the log on selectTrack — opening Play Along without
   // just having switched tracks (the common case: pick a song on the Mixer,
@@ -2060,6 +2063,7 @@ function closeAllScreens() {
   closeToneLab();
   closePlayAlong();
   if (typeof closeAiLab === "function") closeAiLab();
+  if (typeof closeTabView === "function") closeTabView();
   paSetActiveScreen("mixer-open-btn");
 }
 
