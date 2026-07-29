@@ -2733,3 +2733,20 @@ svg.ailab-fretboard { display: block; }
    active, same as everything else in this app. */
 .at-cursor-bar { background: color-mix(in srgb, var(--accent) 20%, transparent); }
 .at-cursor-beat { background: var(--accent); }
+
+/* Real user request: select a section of the tab and loop just that.
+   alphaTab's player.enableUserInteraction:true (tabview.js, the library's
+   own default) already wires click-drag-across-the-notation into a bar
+   range selection, drawn as plain unstyled <div>s inside a wrapper alphaTab
+   tags .at-selection — same "ships fully transparent, needs its own color"
+   situation as the cursor above, so this is the one rule that actually
+   makes the drag highlight visible. Blue rather than --accent so it never
+   reads as "the currently-playing bar" (the cursor's own color) when both
+   are visible at once — the tab canvas is always a fixed white/light
+   surface regardless of theme (see #tabview-canvas-wrap's own comment), so
+   a fixed color here (not tied to --accent) is fine and stays legible
+   against it in every theme. */
+.at-selection > div { background: rgba(0, 120, 215, 0.18); }
+
+#tabview-loop-hint { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#tabview-clear-selection-btn { padding: 2px 8px; font-size: 11px; }

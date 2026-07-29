@@ -52,6 +52,21 @@ function loadAlphaTabModule() {
 async function ensureTabViewApi() {
   if (TabView.api) return TabView.api;
   const alphaTab = await loadAlphaTabModule();
+
+  // Direct request: the tab should auto-scroll during playback so the
+  // playhead stays at the top of the screen. alphaTab's own
+  // player.scrollMode (default ScrollMode.Continuous) already re-scrolls
+  // to the new row every time the cursor advances into it — but only
+  // within whatever element player.scrollElement names, which defaults to
+  // "html,body". That default does nothing here: this screen's actual
+  // scrolling element is #tabview-overlay itself (.screen-overlay's own
+  // overflow-y: auto in styles.css), not the document body, so alphaTab's
+  // auto-scroll was silently scrolling a page that never moves.
+  // scrollOffsetY nudges the target row down by the sticky screen-header's
+  // height (+ a small gap) so the row alphaTab scrolls to doesn't end up
+  // hidden underneath it.
+  const headerHeight = document.getElementById("tabview-header").getBoundingClientRect().height;
+
   const api = new alphaTab.AlphaTabApi(document.getElementById("tabview-canvas"), {
     core: {
       fontDirectory: "vendor/alphatab/font/",
@@ -66,8 +81,29 @@ async function ensureTabViewApi() {
     player: {
       enablePlayer: true,
       enableCursor: true,
+      // Direct request: select a section of the tab and loop over just
+      // that. This is alphaTab's own built-in click-drag bar selection
+      // (already the library default — set explicitly here since the
+      // section-loop feature below depends on it, not just for cursor
+      // clicks). Dragging across the notation sets api.playbackRange via
+      // alphaTab's internal applyPlaybackRangeFromHighlight(); the existing
+      // Loop button (isLooping) then repeats within that range instead of
+      // the whole tab once both are set — no custom loop logic needed,
+      // this is exactly what the two combined already do.
+      enableUserInteraction: true,
       soundFont: "vendor/alphatab/soundfont/sonivox.sf3",
+      scrollElement: "#tabview-overlay",
+      scrollOffsetY: -(headerHeight + 8),
     },
+  });
+
+  // A left-over selection from the previously loaded tab would refer to
+  // Beat objects of a score that no longer exists — same "leftover from
+  // last song is a trap" reasoning this app already applies to Zoom/Speed/
+  // Tune on track switch (app.js selectTrack), just for this screen's own
+  // tab switch instead.
+  api.playbackRangeHighlightChanged.on((e) => {
+    document.getElementById("tabview-clear-selection-btn").style.display = e && e.startBeat ? "" : "none";
   });
 
   api.scoreLoaded.on((score) => onTabScoreLoaded(score));
@@ -100,6 +136,14 @@ async function ensureTabViewApi() {
 }
 
 function onTabScoreLoaded(score) {
+  // Clear any loop-section selection left over from the previously loaded
+  // tab — it refers to Beat objects belonging to that tab's score, not
+  // this new one.
+  if (TabView.api) {
+    TabView.api.playbackRange = null;
+    TabView.api.clearPlaybackRangeHighlight();
+  }
+
   const title = score.title || "";
   const artist = score.artist || "";
   document.getElementById("tabview-bar-tab-name").textContent = title || TabView.currentTab;
@@ -172,6 +216,11 @@ function wireTabViewTransport() {
     if (!TabView.api) return;
     TabView.api.isLooping = !TabView.api.isLooping;
     e.currentTarget.classList.toggle("active", TabView.api.isLooping);
+  });
+  document.getElementById("tabview-clear-selection-btn").addEventListener("click", () => {
+    if (!TabView.api) return;
+    TabView.api.playbackRange = null;
+    TabView.api.clearPlaybackRangeHighlight();
   });
   document.getElementById("tabview-speed-slider").addEventListener("input", (e) => {
     const val = parseFloat(e.target.value);

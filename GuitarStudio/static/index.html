@@ -1495,6 +1495,15 @@
             <button id="tabview-zoom-in-btn" title="Zoom in">+</button>
           </div>
           <p class="hint" id="tabview-track-artist"></p>
+          <!-- Direct request: select a section of the tab itself and loop
+               over just that. Built entirely on alphaTab's own click-drag
+               bar selection (player.enableUserInteraction, tabview.js) —
+               dragging across the notation below highlights the picked bars
+               and sets api.playbackRange; the existing Loop button above
+               then repeats within that range instead of the whole tab.
+               #tabview-clear-selection-btn only appears once a range is
+               actually selected (playbackRangeHighlightChanged, tabview.js). -->
+          <p class="hint" id="tabview-loop-hint">Drag across the tab below to select a section, then turn on Loop to repeat it. <button id="tabview-clear-selection-btn" style="display:none;">✕ Clear selection</button></p>
           <div id="tabview-canvas-wrap">
             <div id="tabview-canvas"></div>
           </div>
