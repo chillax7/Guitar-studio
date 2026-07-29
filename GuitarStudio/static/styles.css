@@ -994,17 +994,35 @@ button:disabled:hover { filter: none; }
 
 /* ---------- Transport ---------- */
 
-#transport {
-  display: none;
+/* orpheus-transport-spec.md: ONE shared bar treatment (Mixer's original
+   full-width-row look) used identically on Mixer, Play Along, and Tone Lab
+   — not three independently-styled treatments (Mixer's bare row, Play
+   Along's boxed pa-card, Tone Lab having none at all). Still three mirrored
+   DOM copies under the hood (same idiom as data-transport itself, see the
+   comment further down), but they all render from this one class, so a
+   future visual tweak here reaches every screen at once instead of needing
+   three matching edits. Mixer's copy additionally carries the #transport id
+   for showState's workspace-only visibility (Play Along/Tone Lab's copies
+   have no such gating — those screens have no waveform/empty-state to hide
+   behind, so their bar is just always there). */
+.transport-bar {
+  display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
+#transport { display: none; }
 #transport.show { display: flex; }
-#time-display { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--text-dim); min-width: 90px; }
-#transport input[type=range] { width: 90px; }
+[data-transport="time-display"] { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--text-dim); min-width: 90px; }
+.transport-bar input[type=range] { width: 90px; }
+/* Play Along/Tone Lab's copies (no waveform to click-to-seek on, unlike
+   Mixer) add a scrubber Mixer's own copy doesn't have. flex-basis:100%
+   forces it onto its own full-width row above the button row, rather than
+   squeezing a wide range input in among a dozen small controls. */
+.transport-bar .transport-timeline { flex: 1 1 100%; width: auto; margin: 0 0 4px; }
 /* Keyed off the shared data-transport attribute, not per-copy IDs — every
    mirrored copy (Mixer, Play Along, AI Lab's Rate My Take, and any future
    one) gets the green-when-active look automatically, without needing its

@@ -117,7 +117,6 @@
     <div id="toolbar">
       <button id="rec-pill" style="display:none">● REC</button>
       <div id="toolbar-tools">
-        <button id="loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
         <button id="add-marker-btn" title="Add a section marker at the current position">+ Marker</button>
         <button id="zoom-to-loop-btn" title="Zoom the waveform/ruler in to the current loop region">Zoom to loop</button>
         <button id="zoom-out-btn" title="Zoom back out to the whole track" style="display:none">Zoom out</button>
@@ -130,7 +129,6 @@
         <input type="range" id="timeline-zoom-slider" min="0" max="1" step="0.01" value="0" title="Zoom the timeline in — scrolls to follow playback once zoomed in. Double-click to reset.">
         <button id="click-toggle" title="Metronome click synced to this track's detected beat grid">Click</button>
         <input type="range" id="click-volume-slider" min="0" max="100" step="1" value="25" title="Click volume">
-        <button id="count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
       </div>
       <div class="spacer"></div>
       <div id="model-badge">
@@ -146,10 +144,18 @@
       <button id="dismiss-stale-btn">Dismiss</button>
     </div>
 
-    <div id="transport">
+    <!-- orpheus-transport-spec.md: play/pause/stop, loop, BPM, speed, tune,
+         volume all live in this one bar now — Loop/Count-in moved here from
+         #toolbar-tools above, which used to split them across two rows.
+         #toolbar-tools keeps only Mixer-specific editing tools (markers,
+         zoom, click, model/Separate) that don't belong on Play Along/Tone
+         Lab's copies of this same bar. -->
+    <div id="transport" class="transport-bar">
       <button id="play-btn" data-transport="play-btn">▶</button>
       <button id="stop-btn" data-transport="stop-btn">■</button>
       <span id="time-display" data-transport="time-display">0:00 / 0:00</span>
+      <button id="loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
+      <button id="count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
       <span class="transport-label">BPM</span>
       <span id="bpm-display" data-transport="bpm-display">—</span>
       <button id="bpm-half-btn" title="Detected tempo looks like double the real one? Halve it" style="padding:2px 6px;font-size:10px;">½×</button>
@@ -375,34 +381,40 @@
       </div>
       <div id="playalong-body" class="screen-body">
 
+        <!-- orpheus-transport-spec.md: same shared .transport-bar treatment
+             as Mixer, not a boxed pa-card — this used to be its own
+             "Backing Track" card, visually distinct from Mixer's bar even
+             though it drove the identical data-transport-mirrored controls.
+             Kept at the very top of the screen, above the top-strip glance
+             row, same position as Mixer's. Adds a timeline scrubber Mixer's
+             own copy doesn't have (Play Along has no waveform to click-to-
+             seek on) — see .transport-bar .transport-timeline in styles.css. -->
+        <div id="pa-transport-bar" class="transport-bar">
+          <input type="range" id="pa-bt-timeline" data-transport="timeline" class="transport-timeline" min="0" max="0" step="0.01" value="0">
+          <button id="pa-bt-play-btn" data-transport="play-btn" class="primary">▶</button>
+          <button id="pa-bt-stop-btn" data-transport="stop-btn">■</button>
+          <span id="pa-bt-time-display" data-transport="time-display">0:00 / 0:00</span>
+          <button id="pa-bt-loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
+          <button id="pa-bt-count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
+          <span class="transport-label">BPM</span>
+          <span id="pa-bt-bpm-display" data-transport="bpm-display">—</span>
+          <span class="transport-label">Speed</span>
+          <input type="range" id="pa-bt-speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
+          <span id="pa-bt-speed-display" data-transport="speed-display">1.00×</span>
+          <span class="transport-label">Tune</span>
+          <input type="range" id="pa-bt-tune-slider" data-transport="tune-slider" min="-1200" max="1200" step="1" value="0">
+          <span id="pa-bt-tune-display" data-transport="tune-display">0¢</span>
+          <span class="transport-label">Volume</span>
+          <input type="range" id="pa-bt-volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
+          <span id="pa-bt-volume-display" data-transport="volume-display">100%</span>
+        </div>
+
         <!-- V3-U1: top strip, always visible — the "am I in tune, am I
-             clipping, where's the song" glance row. Backing Track mirrors
-             the mixer transport (same data-transport IDs); Tuner is an
-             inline readout, not a card, since it mutes anyway and doesn't
-             need one. Input (device pick, Enable, Calibrate) moved to Tone
+             clipping, where's the song" glance row. Tuner is an inline
+             readout, not a card, since it mutes anyway and doesn't need
+             one. Input (device pick, Enable, Calibrate) moved to Tone
              Lab — that's rig setup, not practice/recording. -->
         <div id="pa-top-strip" class="top-strip-grid">
-          <section class="pa-card pa-top-card">
-            <h3>Backing Track</h3>
-            <div class="row">
-              <button id="pa-bt-play-btn" data-transport="play-btn" class="primary">▶</button>
-              <button id="pa-bt-stop-btn" data-transport="stop-btn">■</button>
-              <span id="pa-bt-time-display" data-transport="time-display">0:00 / 0:00</span>
-            </div>
-            <input type="range" id="pa-bt-timeline" data-transport="timeline" class="transport-timeline" min="0" max="0" step="0.01" value="0">
-            <div class="row">
-              <button id="pa-bt-loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
-              <button id="pa-bt-count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
-            </div>
-            <label>BPM <span id="pa-bt-bpm-display" data-transport="bpm-display">—</span></label>
-            <label>Speed <span id="pa-bt-speed-display" data-transport="speed-display">1.00×</span></label>
-            <input type="range" id="pa-bt-speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
-            <label>Tune <span id="pa-bt-tune-display" data-transport="tune-display">0¢</span></label>
-            <input type="range" id="pa-bt-tune-slider" data-transport="tune-slider" min="-1200" max="1200" step="1" value="0">
-            <label>Volume <span id="pa-bt-volume-display" data-transport="volume-display">100%</span></label>
-            <input type="range" id="pa-bt-volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
-          </section>
-
           <section class="pa-card pa-top-card pa-tuner-card">
             <h3>Guitar Tuner</h3>
             <div class="pa-tuner-gauge">
@@ -618,6 +630,32 @@
         <button id="tonelab-close-btn">✕ Close</button>
       </div>
       <div id="tonelab-body" class="screen-body">
+
+        <!-- orpheus-transport-spec.md: Tone Lab had no transport at all
+             before this — hearing the amp against the backing track while
+             dialing in tone is a core use case, so it gets the same shared
+             .transport-bar as Mixer/Play Along, same position (top of
+             screen), same controls, including the timeline scrubber Play
+             Along's copy also has (no waveform here either). -->
+        <div id="tl-transport-bar" class="transport-bar">
+          <input type="range" id="tl-bt-timeline" data-transport="timeline" class="transport-timeline" min="0" max="0" step="0.01" value="0">
+          <button id="tl-bt-play-btn" data-transport="play-btn" class="primary">▶</button>
+          <button id="tl-bt-stop-btn" data-transport="stop-btn">■</button>
+          <span id="tl-bt-time-display" data-transport="time-display">0:00 / 0:00</span>
+          <button id="tl-bt-loop-toggle-btn" data-transport="loop-toggle-btn">Loop</button>
+          <button id="tl-bt-count-in-toggle" data-transport="count-in-toggle" title="2 bars of click before playback starts">Count-in</button>
+          <span class="transport-label">BPM</span>
+          <span id="tl-bt-bpm-display" data-transport="bpm-display">—</span>
+          <span class="transport-label">Speed</span>
+          <input type="range" id="tl-bt-speed-slider" data-transport="speed-slider" min="0.5" max="2" step="0.05" value="1">
+          <span id="tl-bt-speed-display" data-transport="speed-display">1.00×</span>
+          <span class="transport-label">Tune</span>
+          <input type="range" id="tl-bt-tune-slider" data-transport="tune-slider" min="-1200" max="1200" step="1" value="0">
+          <span id="tl-bt-tune-display" data-transport="tune-display">0¢</span>
+          <span class="transport-label">Volume</span>
+          <input type="range" id="tl-bt-volume-slider" data-transport="volume-slider" min="0" max="100" step="1" value="100">
+          <span id="tl-bt-volume-display" data-transport="volume-display">100%</span>
+        </div>
 
         <!-- Input device enable/calibration — rig setup, so it lives here
              rather than on Play Along. -->
