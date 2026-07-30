@@ -1651,9 +1651,16 @@ button:disabled:hover { filter: none; }
   position: absolute;
   top: 0; bottom: 0;
   width: 1px;
-  background: rgba(255, 255, 255, 0.12);
+  /* Direct feedback (same class of bug as .mute-lane's old hard-coded
+     near-black): this was a fixed rgba(255,255,255,...) — invisible-thin
+     white lines read fine on old dark themes but nearly disappeared
+     against every light V9 palette's pale ruler background. var(--text)
+     is dark in light themes and light in dark themes by construction, so
+     mixing it toward transparent stays visible in all four room/theme
+     combinations instead of needing a per-theme override. */
+  background: color-mix(in srgb, var(--text) 18%, transparent);
 }
-.beat-tick.downbeat { background: rgba(255, 255, 255, 0.3); }
+.beat-tick.downbeat { background: color-mix(in srgb, var(--text) 40%, transparent); }
 #loop-region {
   position: absolute;
   top: 0; bottom: 0;
