@@ -601,12 +601,15 @@ html[data-room="rig"] .screen-overlay { left: var(--v9-rail-width); }
 
 /* ---------- Activity rail (V9) ---------- */
 
-/* Full-height, spans both grid rows (grid-area:rail set above) — the one
-   nav element that's the same regardless of which room is open, colored by
-   room identity (--v9-rail-bg) rather than by theme A/B, per the design
-   handoff's "the rail always reads as its room's identity" note. */
+/* Full-height, spans both grid rows (grid-area:rail set above). Direct
+   feedback: was colored by room identity (a fixed cream/near-black
+   regardless of theme) per the design handoff's original intent — changed
+   to match the main pane's own --bg exactly, with just a border for
+   definition, so the rail reads as part of the same surface rather than
+   a permanently-tinted strip next to it. */
 #activity-rail {
-  background: var(--v9-rail-bg);
+  background: var(--bg);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1436,7 +1439,15 @@ button:disabled:hover { filter: none; }
   position: relative;
   height: 20px;
   margin-top: 3px;
-  background: #1a1c22;
+  /* Direct feedback: was a hard-coded near-black (#1a1c22) that read fine
+     on old dark themes but slammed against every light V9 palette —
+     var(--panel-2) already resolves to each theme's own "quiet paintable
+     surface" shade (the same one .lane-body canvas already uses below),
+     so this now looks right automatically in all four room/theme
+     combinations instead of needing a per-theme override (see the old
+     brightspark-only fix this generalizes). */
+  background: var(--panel-2);
+  border: 1px solid var(--border);
   border-radius: 3px;
   cursor: crosshair;
   overflow: hidden; /* BT-17 — same reasoning as #ruler's own overflow:hidden */
@@ -1740,7 +1751,15 @@ h3:first-child { margin-top: 0; }
    conventional (warn=amber, danger=red, success=green, tuner=red/blue/
    gold) per the redesign brief's own constraint that meters must stay
    legible, not restyled for brand's sake. */
-:root[data-room="song"][data-v9-theme="A"] {
+/* V9 follow-up (direct feedback): the original mapping gave each room its
+   own independent A/B default, so Tone Lab opened dark while every other
+   screen opened light — a "contrast switch" between rooms at the same
+   global theme setting. data-v9-theme is now a single global light/dark
+   choice; both rooms resolve it to whichever of their two palettes matches
+   that brightness, so the whole app is consistently light or consistently
+   dark regardless of which screen is open. Room identity now lives purely
+   in hue (warm song-room accent vs. neutral rig-room grey), not brightness. */
+:root[data-room="song"][data-v9-theme="light"] {
   --bg: #f5efe6; --panel: #ffffff; --panel-2: #efe6d6; --border: #e4dbc8;
   --text: #2a2118; --text-dim: #8a7d6c; --accent: #c1531f; --accent-dim: #f0ddd0;
   --waveform: #e0d2b8; --accent-2: #7c6cf0; --accent-2-dim: #efecff;
@@ -1750,7 +1769,7 @@ h3:first-child { margin-top: 0; }
   --track-piano: #8a6fbf; --track-other: #6f9c52; --track-candidate-a: #4a9c96; --track-candidate-b: #6f8fae;
   --dry-take-accent: #3fa9a0;
 }
-:root[data-room="song"][data-v9-theme="B"] {
+:root[data-room="song"][data-v9-theme="dark"] {
   --bg: #2a2118; --panel: #382c1f; --panel-2: #3f3123; --border: #453a2b;
   --text: #f5efe6; --text-dim: #baa88f; --accent: #ff7a3d; --accent-dim: #4a2e1c;
   --waveform: #5a4a37; --accent-2: #a99bff; --accent-2-dim: rgba(169,155,255,.15);
@@ -1760,7 +1779,7 @@ h3:first-child { margin-top: 0; }
   --track-piano: #9782c9; --track-other: #7cae62; --track-candidate-a: #4a9690; --track-candidate-b: #6a86a3;
   --dry-take-accent: #45a89e;
 }
-:root[data-room="rig"][data-v9-theme="A"] {
+:root[data-room="rig"][data-v9-theme="dark"] {
   --bg: #141414; --panel: #1d1d1d; --panel-2: #232323; --border: #333029;
   --text: #ece7df; --text-dim: #8f897d; --accent: #ff7a3d; --accent-dim: #3a2a1c;
   --waveform: #3a3a3a; --accent-2: #a99bff; --accent-2-dim: rgba(169,155,255,.15);
@@ -1770,7 +1789,7 @@ h3:first-child { margin-top: 0; }
   --track-piano: #9782c9; --track-other: #7cae62; --track-candidate-a: #4a9690; --track-candidate-b: #6a86a3;
   --dry-take-accent: #45a89e;
 }
-:root[data-room="rig"][data-v9-theme="B"] {
+:root[data-room="rig"][data-v9-theme="light"] {
   --bg: #e7e4dd; --panel: #ffffff; --panel-2: #dedad0; --border: #d5d1c6;
   --text: #1a1a1a; --text-dim: #6b675e; --accent: #c1531f; --accent-dim: #f0ddd0;
   --waveform: #d5d1c6; --accent-2: #7c6cf0; --accent-2-dim: #efecff;
@@ -1808,11 +1827,6 @@ h3:first-child { margin-top: 0; }
   --topbar-height: 46px;
   --sidebar-width: 220px;
 }
-/* Rail background is the one thing that stays keyed to ROOM regardless of
-   theme A/B — "the rail always reads as its room's identity" per the
-   handoff (§Shell). */
-:root[data-room="song"] { --v9-rail-bg: #ece3d3; }
-:root[data-room="rig"] { --v9-rail-bg: #0d0d0d; }
 
 /* Collapsible Track/Speed Trainer/Export panel (real user report: it eats
    screen width on the Mixer that could go to the lanes). Same "own CSS var

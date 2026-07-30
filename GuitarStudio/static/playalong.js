@@ -2066,7 +2066,7 @@ const PA_SCREEN_LABELS = {
   "mixer-open-btn": "Mixer",
   "tonelab-open-btn": "Tone Lab",
   "playalong-open-btn": "Play Along",
-  "ailab-open-btn": "Coach", // V9: renamed from "AI Lab" per the design handoff — screen/element IDs stay ailab-* internally
+  "ailab-open-btn": "AI Lab", // V9 direct feedback: reverted the "Coach" rename in the title bar (kept elsewhere — violet theming, "Assistant" tab label)
   "tabview-open-btn": "Tab View",
 };
 function paSetActiveScreen(id) {
@@ -2074,14 +2074,15 @@ function paSetActiveScreen(id) {
     btn.classList.toggle("active", btn.id === id);
   });
   document.getElementById("top-banner-screen-label").textContent = PA_SCREEN_LABELS[id] || "";
-  // V9 "Two Rooms": Tone Lab is the dark "rig room," every other screen is
-  // the warm "song room" — styles.css's :root[data-room][data-v9-theme]
-  // blocks pick the actual palette off this attribute. See
+  // V9 "Two Rooms": Tone Lab is the neutral "rig room," every other screen
+  // is the warm "song room" — styles.css's :root[data-room][data-v9-theme]
+  // blocks pick the actual palette off this attribute (light/dark stays
+  // global, only the hue changes per room). See
   // research/v9-two-rooms-implementation-plan.md §2.
   document.documentElement.setAttribute("data-room", id === "tonelab-open-btn" ? "rig" : "song");
-  // The A/B toggle's icon means "switch to light/dark," which depends on
-  // which room just became current (rig room's A is dark, song room's A is
-  // light) — re-resolve it after every room change, not just on toggle click.
+  // Re-apply on every room change too, not just on toggle click — harmless
+  // no-op most of the time, but keeps data-v9-theme/the toggle icon correct
+  // in the rare case something else changed it while this screen was closed.
   if (typeof applyV9Theme === "function") applyV9Theme(currentV9Theme());
   if (State.track) renderLanes(); // waveform color depends on --waveform, which just changed room
   // V9: Songs/Tabs drawer filter chips reflect which screen (and therefore

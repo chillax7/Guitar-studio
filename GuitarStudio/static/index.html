@@ -11,16 +11,21 @@
      scope" decision — v9 replaces the old cycle toggle on this branch
      only). Two independent bits: data-room (song/rig — kept in sync at
      runtime by paSetActiveScreen, playalong.js; defaults to "song" here
-     since the app always opens on Mixer) and data-v9-theme (the A/B
-     toggle, persisted by wireThemeToggle, app.js). Both must be set before
-     first paint, or styles.css's :root[data-room][data-v9-theme] palette
-     blocks won't match anything and every custom property falls through
-     to the plain :root defaults (Studio's old dark-blue look). -->
+     since the app always opens on Mixer) and data-v9-theme (light/dark —
+     a single GLOBAL choice, not per-room; direct feedback was that Tone
+     Lab defaulting to dark while every other screen defaulted to light
+     read as the app "switching to the contrasting theme," so both rooms
+     now resolve the same light/dark value to whichever of their own two
+     palettes matches that brightness — see styles.css's four
+     :root[data-room][data-v9-theme] blocks). Both attributes must be set
+     before first paint, or those blocks won't match anything and every
+     custom property falls through to the plain :root defaults (Studio's
+     old dark-blue look). -->
 <script>
   (function () {
     document.documentElement.setAttribute("data-room", "song");
     var t = localStorage.getItem("gs_v9_theme");
-    document.documentElement.setAttribute("data-v9-theme", t === "B" ? "B" : "A");
+    document.documentElement.setAttribute("data-v9-theme", t === "dark" ? "dark" : "light");
   })();
 </script>
 </head>
@@ -42,7 +47,7 @@
       <button id="mixer-open-btn" class="nav-screen-btn" title="Mixer" aria-label="Mixer">M</button>
       <button id="tonelab-open-btn" class="nav-screen-btn" title="Tone Lab" aria-label="Tone Lab">T</button>
       <button id="playalong-open-btn" class="nav-screen-btn" title="Play Along" aria-label="Play Along">P</button>
-      <button id="ailab-open-btn" class="nav-screen-btn" title="Coach (AI Lab)" aria-label="Coach (AI Lab)">A</button>
+      <button id="ailab-open-btn" class="nav-screen-btn" title="AI Lab" aria-label="AI Lab">A</button>
       <button id="tabview-open-btn" class="nav-screen-btn" title="Tab View" aria-label="Tab View">G</button>
     </div>
     <div id="activity-rail-spacer"></div>
@@ -51,7 +56,7 @@
 
   <div id="top-banner">
     <img id="app-logo" src="app-icon.svg" alt="">
-    <span id="app-title">Orpheus</span>
+    <span id="app-title">Orpheus Guitar Studio V9</span>
     <!-- The design handoff's own screens never show a page title (only the
          wordmark + active rail icon) — flagged as a real gap and fixed here
          rather than carried over: this label is what actually answers
