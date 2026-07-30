@@ -5,6 +5,25 @@ an A/B exploration, not a replacement — `main` stays untouched and
 deployable throughout. Nothing here merges to `main` without an explicit
 go-ahead once it's been used for real.
 
+**Update — palette/typography reverted, shell kept:** after live A/B
+testing, direct feedback asked to bring back all 5 of the classic named
+themes (Studio, Molten Obsidian, Bright Spark, Future Metal, Castle Rock)
+with their original colours and fonts, rather than the light/dark toggle
++ 4 hand-built room palettes §2 describes below. That toggle/palette
+system has been removed; `data-theme` (the original mechanism) and
+`THEME_ORDER` cycling are back verbatim in `styles.css`/`app.js`. The V9
+shell layout — activity rail, drawer, restored per-screen title, the
+Tone-Lab-hides-drawer behavior — is unaffected and stays; `data-room` is
+now a layout-only flag (no palette meaning). Every V9-introduced
+component that had hard-coded "Space Grotesk"/"Manrope"/"JetBrains Mono"
+now reads `var(--heading-font)`/`var(--font-ui)`/`var(--font-mono)`
+instead, so it follows whichever of the 5 themes is active (Future
+Metal's Orbitron/Rajdhani, Castle Rock's Cinzel, etc.) rather than being
+locked to the V9-specific fonts, which have been removed along with their
+vendored files. §2's palette tokens and font vendoring below are kept as
+a historical record of what was tried, not the current state — see this
+note as the authoritative "what's actually live" answer.
+
 **Source material:** `design_handoff_orpheus_redesign/` (README.md,
 `orpheus-directions.html`, `orpheus-prototype.html`, screenshots) from
 Claude Design, built against `research/claude-design-redesign-brief.md`.

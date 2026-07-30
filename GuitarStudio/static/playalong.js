@@ -2067,24 +2067,20 @@ const PA_SCREEN_LABELS = {
   "tonelab-open-btn": "Tone Lab",
   "playalong-open-btn": "Play Along",
   "ailab-open-btn": "AI Lab", // V9 direct feedback: reverted the "Coach" rename in the title bar (kept elsewhere — violet theming, "Assistant" tab label)
-  "tabview-open-btn": "Tab View",
+  "tabview-open-btn": "Guitar Pro Tab View", // direct feedback: clarifies what the rail's "G" monogram stands for
 };
 function paSetActiveScreen(id) {
   document.querySelectorAll(".nav-screen-row .nav-screen-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.id === id);
   });
   document.getElementById("top-banner-screen-label").textContent = PA_SCREEN_LABELS[id] || "";
-  // V9 "Two Rooms": Tone Lab is the neutral "rig room," every other screen
-  // is the warm "song room" — styles.css's :root[data-room][data-v9-theme]
-  // blocks pick the actual palette off this attribute (light/dark stays
-  // global, only the hue changes per room). See
-  // research/v9-two-rooms-implementation-plan.md §2.
+  // V9 shell: Tone Lab is the "rig room," every other screen is the "song
+  // room" — this no longer drives the color palette (reverted back to the
+  // classic 5 named themes, data-theme, per direct feedback), but it's
+  // still what styles.css's html[data-room="rig"] rule keys off to hide
+  // the drawer and reclaim its width for the pedal chain on this one
+  // screen. See research/v9-two-rooms-implementation-plan.md §2.
   document.documentElement.setAttribute("data-room", id === "tonelab-open-btn" ? "rig" : "song");
-  // Re-apply on every room change too, not just on toggle click — harmless
-  // no-op most of the time, but keeps data-v9-theme/the toggle icon correct
-  // in the rare case something else changed it while this screen was closed.
-  if (typeof applyV9Theme === "function") applyV9Theme(currentV9Theme());
-  if (State.track) renderLanes(); // waveform color depends on --waveform, which just changed room
   // V9: Songs/Tabs drawer filter chips reflect which screen (and therefore
   // which of song-library-panel/tab-library-panel) is actually showing —
   // no separate state of their own, just a read of the same fact

@@ -5,27 +5,28 @@
 <title>Guitar Studio</title>
 <link rel="icon" href="app-icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
-<!-- V9 "Two Rooms": applied before first paint so the palette doesn't flash
-     on reload, same reasoning as the old 5-theme init script this replaces
-     (see research/v9-two-rooms-implementation-plan.md §4's "theme toggle
-     scope" decision — v9 replaces the old cycle toggle on this branch
-     only). Two independent bits: data-room (song/rig — kept in sync at
-     runtime by paSetActiveScreen, playalong.js; defaults to "song" here
-     since the app always opens on Mixer) and data-v9-theme (light/dark —
-     a single GLOBAL choice, not per-room; direct feedback was that Tone
-     Lab defaulting to dark while every other screen defaulted to light
-     read as the app "switching to the contrasting theme," so both rooms
-     now resolve the same light/dark value to whichever of their own two
-     palettes matches that brightness — see styles.css's four
-     :root[data-room][data-v9-theme] blocks). Both attributes must be set
-     before first paint, or those blocks won't match anything and every
-     custom property falls through to the plain :root defaults (Studio's
-     old dark-blue look). -->
+<!-- Applied before first paint so the theme doesn't flash on reload — see
+     wireThemeToggle (app.js, THEME_ORDER) for the persisted-cycle logic
+     this mirrors. Molten Obsidian is the default; every other theme keeps
+     its own look. This list is a plain copy of THEME_ORDER, not a shared
+     reference — app.js hasn't loaded yet when this runs, so it can't be;
+     if THEME_ORDER ever gains another theme, this needs the same addition
+     or that one new theme will flash-of-wrong-theme on every reload
+     (R2-5/R2-6 caught this exact gap already only handling two of what
+     were about to become four non-default themes).
+     data-room defaults to "song" here (the app always opens on Mixer) and
+     is kept in sync at runtime by paSetActiveScreen (playalong.js) — it's
+     layout-only now (hides the drawer on Tone Lab to free width for the
+     pedal chain), not tied to color: the 5 named themes above are back to
+     being the sole source of palette/font, restored after a v9 A/B pass
+     that briefly replaced them with a light/dark toggle. -->
 <script>
   (function () {
     document.documentElement.setAttribute("data-room", "song");
-    var t = localStorage.getItem("gs_v9_theme");
-    document.documentElement.setAttribute("data-v9-theme", t === "dark" ? "dark" : "light");
+    var t = localStorage.getItem("gs_theme");
+    var nonDefault = ["brightspark", "futuremetal", "castlerock"];
+    if (t === "studio") return;
+    document.documentElement.setAttribute("data-theme", nonDefault.indexOf(t) !== -1 ? t : "molten");
   })();
 </script>
 </head>
@@ -48,7 +49,7 @@
       <button id="tonelab-open-btn" class="nav-screen-btn" title="Tone Lab" aria-label="Tone Lab">T</button>
       <button id="playalong-open-btn" class="nav-screen-btn" title="Play Along" aria-label="Play Along">P</button>
       <button id="ailab-open-btn" class="nav-screen-btn" title="AI Lab" aria-label="AI Lab">A</button>
-      <button id="tabview-open-btn" class="nav-screen-btn" title="Tab View" aria-label="Tab View">G</button>
+      <button id="tabview-open-btn" class="nav-screen-btn" title="Guitar Pro Tab View" aria-label="Guitar Pro Tab View">G</button>
     </div>
     <div id="activity-rail-spacer"></div>
     <button id="help-open-btn" class="nav-screen-btn" title="Help" aria-label="Help">?</button>

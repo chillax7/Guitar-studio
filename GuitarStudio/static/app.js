@@ -3990,38 +3990,41 @@ function wireQuestLog() {
 // among THEME_ORDER counts — anything else (absence, an old build's
 // literal "molten") falls back to the default, so the default flip never
 // needed a migration for existing users.
-// V9 "Two Rooms": replaces the old 5-theme cycle with a single light/dark
-// toggle, per research/v9-two-rooms-implementation-plan.md §4's "theme
-// toggle scope" decision — v9 is its own thing to A/B against `main`, not
-// a hybrid of both toggle systems. Direct feedback on the first pass: the
-// toggle used to be per-room (song room's light<->dark, rig room's
-// dark<->light independently), so Tone Lab always opened in the opposite
-// brightness from every other screen at the same stored setting — read as
-// the app "switching to the contrasting theme." Now light/dark is a single
-// GLOBAL choice; styles.css's four :root[data-room][data-v9-theme] blocks
-// each resolve "light"/"dark" to whichever of that room's two palettes
-// matches, so brightness stays consistent across every screen and only
-// the room's hue (warm vs. neutral) actually changes.
-const V9_THEME_KEY = "gs_v9_theme";
+// Direct feedback on redesign/v9-two-rooms: the V9 mockup's single global
+// light/dark toggle (data-v9-theme, four hand-built palettes) was reverted
+// in favor of bringing back all 5 of these classic named themes with their
+// original colours AND fonts — the V9 shell (activity rail, drawer,
+// per-screen title) stays, but the palette/typography system underneath
+// it is this original one again, untouched in substance from before v9.
+const THEME_KEY = "gs_theme";
+// R2-5/R2-6: Future Metal and Castle Rock are additions, not replacements —
+// appended rather than inserted, so the existing three keep the exact same
+// cycle order/positions for anyone who already has muscle memory for how
+// many clicks gets them to their preferred theme.
+const THEME_ORDER = ["molten", "brightspark", "studio", "futuremetal", "castlerock"];
+const THEME_ICONS = { molten: "🔥", brightspark: "☀️", studio: "🌙", futuremetal: "⚙️", castlerock: "🏰" };
+const THEME_LABELS = { molten: "Molten Obsidian", brightspark: "Bright Spark", studio: "Studio", futuremetal: "Future Metal", castlerock: "Castle Rock" };
 
-function currentV9Theme() {
-  return localStorage.getItem(V9_THEME_KEY) === "dark" ? "dark" : "light";
+function currentTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  return THEME_ORDER.includes(stored) ? stored : "molten";
 }
 
-function applyV9Theme(theme) {
-  document.documentElement.setAttribute("data-v9-theme", theme);
+function applyTheme(theme) {
+  if (theme === "studio") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", theme);
   const btn = document.getElementById("theme-toggle-btn");
-  const isDarkNow = theme === "dark";
-  btn.textContent = isDarkNow ? "☀" : "☾";
-  btn.title = `Switch to ${isDarkNow ? "light" : "dark"}`;
+  const next = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length];
+  btn.textContent = THEME_ICONS[theme];
+  btn.title = `${THEME_LABELS[theme]} theme — click to switch to ${THEME_LABELS[next]}`;
 }
 
 function wireThemeToggle() {
-  applyV9Theme(currentV9Theme());
+  applyTheme(currentTheme());
   document.getElementById("theme-toggle-btn").addEventListener("click", () => {
-    const next = currentV9Theme() === "light" ? "dark" : "light";
-    localStorage.setItem(V9_THEME_KEY, next);
-    applyV9Theme(next);
+    const next = THEME_ORDER[(THEME_ORDER.indexOf(currentTheme()) + 1) % THEME_ORDER.length];
+    localStorage.setItem(THEME_KEY, next);
+    applyTheme(next);
     // Waveforms are canvas-drawn from var(--waveform) at draw time — a
     // theme swap needs a real redraw, CSS alone can't recolor them.
     if (State.track) renderLanes();
