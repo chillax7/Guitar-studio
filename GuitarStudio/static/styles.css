@@ -1762,7 +1762,14 @@ h3:first-child { margin-top: 0; }
 :root[data-room="song"][data-v9-theme="light"] {
   --bg: #f5efe6; --panel: #ffffff; --panel-2: #efe6d6; --border: #e4dbc8;
   --text: #2a2118; --text-dim: #8a7d6c; --accent: #c1531f; --accent-dim: #f0ddd0;
-  --waveform: #e0d2b8; --accent-2: #7c6cf0; --accent-2-dim: #efecff;
+  /* Direct feedback: an unrecognized stem (e.g. from an imported stem pack
+     with no instrument-name match — see UI-1's .lane.track-color-* rules
+     above, drawWaveform in app.js) falls through to this plain default
+     instead of a per-instrument hue, and it read as too pale/washed out
+     against the card/canvas background (#e0d2b8 sat almost flush with
+     --panel-2's #efe6d6 — a ~15-point channel gap, barely legible bar
+     texture). Darkened to a clearly-present neutral tan-brown. */
+  --waveform: #8a7c62; --accent-2: #7c6cf0; --accent-2-dim: #efecff;
   --warn: #d9a441; --danger: #e0605a; --success: #4caf6a; --mute: #cbbfa8; --solo: #e0c34a;
   --tuner-flat: var(--danger); --tuner-sharp: #3a7fd5; --tuner-intune: var(--solo);
   --track-vocals: #c97b6e; --track-drums: #8a7f6e; --track-bass: #9c8a52; --track-guitar: #c98a3d;
@@ -1772,7 +1779,16 @@ h3:first-child { margin-top: 0; }
 :root[data-room="song"][data-v9-theme="dark"] {
   --bg: #2a2118; --panel: #382c1f; --panel-2: #3f3123; --border: #453a2b;
   --text: #f5efe6; --text-dim: #baa88f; --accent: #ff7a3d; --accent-dim: #4a2e1c;
-  --waveform: #5a4a37; --accent-2: #a99bff; --accent-2-dim: rgba(169,155,255,.15);
+  /* Same direct feedback as the light palette above — was #5a4a37, a pale
+     washed-out tan-brown. A literal lightness cut (first attempt: #4a3c2a)
+     turned out to be the wrong fix here — it nearly vanished against this
+     room's own --panel-2 (#3f3123), a real "invisible waveform" regression
+     caught before shipping. What actually reads as "too light/washed" in
+     a dark room is low SATURATION, not high lightness — this keeps
+     roughly the original's brightness but with real chroma, so it reads
+     as a present amber-brown instead of a flat grey-tan while staying
+     clearly visible against the canvas background. */
+  --waveform: #7a5c3a; --accent-2: #a99bff; --accent-2-dim: rgba(169,155,255,.15);
   --warn: #e8a13c; --danger: #e0605a; --success: #59b878; --mute: #574a38; --solo: #e0c34a;
   --tuner-flat: var(--danger); --tuner-sharp: #5b9fe0; --tuner-intune: var(--solo);
   --track-vocals: #c07868; --track-drums: #928879; --track-bass: #96814a; --track-guitar: #b98a3a;
