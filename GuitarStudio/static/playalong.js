@@ -2220,9 +2220,7 @@ function wirePAControls() {
   document.getElementById("drawer-filter-songs").addEventListener("click", () => document.getElementById("mixer-open-btn").click());
   document.getElementById("drawer-filter-tabs").addEventListener("click", () => document.getElementById("tabview-open-btn").click());
   document.getElementById("tonelab-open-btn").addEventListener("click", openToneLab);
-  document.getElementById("tonelab-close-btn").addEventListener("click", closeToneLab);
   document.getElementById("playalong-open-btn").addEventListener("click", openPlayAlong);
-  document.getElementById("playalong-close-btn").addEventListener("click", closePlayAlong);
   document.getElementById("pa-enable-btn").addEventListener("click", paEnableInput);
   // Picking a different device in the list did nothing on its own — input
   // stayed on whatever was live already (often the system default, since

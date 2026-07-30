@@ -431,9 +431,12 @@
 
   <div id="playalong-overlay" class="screen-overlay">
     <div id="playalong-panel" class="screen-panel">
-      <div id="playalong-header" class="screen-header">
-        <button id="playalong-close-btn">✕ Close</button>
-      </div>
+      <!-- Direct feedback: the Close bar/button was removed — the
+           persistent activity rail (M/T/P/A/G) is always visible and
+           already switches screens, making a dedicated close affordance
+           redundant. closePlayAlong() (playalong.js) is unwired from any
+           button now but stays as the function other code paths (e.g.
+           closeAllScreens) call to leave this screen programmatically. -->
       <div id="playalong-body" class="screen-body">
 
         <!-- orpheus-transport-spec.md: same shared .transport-bar treatment
@@ -687,9 +690,8 @@
 
   <div id="tonelab-overlay" class="screen-overlay">
     <div id="tonelab-panel" class="screen-panel">
-      <div id="tonelab-header" class="screen-header">
-        <button id="tonelab-close-btn">✕ Close</button>
-      </div>
+      <!-- Direct feedback: Close bar/button removed, same reasoning as
+           Play Along's above — the always-visible rail already covers it. -->
       <div id="tonelab-body" class="screen-body">
 
         <!-- orpheus-transport-spec.md: Tone Lab had no transport at all
@@ -1463,9 +1465,8 @@
        Tone Lab/Play Along/AI Lab. -->
   <div id="tabview-overlay" class="screen-overlay">
     <div id="tabview-panel" class="screen-panel">
-      <div id="tabview-header" class="screen-header">
-        <button id="tabview-close-btn">✕ Close</button>
-      </div>
+      <!-- Direct feedback: Close bar/button removed, same reasoning as
+           Play Along's above — the always-visible rail already covers it. -->
       <div id="tabview-body" class="screen-body">
         <!-- Direct request: control over the loaded SONG track (whatever's
              in State.track, same as Mixer/Play Along/Tone Lab) from here
