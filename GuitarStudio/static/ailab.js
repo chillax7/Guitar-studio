@@ -1231,6 +1231,12 @@ async function aiLabTrackInfoOpen() {
     // or re-save, which would fight a user who deliberately reopened it.
     summaryEl.textContent = configured ? `${r.title || "?"} — ${r.artist || "?"}` : "not set";
     detailsEl.open = !configured;
+    // Filename followed the "Artist - Title" convention and both fields
+    // came out prefilled — nothing for the user to type, so save the guess
+    // now instead of leaving it sitting unsaved until they notice and hit
+    // Save (or type a keystroke, which is all aiLabTrackInfoAutoSave needs
+    // to fire otherwise).
+    if (!configured && r.guessed_artist && r.guessed_title) aiLabTrackInfoSave();
   } catch (e) {
     statusEl.textContent = `Couldn't load song info: ${e.message}`;
   }
@@ -1250,6 +1256,23 @@ async function aiLabTrackInfoSave() {
   } catch (e) {
     statusEl.textContent = `Couldn't save: ${e.message}`;
   }
+}
+
+// Auto-save: once both fields are filled in (typed, or already prefilled
+// from a filename that followed the "Artist - Title" convention), there's
+// no reason to make the user find and click Save — this.js is the only
+// consumer that needs the values persisted server-side, and every mode
+// below (This Track/This Artist/Ask AI) already reloads them from the
+// server rather than reading the inputs directly. Debounced so a save
+// isn't fired on every keystroke while the user is still typing; the Save
+// button stays for an explicit re-save (e.g. clearing a field back out).
+let aiLabTrackInfoAutoSaveTimer = null;
+function aiLabTrackInfoAutoSave() {
+  const artist = document.getElementById("ailab-trackinfo-artist").value.trim();
+  const title = document.getElementById("ailab-trackinfo-title").value.trim();
+  if (!artist || !title) return;
+  clearTimeout(aiLabTrackInfoAutoSaveTimer);
+  aiLabTrackInfoAutoSaveTimer = setTimeout(aiLabTrackInfoSave, 800);
 }
 
 function aiLabLickUpdateProviderHint() {
@@ -1671,6 +1694,8 @@ function wireAiLab() {
   document.getElementById("ailab-tips-suggest-btn").addEventListener("click", aiLabTipsSuggest);
   document.getElementById("ailab-tips-take-select").addEventListener("change", aiLabTipsOnTakeSelectChange);
   document.getElementById("ailab-trackinfo-save-btn").addEventListener("click", aiLabTrackInfoSave);
+  document.getElementById("ailab-trackinfo-artist").addEventListener("input", aiLabTrackInfoAutoSave);
+  document.getElementById("ailab-trackinfo-title").addEventListener("input", aiLabTrackInfoAutoSave);
   document.getElementById("ailab-track-info-btn").addEventListener("click", aiLabThisTrackInfo);
   document.getElementById("ailab-artist-info-btn").addEventListener("click", aiLabThisArtistInfo);
   // SS-3 cross-links: This Track (the song's story) <-> Song Structure (how

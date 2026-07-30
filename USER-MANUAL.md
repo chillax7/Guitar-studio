@@ -1571,8 +1571,10 @@ makes a network call, same as the other modes.
 context) need to know what song this actually is, and the app has no other
 way to know — no ID3 tags read, and filenames are too unreliable to trust
 blindly. A small card above the mode toggle prefills a best-effort guess
-from the filename; always check and edit it, then click **Save**. Stored
-per-song, same as everything else about a song.
+from the filename; always check and edit it. Once both fields have
+something in them it saves itself — no need to hit Save (the button is
+still there for an explicit re-save, e.g. after clearing a field back out).
+Stored per-song, same as everything else about a song.
 
 **This song and Choosing a provider both collapse once set up.** Both cards
 start expanded, then fold down to a one-line summary the first time you
