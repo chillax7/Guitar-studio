@@ -161,6 +161,56 @@ yet (step 6), AI Lab's internal tab pills still use the room accent
 instead of violet (step covers Coach specifically), screen still says "AI
 Lab" not "Coach" (same).
 
+## 5b. All five screens — built and verified
+
+Every step of the build order below is now done:
+
+- **Mixer**: toolbar utility buttons (+ Marker, Zoom to loop, Click) restyled
+  as JetBrains Mono pill "chips"; stem lanes are rounded 8px cards (border +
+  margin) instead of a flat divided list, sticky lane-header background
+  matched to the new card background; stem names set in Space Grotesk.
+  Ruler/chord-lane/section-lane/zoom mechanics untouched.
+- **Tone Lab**: drawer now collapses to 0 width when this screen is open
+  (`html[data-room="rig"] #app` grid override), reclaiming that space for
+  the pedal chain, exactly as the handoff specifies; pedal chips bumped to
+  8px radius + Space Grotesk labels. Preset-chain/keybind-overflow
+  simplification from the handoff's "Deprioritized" list was NOT done —
+  every control there is still always visible, just reskinned; still a
+  candidate for a later pass if wanted.
+- **Play Along**: cards bumped to 8px radius; Record's camera/quality/sync
+  setup (`#rec-setup`) now starts collapsed instead of open, matching the
+  handoff's "hidden until a camera is actually wanted" call — same
+  `<details>` element, no new JS.
+- **Coach**: screen title renamed "AI Lab" -> "Coach" (`PA_SCREEN_LABELS`,
+  playalong.js — internal IDs/APIs untouched); third tab's visible label
+  shortened "AI Assistant" -> "Assistant"; `.ailab-tab-btn.on`/
+  `.ailab-mode-toggle button.on` switched from the room accent to
+  `--accent-2` (violet); the Ask AI card gets a violet border/heading,
+  violet-tinted example-question chips, and a violet Ask button — the
+  "violet always means AI" rule from the handoff, now actually true
+  end-to-end on this one screen instead of just the rail icon.
+- **Tab View**: added real Songs/Tabs filter chips to the drawer (not just
+  visual) — Tabs forwards to the existing `tabview-open-btn` click handler,
+  Songs forwards to `mixer-open-btn`'s, and both stay in sync with the
+  active screen via `paSetActiveScreen`. The underlying two-panel swap
+  (`song-library-panel`/`tab-library-panel`) is unchanged — this is a real
+  nav control layered on top of it, not a data-model merge, which keeps
+  the risk low while matching the handoff's "one file browser, one mental
+  model" framing from the user's side.
+
+**Verified headlessly**: a full sweep of all 5 screens with a track
+loaded, toggling the A/B theme on every screen, plus targeted checks
+(rail button count, drawer filter chips, sidebar resize handle, inspector
+toggle, help modal, `?` keyboard-shortcuts modal) — 0 console errors, 0
+uncaught exceptions, every checked element present and wired.
+
+**Known, deliberately deferred** (not attempted — flagged rather than
+silently skipped): Tone Lab's rig-preset-chain/keybind-overflow
+simplification (§3), and any deeper visual pass on Rate My Take/Scales
+beyond what the shared `.pa-card`/`.ailab-*` rules already carry through
+for free. Neither blocks using this branch for a real side-by-side
+comparison against `main`.
+
 ## 5. Build order
 
 1. **Shell** (rail, drawer, persistent top bar incl. screen title,

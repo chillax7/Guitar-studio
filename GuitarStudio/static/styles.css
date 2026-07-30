@@ -560,6 +560,23 @@ input[type="number"], [id$="-val"],
 #canvas { grid-area: canvas; }
 #inspector { grid-area: inspector; }
 
+/* V9: Tone Lab (the "rig room") hides the drawer entirely to reclaim its
+   width for the pedal chain — the design handoff's own explicit choice
+   ("rig room reclaims that width"), not a bug. Collapsing the grid
+   column to 0 (rather than just hiding #sidebar) is what actually gives
+   the freed space to #canvas, since grid columns don't renegotiate their
+   own track sizes just because one cell's content disappeared. data-room
+   is kept live by paSetActiveScreen (playalong.js), so this needs no
+   per-screen JS of its own. */
+html[data-room="rig"] #app {
+  grid-template-columns: var(--v9-rail-width) 0px 1fr var(--inspector-width);
+}
+html[data-room="rig"] #sidebar,
+html[data-room="rig"] #sidebar-resize-handle {
+  display: none;
+}
+html[data-room="rig"] .screen-overlay { left: var(--v9-rail-width); }
+
 /* Drag left/right to resize #sidebar — a hit-target wider than its visible
    line (position:absolute so it isn't itself a grid item/column) sitting
    right on the sidebar/canvas seam. Hidden until hovered/dragging so it
@@ -730,6 +747,19 @@ input[type="number"], [id$="-val"],
      respect the grid row's height so overflow-y:auto can do its job. */
   min-height: 0;
 }
+
+/* V9: Songs/Tabs drawer filter chips — see index.html's #sidebar comment. */
+.drawer-filter-row { display: flex; gap: 8px; padding: 12px 12px 0; }
+.drawer-filter-chip {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font: 600 10px "JetBrains Mono", var(--font-mono);
+  padding: 5px 12px;
+  border-radius: 999px;
+}
+.drawer-filter-chip.on { background: var(--accent); color: #fff; }
+.drawer-filter-chip:hover:not(.on) { background: var(--panel-2); color: var(--text); }
 
 #sidebar h2 {
   font-size: 12px;
@@ -960,6 +990,26 @@ input[type="number"], [id$="-val"],
 #timeline-zoom-slider { width: 90px; }
 #click-volume-slider { width: 70px; }
 
+/* V9: toolbar utility buttons read as small pill "chips" (design handoff's
+   term) — quiet, transparent, JetBrains Mono — distinct from a card's
+   actual primary action (Separate/Re-separate keep the house button.primary
+   solid-fill treatment, untouched by this). Scoped to the toolbar row and
+   the model badge rather than globally, since Mixer's toolbar is the one
+   place this app already groups a run of small utility actions together
+   the way the design's "chip" examples (+ Marker, Zoom to loop, EQ) do. */
+#toolbar-tools button, #model-badge-label {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 999px;
+  font: 500 10.5px "JetBrains Mono", var(--font-mono);
+  padding: 5px 12px;
+}
+#toolbar-tools button:hover { color: var(--text); border-color: var(--accent); background: transparent; }
+#toolbar-tools button.active, #toolbar-tools button.on, #toolbar-tools button.running {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+
 /* House rule (button state model — one consistent language everywhere):
      • QUIET at rest — every button is dark (panel-2) with a border. A wall of
        buttons reads calm; nothing shouts until it means something.
@@ -979,7 +1029,7 @@ button {
   background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 4px;
+  border-radius: 6px; /* V9: was 4px — matches the design handoff's 6-8px card/row radius */
   padding: 5px 10px;
   cursor: pointer;
   font-size: 12px;
@@ -1224,9 +1274,15 @@ button:disabled:hover { filter: none; }
   display: grid;
   grid-template-columns: 150px 1fr;
   gap: 8px;
-  border-bottom: 1px solid var(--border);
+  /* V9: card row instead of a flat divided list — border+radius+margin per
+     lane, matching the design handoff's per-stem card treatment, without
+     touching the grid/sticky mechanics applyZoomWidth (app.js) depends on. */
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
   padding: 6px 0;
   align-items: stretch;
+  background: var(--panel);
 }
 
 .lane-header {
@@ -1244,12 +1300,17 @@ button:disabled:hover { filter: none; }
      pinned to the left edge of #workspace's scrolling viewport instead
      of scrolling away with the waveform — the frozen-track-header
      pattern every DAW uses. Opaque background + z-index so the waveform
-     scrolling underneath doesn't show through. */
+     scrolling underneath doesn't show through. Matches .lane's own new
+     --panel card background (was --bg) so the sticky header doesn't look
+     like a seam cut into the card as it scrolls under it. */
   position: sticky;
   left: 0;
   z-index: 3;
-  background: var(--bg);
+  background: var(--panel);
+  border-radius: 8px 0 0 8px;
 }
+
+.lane-name { font-family: "Space Grotesk", var(--heading-font); font-weight: 600; }
 
 /* UI-1 (design review v1): color-code a lane by instrument type. Each rule
    only overrides --waveform WITHIN that lane's own scope (drawWaveform,
@@ -1968,7 +2029,7 @@ h3:first-child { margin-top: 0; }
 .pa-card {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px; /* V9: was 6px, matches the design handoff's card radius */
   padding: 12px 14px;
 }
 .pa-card label { display: block; font-size: 11px; color: var(--text-dim); margin: 8px 0 2px; }
@@ -2063,10 +2124,10 @@ h3:first-child { margin-top: 0; }
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  min-width: 56px;
+  min-width: 64px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px; /* V9: was 6px, matches the design handoff's pedal-card radius */
   padding: 8px 10px;
   color: var(--text-dim);
   cursor: pointer;
@@ -2074,9 +2135,8 @@ h3:first-child { margin-top: 0; }
 }
 .pa-chain-icon svg { width: 22px; height: 22px; }
 .pa-chain-icon-label {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  font: 600 9.5px "Space Grotesk", var(--heading-font); /* V9: was 9px uppercase system font */
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 /* Blue = on/available (this codebase's existing convention) — an active
@@ -2706,15 +2766,17 @@ h3:first-child { margin-top: 0; }
   padding: 7px 14px; cursor: pointer;
 }
 .ailab-mode-toggle button + button { border-left: 1px solid var(--border); }
-.ailab-mode-toggle button.on { background: var(--accent); color: #fff; }
+.ailab-mode-toggle button.on { background: var(--accent-2); color: #fff; } /* V9: violet, not room accent — Coach is AI-branded throughout, per the design handoff */
 .ailab-mode-toggle button:not(.on):hover { filter: brightness(1.2); }
 
 .ailab-explain-examples { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
 .ailab-explain-example-btn {
-  border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim);
+  /* V9: violet-tinted pill, not the plain grey chip — these live inside
+     .ailab-violet-card, matching the design handoff's "Ask AI" mockup. */
+  border: none; background: var(--accent-2-dim); color: var(--accent-2);
   font-size: 11px; padding: 5px 10px; border-radius: 999px; cursor: pointer;
 }
-.ailab-explain-example-btn:hover { filter: brightness(1.2); }
+.ailab-explain-example-btn:hover { filter: brightness(1.15); }
 
 .ailab-jumprow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .ailab-scale-chip {
@@ -2777,7 +2839,13 @@ svg.ailab-fretboard { display: block; }
   background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim);
   font-size: 12px; font-weight: 600; padding: 7px 16px; border-radius: 6px;
 }
-.ailab-tab-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ailab-tab-btn.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; } /* V9: violet — see .ailab-mode-toggle button.on above */
+/* V9: Ask AI's card gets a violet outline, per the design handoff's mockup —
+   the one card on this screen meant to draw the eye as "the AI part." */
+.ailab-violet-card { border-color: var(--accent-2); }
+.ailab-violet-card h3 { color: var(--accent-2); }
+.ailab-violet-card button.primary { background: var(--accent-2); border-color: var(--accent-2); }
+.ailab-violet-card button.primary:hover { background: var(--accent-2); filter: brightness(1.1); }
 .ailab-tab-btn:not(.on):hover { filter: brightness(1.2); }
 
 /* ui-review-v5-full.md §2.7: collapsible AI Assistant setup cards */

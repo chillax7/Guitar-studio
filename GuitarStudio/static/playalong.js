@@ -2066,7 +2066,7 @@ const PA_SCREEN_LABELS = {
   "mixer-open-btn": "Mixer",
   "tonelab-open-btn": "Tone Lab",
   "playalong-open-btn": "Play Along",
-  "ailab-open-btn": "AI Lab",
+  "ailab-open-btn": "Coach", // V9: renamed from "AI Lab" per the design handoff — screen/element IDs stay ailab-* internally
   "tabview-open-btn": "Tab View",
 };
 function paSetActiveScreen(id) {
@@ -2084,6 +2084,13 @@ function paSetActiveScreen(id) {
   // light) — re-resolve it after every room change, not just on toggle click.
   if (typeof applyV9Theme === "function") applyV9Theme(currentV9Theme());
   if (State.track) renderLanes(); // waveform color depends on --waveform, which just changed room
+  // V9: Songs/Tabs drawer filter chips reflect which screen (and therefore
+  // which of song-library-panel/tab-library-panel) is actually showing —
+  // no separate state of their own, just a read of the same fact
+  // paSetActiveScreen already knows.
+  const isTabs = id === "tabview-open-btn";
+  document.getElementById("drawer-filter-songs").classList.toggle("on", !isTabs);
+  document.getElementById("drawer-filter-tabs").classList.toggle("on", isTabs);
 }
 
 // Code-review finding: MIDI access used to be requested unconditionally at
@@ -2211,6 +2218,10 @@ function updateTremoloDepthGain() {
 
 function wirePAControls() {
   document.getElementById("mixer-open-btn").addEventListener("click", closeAllScreens);
+  // V9: Songs/Tabs drawer filter chips are just another way to reach the
+  // same two rail buttons — no separate navigation path to keep in sync.
+  document.getElementById("drawer-filter-songs").addEventListener("click", () => document.getElementById("mixer-open-btn").click());
+  document.getElementById("drawer-filter-tabs").addEventListener("click", () => document.getElementById("tabview-open-btn").click());
   document.getElementById("tonelab-open-btn").addEventListener("click", openToneLab);
   document.getElementById("tonelab-close-btn").addEventListener("click", closeToneLab);
   document.getElementById("playalong-open-btn").addEventListener("click", openPlayAlong);

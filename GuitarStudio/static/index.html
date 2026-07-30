@@ -82,6 +82,17 @@
   </div>
 
   <div id="sidebar">
+    <!-- V9: Songs/Tabs filter chips per the design handoff's drawer —
+         "one file browser, one mental model" instead of Tab View reading
+         as a whole separate library. The underlying swap (song-library-panel
+         <-> tab-library-panel) is unchanged; these chips are a real nav
+         control on top of it (Tabs opens Tab View, Songs returns to Mixer),
+         kept in sync with the active screen by paSetActiveScreen
+         (playalong.js) rather than tracking their own state. -->
+    <div class="drawer-filter-row">
+      <button id="drawer-filter-songs" class="drawer-filter-chip on">Songs</button>
+      <button id="drawer-filter-tabs" class="drawer-filter-chip">Tabs</button>
+    </div>
     <!-- orpheus-tabview-spec.md follow-up (direct request): this whole
          panel swaps out for #tab-library-panel below while Tab View is the
          open screen, replacing the song Library/import zone entirely
@@ -557,7 +568,12 @@
             <p class="hint" id="rec-practice-hint">Needs a loop region set and Loop enabled (Mixer) — each pass through the loop is saved as its own take automatically.</p>
             <div id="rec-result" class="hint"></div>
 
-            <details id="rec-setup" open>
+            <!-- V9: collapsed by default (was open) — the design handoff's
+                 own "Deprioritized / hidden by default" call: camera setup
+                 only earns screen space once someone's actually using a
+                 camera, most sessions are audio-only. Still one click away,
+                 same disclosure element/JS as before. -->
+            <details id="rec-setup">
               <summary>Setup: camera, quality &amp; sync</summary>
               <div class="row">
                 <label style="margin:0">Show framing guides</label>
@@ -1105,7 +1121,7 @@
         <div class="ailab-tabs" id="ailab-tabs">
           <button id="ailab-tab-scales" class="ailab-tab-btn on" data-panel="scales">Scales</button>
           <button id="ailab-tab-ratemytake" class="ailab-tab-btn" data-panel="ratemytake">Rate My Take</button>
-          <button id="ailab-tab-lickideas" class="ailab-tab-btn" data-panel="lickideas">AI Assistant</button>
+          <button id="ailab-tab-lickideas" class="ailab-tab-btn" data-panel="lickideas">Assistant</button>
         </div>
         <button id="ailab-close-btn">✕ Close</button>
       </div>
@@ -1323,7 +1339,7 @@
             <div id="ailab-lick-suggestion"></div>
           </section>
 
-          <section class="pa-card" id="ailab-explain-mode-card" style="display:none;">
+          <section class="pa-card ailab-violet-card" id="ailab-explain-mode-card" style="display:none;">
             <h3>Ask AI</h3>
             <p class="hint">Ask anything about this song's theory, this track, or this artist — grounded in the song info above and any detected key/tempo/chords, where relevant. Guarded to music/this-track/this-artist questions only; off-topic questions get politely declined, not answered anyway. Single question in, single answer back (not a running conversation).</p>
             <div class="ailab-explain-examples" id="ailab-explain-examples">
