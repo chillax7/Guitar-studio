@@ -12,6 +12,20 @@
 @font-face { font-family: "Cinzel"; font-weight: 600; src: url("fonts/cinzel-600.woff2") format("woff2"); font-display: swap; }
 @font-face { font-family: "Cinzel"; font-weight: 700; src: url("fonts/cinzel-700.woff2") format("woff2"); font-display: swap; }
 
+/* V9 "Two Rooms" redesign (redesign/v9-two-rooms branch only) — same
+   self-hosted-not-Google-Fonts-CDN rule as above, vendored via the
+   @fontsource npm packages (also SIL OFL). */
+@font-face { font-family: "Space Grotesk"; font-weight: 500; src: url("fonts/spacegrotesk-500.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Space Grotesk"; font-weight: 600; src: url("fonts/spacegrotesk-600.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Space Grotesk"; font-weight: 700; src: url("fonts/spacegrotesk-700.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Manrope"; font-weight: 400; src: url("fonts/manrope-400.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Manrope"; font-weight: 500; src: url("fonts/manrope-500.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Manrope"; font-weight: 600; src: url("fonts/manrope-600.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Manrope"; font-weight: 700; src: url("fonts/manrope-700.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; src: url("fonts/jetbrainsmono-400.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 500; src: url("fonts/jetbrainsmono-500.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 600; src: url("fonts/jetbrainsmono-600.woff2") format("woff2"); font-display: swap; }
+
 :root {
   --bg: #1b1d22;
   --panel: #232630;
@@ -525,13 +539,26 @@ input[type="number"], [id$="-val"],
   font-family: var(--font-mono);
 }
 
+/* V9: rail is a new full-height column left of everything else (the design
+   handoff's "activity rail" — see research/v9-two-rooms-implementation-plan.md
+   §5 step 1). Named areas instead of relying on DOM-order auto-placement,
+   since the rail's addition means #sidebar/#canvas/#inspector are no longer
+   simply columns 1/2/3 in source order. */
 #app {
   display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr var(--inspector-width);
-  grid-template-rows: auto 1fr;
+  grid-template-columns: var(--v9-rail-width) var(--sidebar-width) 1fr var(--inspector-width);
+  grid-template-rows: var(--topbar-height) 1fr;
+  grid-template-areas:
+    "rail topbar topbar topbar"
+    "rail drawer canvas inspector";
   height: 100vh;
   position: relative; /* anchors #sidebar-resize-handle/#inspector-toggle-btn, which sit outside the grid flow */
 }
+#activity-rail { grid-area: rail; }
+#top-banner { grid-area: topbar; }
+#sidebar { grid-area: drawer; }
+#canvas { grid-area: canvas; }
+#inspector { grid-area: inspector; }
 
 /* Drag left/right to resize #sidebar — a hit-target wider than its visible
    line (position:absolute so it isn't itself a grid item/column) sitting
@@ -542,7 +569,7 @@ input[type="number"], [id$="-val"],
   position: absolute;
   top: var(--topbar-height);
   bottom: 0;
-  left: var(--sidebar-width);
+  left: calc(var(--v9-rail-width) + var(--sidebar-width));
   width: 7px;
   margin-left: -3px;
   cursor: col-resize;
@@ -555,77 +582,134 @@ input[type="number"], [id$="-val"],
   opacity: 0.5;
 }
 
-/* ---------- Top banner ---------- */
+/* ---------- Activity rail (V9) ---------- */
 
+/* Full-height, spans both grid rows (grid-area:rail set above) — the one
+   nav element that's the same regardless of which room is open, colored by
+   room identity (--v9-rail-bg) rather than by theme A/B, per the design
+   handoff's "the rail always reads as its room's identity" note. */
+#activity-rail {
+  background: var(--v9-rail-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 0;
+  gap: 10px;
+}
+#activity-rail .nav-screen-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0;
+}
+#activity-rail-spacer { flex: 1; }
+/* Rail dots: 34x34, single-letter monograms, Space Grotesk per the handoff.
+   Overrides the old 2-col-grid .nav-screen-btn sizing/shape entirely —
+   same class, new shape, so paSetActiveScreen's existing
+   ".nav-screen-row .nav-screen-btn" queries keep working untouched. */
+#activity-rail .nav-screen-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 8px;
+  font: 600 11px "Space Grotesk", var(--font-ui);
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+#activity-rail .nav-screen-btn:hover:not(.active) { color: var(--text); border-color: var(--accent); filter: none; }
+#activity-rail .nav-screen-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  filter: none;
+  box-shadow: none;
+}
+/* Coach (AI Lab) is the one rail icon that stays violet even when active —
+   "the one color that always means this is AI," per the handoff — instead
+   of the room's warm/ember accent every other active icon gets. */
+#activity-rail #ailab-open-btn.active {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+}
+#activity-rail #help-open-btn {
+  border-radius: 50%;
+  font-size: 13px;
+}
+
+/* ---------- Top banner: the "spine" (V9) ---------- */
+
+/* Fixed dark bar regardless of room/theme — per the handoff, this is the
+   one piece of chrome that visually never changes, because the song
+   doesn't belong to either room. Values are --v9-spine-* tokens (styles.css
+   top), not --bg/--panel, deliberately: those two vary by room/theme,
+   these must not. */
 #top-banner {
-  position: relative; /* anchors #top-banner-screen-label's absolute centering */
-  grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
   height: var(--topbar-height);
-  padding: 0 14px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  background: var(--v9-spine-bg);
+  border-bottom: 1px solid var(--v9-spine-border);
 }
 
-/* The app icon at title-bar scale. Its own artwork carries the dark rounded
-   backplate, so no extra framing needed here. */
-#app-logo {
-  width: 26px;
-  height: 26px;
-  display: block;
-}
+#app-logo { display: none; /* wordmark carries identity in v9; icon reintroduced only if a real lyre mark gets commissioned (see design handoff §Assets) */ }
 
-/* Same treatment as #sidebar h2 (LIBRARY) / #inspector h3 (TRACK) — small
-   uppercase label style, just carried through to the app's own title. */
 #app-title {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text);
-  font-weight: 600;
-}
-#app-version {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
+  font: 600 15px "Space Grotesk", var(--font-ui);
+  color: var(--v9-spine-text);
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 
-/* Current-screen label — centered on the *whole* window width (not just
-   the canvas column), so it lines up the same way regardless of sidebar
-   width. Absolute + left:50%/translateX(-50%) achieves that independent
-   of how wide the logo/title/version group on the left ends up being. */
+/* The per-screen title the design handoff itself omits (flagged in
+   research/v9-two-rooms-implementation-plan.md §1) — sits right after the
+   wordmark rather than centered on the old window-wide trick, since v9's
+   top bar is one continuous flex row, not a banner floating over 3 grid
+   columns. */
 #top-banner-screen-label {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-dim);
+  font: 500 12px "JetBrains Mono", var(--font-mono);
+  color: var(--v9-spine-text);
+  opacity: 0.6;
+  padding-left: 2px;
 }
 
 /* ui-review-v5-full.md §2.5: global rig status pill — pushed to the far
-   right of the banner (margin-left:auto — #top-banner-screen-label is
-   absolutely positioned so it doesn't take up flex space to push against).
-   Three states: silent (neutral, input never enabled this session), live
-   (green, pulsing), clipped (red, latched — same "stays lit until Clear"
-   contract as Tone Lab's own clip indicator). */
+   right of the banner. Three states: silent (neutral, input never enabled
+   this session), live (green, pulsing), clipped (red, latched — same
+   "stays lit until Clear" contract as Tone Lab's own clip indicator).
+   Colors are the handoff's fixed spine-pill tokens, not room/theme ones —
+   same "never changes" rule as the rest of #top-banner. */
 #rig-status-pill {
   margin-left: auto;
   display: flex; align-items: center; gap: 7px;
-  background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim);
-  border-radius: 999px; padding: 4px 12px; font-size: 11.5px; cursor: pointer;
+  background: var(--v9-rig-silent-bg); border: none; color: var(--v9-rig-silent-fg);
+  border-radius: 999px; padding: 5px 12px; font: 500 10px "JetBrains Mono", var(--font-mono); cursor: pointer;
+  white-space: nowrap; flex: none;
 }
 #rig-status-pill:hover { filter: brightness(1.2); }
 #rig-status-led {
-  width: 8px; height: 8px; border-radius: 50%; background: var(--mute); flex: none;
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none;
 }
-#rig-status-pill.live { border-color: var(--success); color: var(--text); }
-#rig-status-pill.live #rig-status-led { background: var(--success); box-shadow: 0 0 6px var(--success); animation: rig-pulse 2.2s infinite; }
-#rig-status-pill.clipped { border-color: var(--danger); color: var(--text); background: #3a2323; }
-#rig-status-pill.clipped #rig-status-led { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+#rig-status-pill.live { background: var(--v9-rig-live-bg); color: var(--v9-rig-live-fg); }
+#rig-status-pill.live #rig-status-led { animation: rig-pulse 2.2s infinite; }
+#rig-status-pill.clipped { background: var(--danger); color: #fff; }
+#rig-status-pill.clipped #rig-status-led { box-shadow: 0 0 6px currentColor; }
+
+/* V9 A/B theme toggle — circular, outlined, transparent, sitting on the
+   fixed dark spine so it uses --v9-spine-* tokens rather than --border/
+   --text like a normal button would (a normal button here would clash with
+   the spine's fixed dark bg regardless of the room's actual palette). */
+#theme-toggle-btn {
+  width: 26px; height: 26px; padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--v9-spine-border);
+  color: var(--v9-spine-text);
+  font-size: 12px;
+}
+#theme-toggle-btn:hover { background: rgba(255,255,255,0.08); border-color: var(--v9-spine-border); color: var(--v9-spine-text); }
 @keyframes rig-pulse { 50% { opacity: 0.5; } }
 @media (prefers-reduced-motion: reduce) { #rig-status-pill.live #rig-status-led { animation: none; } }
 
@@ -1576,6 +1660,99 @@ h3:first-child { margin-top: 0; }
   letter-spacing: 0.08em;
 }
 
+/* ===========================================================================
+   V9 "Two Rooms" redesign (redesign/v9-two-rooms branch only — see
+   research/v9-two-rooms-implementation-plan.md). Wholesale replaces the
+   5-theme system above for every variable consumed anywhere in this file:
+   the app is genuinely two products in one (a calm "song room" — Mixer,
+   Play Along, Coach, Tab View — and a dark premium "rig room" — Tone Lab),
+   so the palette now depends on data-room (set by paSetActiveScreen,
+   playalong.js) as well as data-v9-theme (the A/B toggle, wireThemeToggle,
+   app.js), not on data-theme at all. Two-attribute selectors on <html> here
+   out-specificity every single-attribute [data-theme="..."] rule above
+   regardless of source order, so this safely wins even though data-theme
+   itself is left alone (harmless dead state on this branch).
+   Values are the design handoff's own tokens for bg/panel/border/text/
+   text-dim/accent; every other variable this file actually needs (track
+   colors, tuner colors, warn/danger/success, dry-take accent) is a
+   consistent derived value not specified by the handoff — kept
+   conventional (warn=amber, danger=red, success=green, tuner=red/blue/
+   gold) per the redesign brief's own constraint that meters must stay
+   legible, not restyled for brand's sake. */
+:root[data-room="song"][data-v9-theme="A"] {
+  --bg: #f5efe6; --panel: #ffffff; --panel-2: #efe6d6; --border: #e4dbc8;
+  --text: #2a2118; --text-dim: #8a7d6c; --accent: #c1531f; --accent-dim: #f0ddd0;
+  --waveform: #e0d2b8; --accent-2: #7c6cf0; --accent-2-dim: #efecff;
+  --warn: #d9a441; --danger: #e0605a; --success: #4caf6a; --mute: #cbbfa8; --solo: #e0c34a;
+  --tuner-flat: var(--danger); --tuner-sharp: #3a7fd5; --tuner-intune: var(--solo);
+  --track-vocals: #c97b6e; --track-drums: #8a7f6e; --track-bass: #9c8a52; --track-guitar: #c98a3d;
+  --track-piano: #8a6fbf; --track-other: #6f9c52; --track-candidate-a: #4a9c96; --track-candidate-b: #6f8fae;
+  --dry-take-accent: #3fa9a0;
+}
+:root[data-room="song"][data-v9-theme="B"] {
+  --bg: #2a2118; --panel: #382c1f; --panel-2: #3f3123; --border: #453a2b;
+  --text: #f5efe6; --text-dim: #baa88f; --accent: #ff7a3d; --accent-dim: #4a2e1c;
+  --waveform: #5a4a37; --accent-2: #a99bff; --accent-2-dim: rgba(169,155,255,.15);
+  --warn: #e8a13c; --danger: #e0605a; --success: #59b878; --mute: #574a38; --solo: #e0c34a;
+  --tuner-flat: var(--danger); --tuner-sharp: #5b9fe0; --tuner-intune: var(--solo);
+  --track-vocals: #c07868; --track-drums: #928879; --track-bass: #96814a; --track-guitar: #b98a3a;
+  --track-piano: #9782c9; --track-other: #7cae62; --track-candidate-a: #4a9690; --track-candidate-b: #6a86a3;
+  --dry-take-accent: #45a89e;
+}
+:root[data-room="rig"][data-v9-theme="A"] {
+  --bg: #141414; --panel: #1d1d1d; --panel-2: #232323; --border: #333029;
+  --text: #ece7df; --text-dim: #8f897d; --accent: #ff7a3d; --accent-dim: #3a2a1c;
+  --waveform: #3a3a3a; --accent-2: #a99bff; --accent-2-dim: rgba(169,155,255,.15);
+  --warn: #e8a13c; --danger: #e0605a; --success: #59b878; --mute: #45443e; --solo: #e0c34a;
+  --tuner-flat: var(--danger); --tuner-sharp: #5b9fe0; --tuner-intune: var(--solo);
+  --track-vocals: #c07868; --track-drums: #928879; --track-bass: #96814a; --track-guitar: #b98a3a;
+  --track-piano: #9782c9; --track-other: #7cae62; --track-candidate-a: #4a9690; --track-candidate-b: #6a86a3;
+  --dry-take-accent: #45a89e;
+}
+:root[data-room="rig"][data-v9-theme="B"] {
+  --bg: #e7e4dd; --panel: #ffffff; --panel-2: #dedad0; --border: #d5d1c6;
+  --text: #1a1a1a; --text-dim: #6b675e; --accent: #c1531f; --accent-dim: #f0ddd0;
+  --waveform: #d5d1c6; --accent-2: #7c6cf0; --accent-2-dim: #efecff;
+  --warn: #d9a441; --danger: #e0605a; --success: #4caf6a; --mute: #c9c5ba; --solo: #e0c34a;
+  --tuner-flat: var(--danger); --tuner-sharp: #3a7fd5; --tuner-intune: var(--solo);
+  --track-vocals: #c97b6e; --track-drums: #8a7f6e; --track-bass: #9c8a52; --track-guitar: #c98a3d;
+  --track-piano: #8a6fbf; --track-other: #6f9c52; --track-candidate-a: #4a9c96; --track-candidate-b: #6f8fae;
+  --dry-take-accent: #3fa9a0;
+}
+:root[data-room][data-v9-theme] {
+  --heading-font: "Space Grotesk", var(--font-ui);
+  --heading-transform: none;
+  --heading-tracking: 0.01em;
+  --font-ui: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Fixed "spine" tokens — the top bar/rig pill never change with room or
+     theme, per the handoff's own "this is the one thing that never
+     changes rooms" framing for the transport bar. */
+  --v9-spine-bg: #211a12;
+  --v9-spine-border: #382c1f;
+  --v9-spine-text: #f5efe6;
+  --v9-spine-progress-track: #3a3128;
+  --v9-play-btn-bg: #ff7a3d;
+  --v9-play-btn-fg: #211a12;
+  --v9-rig-live-bg: #8de6a6;
+  --v9-rig-live-fg: #141414;
+  --v9-rig-silent-bg: #2c2419;
+  --v9-rig-silent-fg: #7a6f5e;
+  --v9-rail-width: 56px;
+  /* Reuses the existing --topbar-height/--sidebar-width tokens (rather than
+     parallel v9-only ones) so every pre-existing rule keyed off them
+     — .screen-overlay, #sidebar-resize-handle, #inspector-toggle-btn — just
+     works without needing its own v9 override; wireSidebarResize's live
+     drag/persist still applies on top via inline style, same as before. */
+  --topbar-height: 46px;
+  --sidebar-width: 220px;
+}
+/* Rail background is the one thing that stays keyed to ROOM regardless of
+   theme A/B — "the rail always reads as its room's identity" per the
+   handoff (§Shell). */
+:root[data-room="song"] { --v9-rail-bg: #ece3d3; }
+:root[data-room="rig"] { --v9-rail-bg: #0d0d0d; }
+
 /* Collapsible Track/Speed Trainer/Export panel (real user report: it eats
    screen width on the Mixer that could go to the lanes). Same "own CSS var
    the JS drives live + persists" pattern as --sidebar-width above, just
@@ -1768,7 +1945,7 @@ h3:first-child { margin-top: 0; }
      sidebar wider/narrower on the Mixer carries over correctly once you
      open Tone Lab or Play Along too, instead of the overlay's edge
      sitting under the sidebar or leaving a gap next to it. */
-  top: var(--topbar-height); left: var(--sidebar-width); right: 0; bottom: 0;
+  top: var(--topbar-height); left: calc(var(--v9-rail-width) + var(--sidebar-width)); right: 0; bottom: 0;
   background: var(--bg);
   z-index: 50;
   overflow-y: auto;

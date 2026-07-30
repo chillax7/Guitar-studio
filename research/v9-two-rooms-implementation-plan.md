@@ -137,6 +137,30 @@ needs a home for every item; these four just change *when it's visible*.
   `main`, not a hybrid) — `main`'s 5-theme system is untouched regardless
   since this never merges without sign-off.
 
+## 5a. Shell — built and verified
+
+Step 1 of the build order below is done: activity rail (56px, M/T/P/A/G +
+? for Help, Coach's dot reserved-violet when active), the drawer (existing
+sidebar, now visually restyled — the Songs/Tabs merge itself is still
+pending, see step 6), and the top-bar spine (wordmark, restored per-screen
+title, rig pill, A/B theme toggle) all render correctly across all five
+screens with no console errors, in both rooms and both themes. Fonts
+vendored locally (Space Grotesk/Manrope/JetBrains Mono, SIL OFL, via
+`@fontsource` — same "no live Google Fonts request" rule as the app's
+existing fonts). `data-room`/`data-v9-theme` on `<html>` drive the four
+palettes; `paSetActiveScreen` (playalong.js) keeps `data-room` in sync;
+`wireThemeToggle` (app.js) replaced wholesale with the A/B version scoped
+per-room.
+
+Verified via Playwright screenshots of all five screens, Tone Lab in both
+themes, and a room switch back to Mixer in theme B — palettes, rail
+active-state coloring (including Coach's violet exception), and the
+restored screen-title label all behave correctly. Known follow-ups
+already scoped to later steps, not bugs: Tone Lab's drawer doesn't hide
+yet (step 6), AI Lab's internal tab pills still use the room accent
+instead of violet (step covers Coach specifically), screen still says "AI
+Lab" not "Coach" (same).
+
 ## 5. Build order
 
 1. **Shell** (rail, drawer, persistent top bar incl. screen title,

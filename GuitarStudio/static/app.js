@@ -3990,35 +3990,36 @@ function wireQuestLog() {
 // among THEME_ORDER counts — anything else (absence, an old build's
 // literal "molten") falls back to the default, so the default flip never
 // needed a migration for existing users.
-const THEME_KEY = "gs_theme";
-// R2-5/R2-6: Future Metal and Castle Rock are additions, not replacements —
-// appended rather than inserted, so the existing three keep the exact same
-// cycle order/positions for anyone who already has muscle memory for how
-// many clicks gets them to their preferred theme.
-const THEME_ORDER = ["molten", "brightspark", "studio", "futuremetal", "castlerock"];
-const THEME_ICONS = { molten: "🔥", brightspark: "☀️", studio: "🌙", futuremetal: "⚙️", castlerock: "🏰" };
-const THEME_LABELS = { molten: "Molten Obsidian", brightspark: "Bright Spark", studio: "Studio", futuremetal: "Future Metal", castlerock: "Castle Rock" };
+// V9 "Two Rooms": replaces the old 5-theme cycle with a single A/B toggle,
+// per research/v9-two-rooms-implementation-plan.md §4's "theme toggle
+// scope" decision — v9 is its own thing to A/B against `main`, not a
+// hybrid of both toggle systems. Unlike the old toggle, A/B isn't one
+// global look: styles.css keys the actual palette off data-room (which
+// screen is open, set by paSetActiveScreen below) AND data-v9-theme (this
+// toggle), so flipping it re-lights whichever room is currently open in
+// its OTHER palette (song room's light<->dark, or rig room's dark<->light)
+// — see styles.css's four :root[data-room][data-v9-theme] blocks.
+const V9_THEME_KEY = "gs_v9_theme";
 
-function currentTheme() {
-  const stored = localStorage.getItem(THEME_KEY);
-  return THEME_ORDER.includes(stored) ? stored : "molten";
+function currentV9Theme() {
+  return localStorage.getItem(V9_THEME_KEY) === "B" ? "B" : "A";
 }
 
-function applyTheme(theme) {
-  if (theme === "studio") document.documentElement.removeAttribute("data-theme");
-  else document.documentElement.setAttribute("data-theme", theme);
+function applyV9Theme(theme) {
+  document.documentElement.setAttribute("data-v9-theme", theme);
   const btn = document.getElementById("theme-toggle-btn");
-  const next = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length];
-  btn.textContent = THEME_ICONS[theme];
-  btn.title = `${THEME_LABELS[theme]} theme — click to switch to ${THEME_LABELS[next]}`;
+  const isDarkNow = document.documentElement.getAttribute("data-room") === "rig"
+    ? theme === "A" : theme === "B";
+  btn.textContent = isDarkNow ? "☀" : "☾";
+  btn.title = `Switch to ${isDarkNow ? "light" : "dark"} for this room`;
 }
 
 function wireThemeToggle() {
-  applyTheme(currentTheme());
+  applyV9Theme(currentV9Theme());
   document.getElementById("theme-toggle-btn").addEventListener("click", () => {
-    const next = THEME_ORDER[(THEME_ORDER.indexOf(currentTheme()) + 1) % THEME_ORDER.length];
-    localStorage.setItem(THEME_KEY, next);
-    applyTheme(next);
+    const next = currentV9Theme() === "A" ? "B" : "A";
+    localStorage.setItem(V9_THEME_KEY, next);
+    applyV9Theme(next);
     // Waveforms are canvas-drawn from var(--waveform) at draw time — a
     // theme swap needs a real redraw, CSS alone can't recolor them.
     if (State.track) renderLanes();

@@ -5,35 +5,63 @@
 <title>Guitar Studio</title>
 <link rel="icon" href="app-icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
-<!-- Applied before first paint so the theme doesn't flash on reload — see
-     wireThemeToggle (app.js, THEME_ORDER) for the persisted-cycle logic
-     this mirrors. Molten Obsidian is the default; every other theme keeps
-     its own look. This list is a plain copy of THEME_ORDER, not a shared
-     reference — app.js hasn't loaded yet when this runs, so it can't be;
-     if THEME_ORDER ever gains another theme, this needs the same addition
-     or that one new theme will flash-of-wrong-theme on every reload
-     (R2-5/R2-6 caught this exact gap already only handling two of what
-     were about to become four non-default themes). -->
+<!-- V9 "Two Rooms": applied before first paint so the palette doesn't flash
+     on reload, same reasoning as the old 5-theme init script this replaces
+     (see research/v9-two-rooms-implementation-plan.md §4's "theme toggle
+     scope" decision — v9 replaces the old cycle toggle on this branch
+     only). Two independent bits: data-room (song/rig — kept in sync at
+     runtime by paSetActiveScreen, playalong.js; defaults to "song" here
+     since the app always opens on Mixer) and data-v9-theme (the A/B
+     toggle, persisted by wireThemeToggle, app.js). Both must be set before
+     first paint, or styles.css's :root[data-room][data-v9-theme] palette
+     blocks won't match anything and every custom property falls through
+     to the plain :root defaults (Studio's old dark-blue look). -->
 <script>
   (function () {
-    var t = localStorage.getItem("gs_theme");
-    var nonDefault = ["brightspark", "futuremetal", "castlerock"];
-    if (t === "studio") return;
-    document.documentElement.setAttribute("data-theme", nonDefault.indexOf(t) !== -1 ? t : "molten");
+    document.documentElement.setAttribute("data-room", "song");
+    var t = localStorage.getItem("gs_v9_theme");
+    document.documentElement.setAttribute("data-v9-theme", t === "B" ? "B" : "A");
   })();
 </script>
 </head>
 <body>
 <div id="app">
 
+  <!-- V9 "Two Rooms": the activity rail (research/v9-two-rooms-implementation-plan.md
+       §5 step 1) — replaces the old sidebar-embedded 2-col nav grid with a
+       full-height 56px icon column, always in the same place regardless of
+       which room (song/rig) is open. Same .nav-screen-row/.nav-screen-btn
+       classes/IDs as before (playalong.js's paSetActiveScreen queries
+       ".nav-screen-row .nav-screen-btn" and toggles .active on them) so no
+       screen-switching JS needed to change — only the container moved and
+       the visual treatment changed. Help split out to its own slot at the
+       bottom (flex:1 spacer above it) since it's a transient modal, not a
+       persistent screen, matching the design handoff's rail layout. -->
+  <div id="activity-rail">
+    <div class="nav-screen-row">
+      <button id="mixer-open-btn" class="nav-screen-btn" title="Mixer" aria-label="Mixer">M</button>
+      <button id="tonelab-open-btn" class="nav-screen-btn" title="Tone Lab" aria-label="Tone Lab">T</button>
+      <button id="playalong-open-btn" class="nav-screen-btn" title="Play Along" aria-label="Play Along">P</button>
+      <button id="ailab-open-btn" class="nav-screen-btn" title="Coach (AI Lab)" aria-label="Coach (AI Lab)">A</button>
+      <button id="tabview-open-btn" class="nav-screen-btn" title="Tab View" aria-label="Tab View">G</button>
+    </div>
+    <div id="activity-rail-spacer"></div>
+    <button id="help-open-btn" class="nav-screen-btn" title="Help" aria-label="Help">?</button>
+  </div>
+
   <div id="top-banner">
     <img id="app-logo" src="app-icon.svg" alt="">
-    <span id="app-title">Orpheus Guitar Studio</span>
-    <span id="app-version">v8</span>
-    <!-- Centered on the full window width (not just the canvas column) via
-         absolute positioning in CSS — see #top-banner-screen-label. Kept in
-         sync with the current screen by paSetActiveScreen (playalong.js),
-         the same function that highlights the sidebar nav button. -->
+    <span id="app-title">Orpheus</span>
+    <!-- The design handoff's own screens never show a page title (only the
+         wordmark + active rail icon) — flagged as a real gap and fixed here
+         rather than carried over: this label is what actually answers
+         "which of the five rooms am I in" without relying solely on which
+         rail icon happens to be lit. Kept in sync with the current screen
+         by paSetActiveScreen (playalong.js), the same function that
+         highlights the rail button. No longer absolutely centered on the
+         window (that trick existed to center it over sidebar+canvas+
+         inspector as a group; v9's top bar is a single flex row where it
+         just sits next to the wordmark like the rest of the spine). -->
     <span id="top-banner-screen-label">Mixer</span>
     <!-- ui-review-v5-full.md §2.5: global rig status pill, visible on
          every screen — Enable Input stays in Tone Lab (it's rig setup),
@@ -45,30 +73,15 @@
     <button id="rig-status-pill" title="Rig status — click to open Tone Lab's Input card">
       <span id="rig-status-led"></span><span id="rig-status-label">Rig silent</span>
     </button>
-    <!-- ui-review-v5-full.md §6: "Molten Obsidian" theme, shipped as a
-         toggle (data-theme attribute on <html>) rather than a replacement
-         — the existing look stays one click away for anyone who prefers
-         it. Persisted via localStorage (wireThemeToggle, app.js). -->
-    <button id="theme-toggle-btn" title="Switch visual theme">🔥</button>
+    <!-- V9: A/B theme toggle, scoped per-room (data-v9-theme on <html>,
+         combined with data-room to pick one of the 4 palettes — see
+         styles.css's :root[data-room][data-v9-theme] blocks). Replaces the
+         old 5-theme cycle button on this branch only; wireThemeToggle
+         (app.js) has its own v9 branch now. -->
+    <button id="theme-toggle-btn" title="Switch light/dark for this room">☾</button>
   </div>
 
   <div id="sidebar">
-    <!-- Screen nav — top-left corner, one shared .nav-screen-btn class so
-         all 6 are identical in size/shape, one 2-column grid. Mixer isn't a
-         real overlay (it's just the base grid below), so its button just
-         closes whatever overlay is open. Help stays a modal, not a
-         persistent "screen," so it never gets .active highlighting, but —
-         per direct request — otherwise sits in the grid like any other
-         button (previously its own full-width row below the other four;
-         that row is gone now that Tab View fills the slot next to it). -->
-    <div class="nav-screen-row">
-      <button id="mixer-open-btn" class="nav-screen-btn">🎚 Mixer</button>
-      <button id="tonelab-open-btn" class="nav-screen-btn">🎛 Tone Lab</button>
-      <button id="playalong-open-btn" class="nav-screen-btn">🎸 Play Along</button>
-      <button id="ailab-open-btn" class="nav-screen-btn">🧠 AI Lab</button>
-      <button id="tabview-open-btn" class="nav-screen-btn">🎼 Tab View</button>
-      <button id="help-open-btn" class="nav-screen-btn">❓ Help</button>
-    </div>
     <!-- orpheus-tabview-spec.md follow-up (direct request): this whole
          panel swaps out for #tab-library-panel below while Tab View is the
          open screen, replacing the song Library/import zone entirely

@@ -2074,6 +2074,16 @@ function paSetActiveScreen(id) {
     btn.classList.toggle("active", btn.id === id);
   });
   document.getElementById("top-banner-screen-label").textContent = PA_SCREEN_LABELS[id] || "";
+  // V9 "Two Rooms": Tone Lab is the dark "rig room," every other screen is
+  // the warm "song room" — styles.css's :root[data-room][data-v9-theme]
+  // blocks pick the actual palette off this attribute. See
+  // research/v9-two-rooms-implementation-plan.md §2.
+  document.documentElement.setAttribute("data-room", id === "tonelab-open-btn" ? "rig" : "song");
+  // The A/B toggle's icon means "switch to light/dark," which depends on
+  // which room just became current (rig room's A is dark, song room's A is
+  // light) — re-resolve it after every room change, not just on toggle click.
+  if (typeof applyV9Theme === "function") applyV9Theme(currentV9Theme());
+  if (State.track) renderLanes(); // waveform color depends on --waveform, which just changed room
 }
 
 // Code-review finding: MIDI access used to be requested unconditionally at
