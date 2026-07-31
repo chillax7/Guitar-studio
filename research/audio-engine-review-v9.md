@@ -400,17 +400,78 @@ latency added is measured and reported.
 
 ## 7. Suggested order of work
 
-| # | Item | Why this order | Risk |
-|---|---|---|---|
-| 1 | **N-1a** NAM sample-rate detection + warning | Correctness, affects every capture on 44.1 kHz devices, cheap | Low |
-| 2 | **S-1** processed-mode CPU | Most likely cause of the actual "crackly" report | Medium |
-| 3 | **A-1** steeper cab rolloff | Direct, measured answer to "harsh and fizzy" | Low |
-| 4 | **N-2** cab/no-cab metadata guidance | Cheap, prevents a common tone mistake | Low |
-| 5 | **S-2** sinc interpolator | Real measured defect, self-contained | Low |
-| 6 | **N-1b** proper NAM resampling | Bigger job; do after the warning exists | Medium |
-| 7 | **S-3** transient phase reset | Refinement once CPU headroom exists | Medium |
-| 8 | **R-1/R-2** IR checks + length cap | Verification + cheap CPU win | Low |
-| 9 | **T-1a** tab through rig | Highest ceiling, most exploratory | High |
+| # | Item | Why this order | Risk | Status |
+|---|---|---|---|---|
+| 1 | **N-1a** NAM sample-rate detection + warning | Correctness, affects every capture on 44.1 kHz devices, cheap | Low | **Done** (`redesign/v9-two-rooms`) |
+| 2 | **S-1** processed-mode CPU | Most likely cause of the actual "crackly" report | Medium | **Done, partial** — see note below |
+| 3 | **A-1** steeper cab rolloff | Direct, measured answer to "harsh and fizzy" | Low | **Done** |
+| 4 | **N-2** cab/no-cab metadata guidance | Cheap, prevents a common tone mistake | Low | **Done** |
+| 5 | **S-2** sinc interpolator | Real measured defect, self-contained | Low | **Done** |
+| 6 | **N-1b** proper NAM resampling | Bigger job; do after the warning exists | Medium | Not done |
+| 7 | **S-3** transient phase reset | Refinement once CPU headroom exists | Medium | Not done |
+| 8 | **R-1/R-2** IR checks + length cap | Verification + cheap CPU win | Low | Not done |
+| 9 | **T-1a** tab through rig | Highest ceiling, most exploratory | High | Not done |
+
+### Implementation notes (this pass)
+
+- **N-1a**: implemented client-side in `paLoadNamModel`/`paCheckNamSampleRate`
+  (`playalong.js`) rather than in the worklet — the `.nam` file's
+  `sample_rate` field and the live `Audio.ctx.sampleRate` are both already
+  available on the main thread at load time, so no worklet round-trip was
+  needed. Verified against the user's real A2 capture pack (`sample_rate:
+  48000.0` present on every file).
+- **N-2**: implemented alongside N-1a as `paNamGearIrNote`; reads
+  `metadata.gear_type` and shows an inline note next to the Cab IR Bypass
+  control. Verified against the same real capture pack (`gear_type:
+  "full-rig"`).
+- **A-1**: `cabTone` (single lowpass, 5000Hz/Q0.75) replaced with three
+  cascaded lowpass biquads (4500Hz/Q0.5 each) in `ensurePAGraph`. Measured:
+  -30.2dB@8kHz / -46.3dB@10kHz (targets were ≤-20dB / ≤-30dB), Marshall
+  harmonic validation unchanged (H2 -21.8/H3 -20.0/H5 -32.7 vs targets
+  -21.1/-19.9/-32.0). Trade-off found during tuning: any cascade steep
+  enough to hit the 8kHz/10kHz targets also adds a modest (~+3.6dB) rise
+  around 2.5-3.5kHz relative to the old single-biquad response — present in
+  the shipped filter too, just smaller (+1.3dB), so this is the existing
+  design's character turned up, not a new artifact. Chose the flattest
+  configuration that still clears both targets with margin.
+- **S-1**: the spec's two named levers were both addressed, but the actual
+  CPU win measured smaller than the finding implied it might be:
+  - "Skip inaudible/zero-gain stems" was **already implemented** before this
+    pass (`active` flag, gated on `gain > 0` in `app.js`) — nothing to do.
+  - "Mono-ise identical-channel stems" was genuinely missing and is now
+    implemented (`arraysEqual` check at load time, `stretch-processor.js`);
+    verified exact (mono output reads back with `L === R` to the bit) via
+    the harness. Measured saving: **~3.6-5%** of per-stem CPU on a
+    synthetic tone — smaller than hoped, because the file's own prior
+    optimization pass already found the FFT itself is ~89% of the cost, and
+    this only removes the redundant half of the remaining ~11%
+    (identity-phase-locking pass).
+  - Added a third lever not in the original spec text: skip the FFT/PV pass
+    entirely for any hop that reads back **exact digital silence** (common
+    in source-separation stems during sections a model produced nothing
+    for), correctly resetting phase-lock state on resume so there's no
+    discontinuity at the boundary (verified: resume-point sample jump is
+    within 1% of the steady-state jump size elsewhere in the file). Real
+    Demucs stems tested had 0% exact-zero content, so this mostly helps
+    custom/edited stems with real silent gaps, not typical separation
+    output.
+  - Net effect: real, verified, and lossless, but modest. The CPU number in
+    §1.2's Finding S-1 (45.8% for 6 stems) was not re-measured end-to-end in
+    a live 6-stem session after these changes — the harness here only
+    measures single-stem, synthetic-signal relative cost. If crackling
+    persists after this change, the next lever is a smaller FFT size (a
+    real quality/CPU trade-off, unlike the two implemented here) or a
+    genuinely shared per-block FFT across all active stems.
+- **S-2**: Catmull-Rom replaced with a table-driven windowed-sinc (Lanczos,
+  `LANCZOS_A = 6`, 12 taps, 1024-phase precomputed lookup table built once
+  at load, not evaluated per-sample). Measured: ±0.06dB to 14kHz, ±0.03dB
+  to 17kHz at Speed 0.60 (targets were ±0.15dB / ±0.4dB) — comfortably
+  inside spec. Unity transparency re-verified unchanged (-130.6dB, bit
+  identical to the pre-change baseline). CPU overhead of the wider kernel
+  measured at ~10.8% relative to the old cubic interpolator on the harness
+  (a smaller `LANCZOS_A = 4`/8-tap kernel measured ~5.1% overhead and still
+  met the 14kHz target, missing only the 17kHz target at -0.65dB — kept
+  A=6 to satisfy both acceptance thresholds in the spec).
 
 ## 8. Regression guard
 

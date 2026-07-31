@@ -283,12 +283,22 @@ async function _buildPAGraph() {
   const deEmph = Audio.ctx.createBiquadFilter(); deEmph.type = "highshelf"; deEmph.frequency.value = 550; deEmph.gain.value = -8;
   const voiceWarm = Audio.ctx.createBiquadFilter(); voiceWarm.type = "lowshelf"; voiceWarm.frequency.value = 200; voiceWarm.gain.value = 2.5;
   const voiceScoop = Audio.ctx.createBiquadFilter(); voiceScoop.type = "peaking"; voiceScoop.frequency.value = 1400; voiceScoop.Q.value = 0.9; voiceScoop.gain.value = -3;
-  const cabTone = Audio.ctx.createBiquadFilter(); cabTone.type = "lowpass"; cabTone.frequency.value = 5000; cabTone.Q.value = 0.75;
+  // A-1: a real 4x12 cab's natural rolloff above ~5kHz is far steeper than
+  // one 2nd-order biquad can produce (-12dB/oct gets to only ~-13dB by
+  // 10kHz; measured real cabs are -25 to -35dB there) — that shallow tail
+  // is the residual 6-12kHz energy that reads as "fizz" on top of the amp's
+  // own distortion harmonics. Three cascaded lowpasses centred a touch
+  // lower (~4.3kHz) reach the real cab's -20dB@8k / -30dB@10k depth while
+  // leaving the 200Hz-3kHz body (where preTight/voiceWarm/voiceScoop do
+  // their work) untouched — cutoff is still an octave-plus above it.
+  const cabLp1 = Audio.ctx.createBiquadFilter(); cabLp1.type = "lowpass"; cabLp1.frequency.value = 4500; cabLp1.Q.value = 0.5;
+  const cabLp2 = Audio.ctx.createBiquadFilter(); cabLp2.type = "lowpass"; cabLp2.frequency.value = 4500; cabLp2.Q.value = 0.5;
+  const cabLp3 = Audio.ctx.createBiquadFilter(); cabLp3.type = "lowpass"; cabLp3.frequency.value = 4500; cabLp3.Q.value = 0.5;
   const bass = Audio.ctx.createBiquadFilter(); bass.type = "lowshelf"; bass.frequency.value = 150;
   const mid = Audio.ctx.createBiquadFilter(); mid.type = "peaking"; mid.frequency.value = 800; mid.Q.value = 0.7;
   const treble = Audio.ctx.createBiquadFilter(); treble.type = "highshelf"; treble.frequency.value = 3000;
   inputGain.connect(preTight).connect(preEmph).connect(shaper).connect(dcBlock)
-    .connect(deEmph).connect(voiceWarm).connect(voiceScoop).connect(cabTone)
+    .connect(deEmph).connect(voiceWarm).connect(voiceScoop).connect(cabLp1).connect(cabLp2).connect(cabLp3)
     .connect(bass).connect(mid).connect(treble);
   PA.analogNodes = { inputGain, shaper, bass, mid, treble, output: treble };
 
@@ -1762,19 +1772,62 @@ function paDescribeNamMetadata(namJson, filename, probe) {
   return lines.join("<br>");
 }
 
+// N-1a: a .nam capture's WaveNet dilations are defined in samples, not
+// time — running it through a context at a different sample rate than it
+// was captured/trained at silently stretches every time constant by the
+// rate ratio (detunes the model) with no audible "error" to flag it by
+// itself. Neither engine resamples to correct for this (see the audio
+// engine review), so the honest fix for now is telling the user, not
+// pretending it's fine.
+const NAM_SAMPLE_RATE_WARN_TOLERANCE = 0.001; // 0.1%
+function paCheckNamSampleRate(namJson) {
+  const modelRate = namJson && typeof namJson.sample_rate === "number" ? namJson.sample_rate : null;
+  const ctxRate = (typeof Audio !== "undefined" && Audio.ctx && Audio.ctx.sampleRate) || null;
+  if (!modelRate || !ctxRate) return "";
+  if (Math.abs(modelRate - ctxRate) / ctxRate <= NAM_SAMPLE_RATE_WARN_TOLERANCE) return "";
+  const fmt = (hz) => (hz % 1000 === 0 ? `${hz / 1000} kHz` : `${(hz / 1000).toFixed(1)} kHz`);
+  return `⚠️ This capture was made at ${fmt(modelRate)} but your audio device is running at ` +
+    `${fmt(ctxRate)} — it will not sound exactly as captured (times/pitch inside the model shift ` +
+    `with the rate mismatch). Set your audio interface to ${fmt(modelRate)} for a faithful result.`;
+}
+
+// N-2: a "full-rig" capture already has its own cab (and often room/mic) baked
+// in — stacking the Cab IR section on top double-filters it (dull, woolly).
+// An amp-only capture has no cab and wants one. This is advice only, never an
+// auto-toggle, matching the app's existing honesty-hint style elsewhere.
+function paNamGearIrNote(namJson) {
+  const gearType = String((namJson && namJson.metadata && namJson.metadata.gear_type) || "").toLowerCase();
+  if (!gearType) return "";
+  if (gearType.includes("full") || gearType.includes("rig")) {
+    return "This capture is a full rig (amp + cab) — an IR on top will usually sound too dark. Try Bypass on the Cab IR above first.";
+  }
+  if (gearType.includes("amp") && !gearType.includes("cab")) {
+    return "This capture is amp-only — pairing it with a Cab IR below usually sounds more finished.";
+  }
+  return "";
+}
+
 async function paLoadNamModel(filename) {
   const statusEl = document.getElementById("pa-nam-status");
+  const srWarnEl = document.getElementById("pa-nam-samplerate-warn");
   const parametricEl = document.getElementById("pa-nam-parametric-hint");
   const metaEl = document.getElementById("pa-nam-meta");
   const autolevelEl = document.getElementById("pa-nam-autolevel");
+  const gearNoteEl = document.getElementById("pa-ir-gear-note");
   if (!filename) {
     statusEl.textContent = ""; parametricEl.textContent = ""; metaEl.innerHTML = ""; autolevelEl.textContent = "";
+    if (srWarnEl) srWarnEl.textContent = "";
+    if (gearNoteEl) gearNoteEl.textContent = "";
     return;
   }
   parametricEl.textContent = "";
+  if (srWarnEl) srWarnEl.textContent = "";
+  if (gearNoteEl) gearNoteEl.textContent = "";
   statusEl.textContent = "Loading (checking speed)…";
   try {
     const namJson = await (await fetch(`/api/nam_model_file?filename=${encodeURIComponent(filename)}`)).json();
+    if (srWarnEl) srWarnEl.textContent = paCheckNamSampleRate(namJson);
+    if (gearNoteEl) gearNoteEl.textContent = paNamGearIrNote(namJson);
     if (paIsParametricNam(namJson)) {
       // Fail fast on the main thread rather than spend a probe render only
       // to have the worklet throw "Unsupported architecture" back at us.
