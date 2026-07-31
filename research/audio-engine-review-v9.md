@@ -1,8 +1,15 @@
 # Audio engine review — stems, guitar input, amps, NAM, IR, tab playback
 
 **Status:** review + implementation spec. Written against `redesign/v9-two-rooms`
-@ `0a6bab5`; every DSP file reviewed here is **byte-identical to `main`**
-(verified with `git diff main --`), so all findings apply to both branches.
+@ `0a6bab5`; every DSP file reviewed here was **byte-identical to `main`** at
+the time of review (verified with `git diff main --`), so all findings applied
+to both branches.
+
+**Where the work landed:** the implemented items (§7's status column, plus §9)
+were developed on `redesign/v9-two-rooms` and have since been **cherry-picked
+onto `main`** on their own, *without* the V9 UI redesign — so `main` now
+carries the audio-engine and MIDI changes while keeping the classic UI. The
+V9 UI work remains on `redesign/v9-two-rooms` only.
 
 **Audience:** this is written to be implemented by a separate session. Each
 work item has concrete changes, file/function targets, and acceptance
