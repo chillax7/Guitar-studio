@@ -807,6 +807,18 @@
             <label style="margin:0">Cycle backward: <kbd id="pa-midi-backward-display">not set</kbd></label>
             <button id="pa-midi-backward-learn-btn">Learn…</button>
           </div>
+          <!-- Same Learn… mechanism, pointed at the Looper's own pedal
+               actions. The record/overdub button is the looper's single
+               primary button (record -> loop -> overdub -> stop overdub ->
+               resume), exactly like a hardware looper pedal. -->
+          <div class="row">
+            <label style="margin:0">Looper record/overdub: <kbd id="pa-midi-looper-primary-display">not set</kbd></label>
+            <button id="pa-midi-looper-primary-learn-btn">Learn…</button>
+          </div>
+          <div class="row">
+            <label style="margin:0">Looper stop: <kbd id="pa-midi-looper-stop-display">not set</kbd></label>
+            <button id="pa-midi-looper-stop-learn-btn">Learn…</button>
+          </div>
         </section>
 
         <!-- v4.7 Tone Lab redesign (research/ui-review-and-tonelab-redesign.md

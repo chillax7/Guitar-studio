@@ -480,3 +480,102 @@ Items 2, 5 and 7 all touch `stretch-processor.js`. Before changing it,
 §1.1's table is the regression baseline. In particular, the −130.6 dB unity
 figure and the 0.000 % limiter engagement are the two numbers that catch the
 classes of bug this file has historically had.
+
+---
+
+## 9. Follow-up pass: preset-switch latency + looper footswitch
+
+Not part of the original review — raised directly by the user ("the rig
+preset switch takes too long, there is a noticeable delay before the next
+rig tone is available") alongside a request for looper footswitch control.
+
+### 9.1 Where the preset-switch delay actually is
+
+Measured in headless Chromium against the real shipped code path
+(`paLoadNamModel`), using two of the user's own A2 captures (~295 KB each)
+served by the real server, context at 44.1 kHz:
+
+| Step | Cost | Cacheable? |
+|---|---|---|
+| `fetch` + `JSON.parse` the `.nam` | ~40 ms | yes |
+| `paProbeNamModel` (throwaway OfflineAudioContext, `addModule`, wasm instantiate, build, 0.25 s render) | **~600–780 ms** | yes |
+| live load into `PA.namNode` (`awaitNamLoad`) | ~440–630 ms | no — see below |
+| **total `paLoadNamModel`** | **~1150 ms** | |
+
+The probe was the single largest component and is pure overhead on a
+*repeat* switch: it exists only to measure this machine's speed
+(`rtFactor`) and the capture's output level (`outputGainDb`), and neither
+answer changes between two switches to the same preset at the same sample
+rate.
+
+### 9.2 What was done
+
+- Session caches for the two cacheable steps (parsed `.nam` JSON, probe
+  result keyed by `filename@sampleRate`), plus the decoded IR `AudioBuffer`.
+  Both bounded (12 entries, insertion-order LRU) so a long browsing session
+  can't grow without limit.
+- `paPrewarmPresetChain()` — fetches and probes the *other* presets in the
+  song's chain in the background (sequentially, so the probes don't compete
+  with live audio), so even the first switch to each preset skips both
+  steps. Triggered on rig-session start, after each cycle/jump, and when a
+  preset is added to the chain.
+
+**Measured result:** ~1150 ms → **~525–580 ms** per switch (prewarmed or
+repeat). Cold first-ever load is unchanged at ~1150 ms by construction.
+
+### 9.3 What is left, and why it was not fixed here
+
+The residual ~500 ms is `mod._nam_loadModel()` inside the **vendored
+official NAM core** (`vendor/nam-official/`) — the C++ model construction
+itself. Two hypotheses were measured and **both ruled out**:
+
+- *"`buildModelOfficial` re-serialises the whole model with
+  `JSON.stringify` on the render thread"* — true, it does, but measured at
+  **~1–6 ms**, not the bottleneck. (`JSON.parse` 1.1 ms, `structuredClone`
+  1.2 ms — the whole marshalling layer is negligible.)
+- *"structured-cloning the parsed object to the worklet is expensive"* —
+  also negligible, per the same measurement.
+
+So the cost is genuinely inside the vendored core and cannot be cached or
+marshalled away from JavaScript.
+
+The obvious next step — have the worklet **pre-build** chain models and
+swap a pointer on switch — was deliberately **not** taken, for two
+specific reasons:
+
+1. It relocates the stall rather than removing it. Model building runs in
+   the `port.onmessage` handler on the **render thread**, and every worklet
+   in a context shares that one thread — so pre-building during play would
+   produce an *unmasked* ~500 ms audio dropout, where today the stall is at
+   least hidden behind `paApplyPresetWithFade`'s mute.
+2. Holding N built models at once is exactly the condition that caused a
+   previously-fixed serious bug (see `disposeModel`'s comment in
+   `nam-processor.js`: "switching between several A2/NAM2 captures gets
+   slower and eventually silent for ~15 s" — official-core instances
+   accumulating in the wasm heap).
+
+A safe version would need to gate pre-building on "not currently playing or
+recording" and bound the number of retained instances with explicit
+disposal. That is a real change to the model lifecycle and wants its own
+pass, not a bolt-on to this one.
+
+### 9.4 Looper footswitch
+
+The two hardcoded MIDI learn targets (`forward`/`backward`) were
+generalised into a `PA_MIDI_ACTIONS` table, and two entries added:
+looper record/overdub (the existing `paLooperPrimaryPress` full pedal state
+machine — record → loop → overdub → stop overdub → resume) and looper stop.
+Both reuse the exact functions the on-screen buttons call, so footswitch and
+mouse can't drift apart. The preset actions keep their original
+localStorage keys, so an already-learned pedal survives the refactor.
+
+Learning a button that is already assigned elsewhere now *steals* it and
+says so, instead of silently leaving one physical button firing two
+actions.
+
+Verified with 17 synthetic-MIDI assertions in a real browser (learn, store,
+label render, live dispatch, release-event rejection, unmapped-button
+no-op, conflict stealing, and post-conflict dispatch), plus 15 assertions
+covering the caching/prewarm regression surface. Still **not** tested
+against real footswitch hardware — the same caveat the original MIDI
+feature carries.
