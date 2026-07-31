@@ -1772,6 +1772,105 @@ function paDescribeNamMetadata(namJson, filename, probe) {
   return lines.join("<br>");
 }
 
+// ---------------------------------------------------------------------------
+// Preset-switch latency (measured, real .nam captures, this machine):
+//   fetch + JSON.parse the .nam ...........  ~40 ms
+//   paProbeNamModel (offline probe) .......  ~600-780 ms   <-- the delay
+//   live load into PA.namNode .............  ~440-630 ms
+//   total paLoadNamModel ..................  ~1150 ms
+// which is what makes a footswitch preset change feel sluggish: the mute in
+// paApplyPresetWithFade has to stay down for the whole of it.
+//
+// Both of the first two are pure functions of (file contents, context sample
+// rate) — the probe renders a fixed test tone through a throwaway
+// OfflineAudioContext purely to measure this machine's speed and the
+// capture's output level, and neither answer changes between two switches to
+// the same preset. So they are cached per session, which takes a REPEAT
+// switch down to just the live load, and paPrewarmPresetChain below does
+// both steps in the background for the rest of the song's chain so even the
+// FIRST switch to each preset skips them.
+//
+// The live load is not cached here: it builds the model inside the audio
+// worklet, which is the actual point of loading it. Cutting that too would
+// need the worklet to pre-build and hold several models at once (or a second
+// standby node to swap between) — a much larger change to nam-processor.js's
+// model lifecycle, deliberately left out of this pass.
+//
+// Bounded so a long session browsing many captures can't grow without limit;
+// a song's chain is normally a handful of presets, well inside these caps.
+const PA_NAM_JSON_CACHE_MAX = 12;   // ~300KB each for typical captures
+const PA_IR_BUFFER_CACHE_MAX = 12;
+const paNamJsonCache = new Map();
+const paNamProbeCache = new Map();
+const paIrBufferCache = new Map();
+
+// Insertion-ordered Map + delete-oldest = a plain LRU-by-insertion bound.
+// Re-setting an existing key deletes first so it counts as freshly used.
+function paCachePut(cache, key, value, max) {
+  if (cache.has(key)) cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > max) cache.delete(cache.keys().next().value);
+}
+
+async function paFetchNamJson(filename) {
+  if (paNamJsonCache.has(filename)) return paNamJsonCache.get(filename);
+  const json = await (await fetch(`/api/nam_model_file?filename=${encodeURIComponent(filename)}`)).json();
+  paCachePut(paNamJsonCache, filename, json, PA_NAM_JSON_CACHE_MAX);
+  return json;
+}
+
+// Keyed on sample rate as well as filename: rtFactor is a speed measurement
+// and outputGainDb a level measurement, both taken at the context's rate, so
+// a device change mid-session must not reuse the old numbers.
+async function paProbeNamModelCached(filename, namJson) {
+  const rate = (typeof Audio !== "undefined" && Audio.ctx && Audio.ctx.sampleRate) || 0;
+  const key = `${filename}@${rate}`;
+  if (paNamProbeCache.has(key)) return paNamProbeCache.get(key);
+  const probe = await paProbeNamModel(namJson);
+  // A failed probe (all-null, see paProbeNamModel's catch) is not cached —
+  // it may well have failed for a transient reason, and caching it would
+  // make the failure permanent for the session.
+  if (probe.rtFactor !== null) paCachePut(paNamProbeCache, key, probe, PA_NAM_JSON_CACHE_MAX);
+  return probe;
+}
+
+// Fetch + probe a preset's NAM capture (and fetch its IR) WITHOUT touching
+// the live rig, so a later switch to it finds both caches warm. Every step
+// is best-effort: prewarming is an optimisation, and a failure here must
+// leave the real load path to report the problem in its own words.
+async function paPrewarmPreset(name) {
+  try {
+    const state = paRigPresets[name];
+    if (!state) return;
+    const namFile = state.neural && state.neural.namLoaded;
+    if (namFile && !paNamProbeCache.has(`${namFile}@${(Audio.ctx && Audio.ctx.sampleRate) || 0}`)) {
+      const namJson = await paFetchNamJson(namFile);
+      if (!paIsParametricNam(namJson)) await paProbeNamModelCached(namFile, namJson);
+    }
+    const irFile = state.ir && state.ir.loaded;
+    if (irFile && !paIrBufferCache.has(irFile)) await paFetchIrBuffer(irFile);
+  } catch (e) { /* best-effort by design — see above */ }
+}
+
+// Warm every preset in this song's chain except the one already live.
+// Sequential, not Promise.all: each probe renders audio and competes for the
+// same machine the live rig is running on, so firing six at once would be a
+// self-inflicted glitch. Kicked off without awaiting by its callers.
+let paPrewarmInFlight = false;
+async function paPrewarmPresetChain() {
+  if (paPrewarmInFlight) return;
+  paPrewarmInFlight = true;
+  try {
+    const chain = State.rigPresetChain || [];
+    for (let i = 0; i < chain.length; i++) {
+      if (i === State.rigPresetIndex) continue;
+      await paPrewarmPreset(chain[i]);
+    }
+  } finally {
+    paPrewarmInFlight = false;
+  }
+}
+
 // N-1a: a .nam capture's WaveNet dilations are defined in samples, not
 // time — running it through a context at a different sample rate than it
 // was captured/trained at silently stretches every time constant by the
@@ -1825,7 +1924,7 @@ async function paLoadNamModel(filename) {
   if (gearNoteEl) gearNoteEl.textContent = "";
   statusEl.textContent = "Loading (checking speed)…";
   try {
-    const namJson = await (await fetch(`/api/nam_model_file?filename=${encodeURIComponent(filename)}`)).json();
+    const namJson = await paFetchNamJson(filename);
     if (srWarnEl) srWarnEl.textContent = paCheckNamSampleRate(namJson);
     if (gearNoteEl) gearNoteEl.textContent = paNamGearIrNote(namJson);
     if (paIsParametricNam(namJson)) {
@@ -1839,7 +1938,7 @@ async function paLoadNamModel(filename) {
       autolevelEl.textContent = "";
       return;
     }
-    const probe = await paProbeNamModel(namJson);
+    const probe = await paProbeNamModelCached(filename, namJson);
     if (probe.rtFactor !== null && probe.rtFactor >= NAM_REFUSE_RT_FACTOR) {
       // Loading this would take down the whole audio stream (the exact
       // "picking a NAM cuts everything until reload" bug) — refuse, and
@@ -1917,6 +2016,20 @@ function computeIrMakeupGain(buffer) {
   return peak > 0 ? Math.min(IR_MAKEUP_GAIN_MAX, 1 / peak) : 1;
 }
 
+// Fetch + decode an IR, caching the decoded AudioBuffer (see the
+// preset-switch latency note above). AudioBuffers are immutable once
+// decoded and ConvolverNode only reads them, so handing the same instance
+// to a later load is safe — and it skips both the fetch and the decode.
+async function paFetchIrBuffer(filename) {
+  if (paIrBufferCache.has(filename)) return paIrBufferCache.get(filename);
+  const resp = await fetch(`/api/ir_model_file?filename=${encodeURIComponent(filename)}`);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const arrBuf = await resp.arrayBuffer();
+  const buffer = await Audio.ctx.decodeAudioData(arrBuf);
+  paCachePut(paIrBufferCache, filename, buffer, PA_IR_BUFFER_CACHE_MAX);
+  return buffer;
+}
+
 async function paLoadIr(filename) {
   const statusEl = document.getElementById("pa-ir-status");
   if (!filename) {
@@ -1928,10 +2041,7 @@ async function paLoadIr(filename) {
   }
   statusEl.textContent = "Loading…";
   try {
-    const resp = await fetch(`/api/ir_model_file?filename=${encodeURIComponent(filename)}`);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const arrBuf = await resp.arrayBuffer();
-    PA.convolver.buffer = await Audio.ctx.decodeAudioData(arrBuf);
+    PA.convolver.buffer = await paFetchIrBuffer(filename);
     PA.irMakeupGain.gain.value = computeIrMakeupGain(PA.convolver.buffer);
     PA.irLoaded = filename; // GP-02: so a rig preset capture knows which IR is active
     statusEl.textContent = `Loaded: ${filename}`;
@@ -2109,6 +2219,9 @@ async function paEnsureRigSessionReady() {
   await ensureRiffCapture(); // GP-07 — starts rolling as soon as the rig exists; no-op if already running
   await ensureLooper(); // GP-06 — no-op if already running
   await paLoadSavedLoop(); // no-op if already loaded for this track, or nothing saved
+  // Not awaited: opening a screen shouldn't wait on this, and by the time
+  // the first footswitch press arrives the chain is usually already warm.
+  paPrewarmPresetChain();
 }
 
 // Toggles which of the 4 persistent-screen nav buttons reads as "current,"
@@ -3090,6 +3203,7 @@ async function paCyclePresetChain(dir) {
   saveProjectDebounced();
   renderPresetChainList();
   document.getElementById("pa-preset-status").textContent = `Cycled to "${name}".`;
+  paPrewarmPresetChain(); // deliberately not awaited — warms the NEXT switch
 }
 
 // The mouse-driven equivalent of the cycle key — pick a specific chain
@@ -3103,6 +3217,7 @@ async function paJumpToChainIndex(i) {
   saveProjectDebounced();
   renderPresetChainList();
   document.getElementById("pa-preset-status").textContent = `Loaded "${name}" from this song's chain.`;
+  paPrewarmPresetChain(); // deliberately not awaited — warms the NEXT switch
 }
 
 function paAddToChain() {
@@ -3114,6 +3229,7 @@ function paAddToChain() {
   saveProjectDebounced();
   renderPresetChainList();
   statusEl.textContent = `Added "${name}" to this song's chain.`;
+  paPrewarmPresetChain(); // the entry just added is a switch target now
 }
 
 // Removing a chain entry never touches the live rig itself (only cycling/
@@ -3262,6 +3378,28 @@ const PA_MIDI_DEVICE_KEY = "gs_midi_device_id";
 const PA_MIDI_MAP_FORWARD_KEY = "gs_midi_map_forward";
 const PA_MIDI_MAP_BACKWARD_KEY = "gs_midi_map_backward";
 
+// Every learnable footswitch action in one table, rather than the two
+// hardcoded forward/backward targets this started as — adding the looper
+// pedal actions was otherwise four parallel edits (storage key, learn
+// wiring, label render, dispatch branch) with four chances to miss one.
+// `id` doubles as the DOM id stem (`pa-midi-${id}-display` /
+// `pa-midi-${id}-learn-btn`), and the two preset storageKeys keep their
+// original names so an existing learned pedal survives this refactor.
+//
+// The looper actions deliberately reuse paLooperPrimaryPress /
+// paLooperStopPress verbatim — the same functions the on-screen buttons
+// call — so a footswitch and a mouse click can never drift apart in what
+// they do. paLooperPrimaryPress is already the full pedal state machine
+// (record -> loop -> overdub -> stop overdub -> resume, per
+// looper-pedal-spec.md §4), which is exactly the "one button
+// play/overdub" behaviour a looper pedal has.
+const PA_MIDI_ACTIONS = [
+  { id: "forward", label: "cycle forward", storageKey: PA_MIDI_MAP_FORWARD_KEY, run: () => paCyclePresetChain(1) },
+  { id: "backward", label: "cycle backward", storageKey: PA_MIDI_MAP_BACKWARD_KEY, run: () => paCyclePresetChain(-1) },
+  { id: "looper-primary", label: "looper record/overdub", storageKey: "gs_midi_map_looper_primary", run: () => paLooperPrimaryPress() },
+  { id: "looper-stop", label: "looper stop", storageKey: "gs_midi_map_looper_stop", run: () => paLooperStopPress() },
+];
+
 function paMidiLoadMapping(key) {
   try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; }
 }
@@ -3285,26 +3423,48 @@ function paMidiIsPressEvent(status, data2) {
   return false; // Note Off, pitch-bend, aftertouch, etc. — not a footswitch press
 }
 
+function paMidiRenderMapping(action) {
+  const el = document.getElementById(`pa-midi-${action.id}-display`);
+  if (el) el.textContent = paMidiMapLabel(paMidiLoadMapping(action.storageKey));
+}
+
 function paHandleMidiMessage(event) {
   const [status, data1, data2] = event.data;
   if (!paMidiIsPressEvent(status, data2)) return;
 
   if (PA.midiLearnTarget) {
-    const target = PA.midiLearnTarget;
+    const action = PA_MIDI_ACTIONS.find((a) => a.id === PA.midiLearnTarget);
     PA.midiLearnTarget = null;
+    if (!action) return;
     const map = { status, data1 };
-    localStorage.setItem(target === "forward" ? PA_MIDI_MAP_FORWARD_KEY : PA_MIDI_MAP_BACKWARD_KEY, JSON.stringify(map));
-    document.getElementById(`pa-midi-${target}-display`).textContent = paMidiMapLabel(map);
-    document.getElementById("pa-midi-status").textContent = `MIDI cycle ${target} set to ${paMidiMapLabel(map)}.`;
+    // One physical button doing two things at once is never what someone
+    // wants and is very hard to diagnose after the fact (both fire, in
+    // table order). Steal the binding instead, and say so.
+    const stolenFrom = PA_MIDI_ACTIONS.filter((other) => {
+      if (other.id === action.id) return false;
+      const m = paMidiLoadMapping(other.storageKey);
+      return m && m.status === status && m.data1 === data1;
+    });
+    for (const other of stolenFrom) {
+      localStorage.removeItem(other.storageKey);
+      paMidiRenderMapping(other);
+    }
+    localStorage.setItem(action.storageKey, JSON.stringify(map));
+    paMidiRenderMapping(action);
+    document.getElementById("pa-midi-status").textContent =
+      `MIDI ${action.label} set to ${paMidiMapLabel(map)}.` +
+      (stolenFrom.length ? ` (Unassigned from ${stolenFrom.map((o) => o.label).join(", ")} — one button, one job.)` : "");
     return;
   }
 
-  const fwdMap = paMidiLoadMapping(PA_MIDI_MAP_FORWARD_KEY);
-  const backMap = paMidiLoadMapping(PA_MIDI_MAP_BACKWARD_KEY);
-  if (fwdMap && fwdMap.status === status && fwdMap.data1 === data1) {
-    paCyclePresetChain(1);
-  } else if (backMap && backMap.status === status && backMap.data1 === data1) {
-    paCyclePresetChain(-1);
+  // First match wins. Duplicate bindings are prevented at Learn time above,
+  // so in practice at most one action ever matches.
+  for (const action of PA_MIDI_ACTIONS) {
+    const map = paMidiLoadMapping(action.storageKey);
+    if (map && map.status === status && map.data1 === data1) {
+      action.run();
+      return;
+    }
   }
 }
 
@@ -3394,19 +3554,18 @@ function wireMidiControls() {
     paSelectMidiDevice(e.target.value);
   });
 
-  function wireLearnBtn(btnId, target) {
-    document.getElementById(btnId).addEventListener("click", () => {
-      const statusEl = document.getElementById("pa-midi-status");
-      if (!PA.midiInput) { statusEl.textContent = "Pick a MIDI device above first."; return; }
-      PA.midiLearnTarget = target;
-      statusEl.textContent = `Press the footswitch button you want to cycle ${target} now…`;
-    });
+  for (const action of PA_MIDI_ACTIONS) {
+    const btn = document.getElementById(`pa-midi-${action.id}-learn-btn`);
+    if (btn) {
+      btn.addEventListener("click", () => {
+        const statusEl = document.getElementById("pa-midi-status");
+        if (!PA.midiInput) { statusEl.textContent = "Pick a MIDI device above first."; return; }
+        PA.midiLearnTarget = action.id;
+        statusEl.textContent = `Press the footswitch button you want for ${action.label} now…`;
+      });
+    }
+    paMidiRenderMapping(action);
   }
-  wireLearnBtn("pa-midi-forward-learn-btn", "forward");
-  wireLearnBtn("pa-midi-backward-learn-btn", "backward");
-
-  document.getElementById("pa-midi-forward-display").textContent = paMidiMapLabel(paMidiLoadMapping(PA_MIDI_MAP_FORWARD_KEY));
-  document.getElementById("pa-midi-backward-display").textContent = paMidiMapLabel(paMidiLoadMapping(PA_MIDI_MAP_BACKWARD_KEY));
 
   // Code-review finding: this used to call paRefreshMidiDevices() right
   // here, at page load — navigator.requestMIDIAccess() then fires (and
