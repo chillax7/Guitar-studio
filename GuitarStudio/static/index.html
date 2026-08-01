@@ -830,6 +830,55 @@
                above is shared by all of them. -->
         </section>
 
+        <!-- TONE3000 — search the public capture catalogue and download
+             straight into the local NAM/IR library. Deliberately NOT a
+             pa-rig-card inside #pa-pedalboard: those are the reorderable
+             signal-chain stages driven by PA.pedalOrder, and this is a
+             library-acquisition panel, not a stage. See tone3000.js for
+             the API contract (OAuth 2.0 + PKCE; there is no key-only
+             read path, which is why connecting comes first). -->
+        <section class="pa-card" id="t3k-card">
+          <h3>TONE3000</h3>
+          <div class="pa-card-content">
+            <label>Publishable key</label>
+            <div class="row">
+              <input type="text" id="t3k-key-input" placeholder="t3k_pub_…" autocomplete="off" spellcheck="false">
+              <button id="t3k-key-save-btn">Save</button>
+            </div>
+            <p class="hint" id="t3k-key-hint"></p>
+            <div class="row">
+              <button id="t3k-connect-btn" class="primary">Connect TONE3000 account</button>
+              <button id="t3k-browse-btn">Browse on TONE3000…</button>
+              <button id="t3k-disconnect-btn" style="display:none">Disconnect</button>
+            </div>
+            <p class="hint" id="t3k-status"></p>
+
+            <div id="t3k-search-panel" style="display:none">
+              <div class="row">
+                <input type="text" id="t3k-query" placeholder="Search by amp, band, creator…">
+                <button id="t3k-search-btn" class="primary">Search</button>
+              </div>
+              <div class="row">
+                <button id="t3k-match-btn">Match this track</button>
+                <select id="t3k-sort" title="Sort order"></select>
+                <select id="t3k-format" title="File format"></select>
+                <select id="t3k-architecture" title="Neural architecture"></select>
+              </div>
+              <label>Gear</label>
+              <div id="t3k-gears" class="t3k-chips"></div>
+              <label>Size</label>
+              <div id="t3k-sizes" class="t3k-chips"></div>
+              <div id="t3k-results"></div>
+              <div class="row" id="t3k-pager" style="display:none">
+                <button id="t3k-prev-btn">‹ Prev</button>
+                <span id="t3k-page-label"></span>
+                <button id="t3k-next-btn">Next ›</button>
+              </div>
+              <p class="hint">Downloads land in a <strong>TONE3000</strong> folder inside your NAM (or IR) library, and the picker above refreshes automatically. Searching is rate-limited by TONE3000 (100 requests/minute), so this only searches when you press the button — never as you type.</p>
+            </div>
+          </div>
+        </section>
+
         <!-- v4.7 Tone Lab redesign (research/ui-review-and-tonelab-redesign.md
              §3): one small icon chip per rig stage, left-to-right in signal
              order — Gate -> Amp -> [12 reorderable stages] -> Output.
@@ -1678,5 +1727,6 @@
 <script src="playalong.js"></script>
 <script src="recorder.js"></script>
 <script src="tabview.js"></script>
+<script src="tone3000.js"></script>
 </body>
 </html>

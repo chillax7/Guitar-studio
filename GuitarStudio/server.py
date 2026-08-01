@@ -2028,14 +2028,46 @@ LICK_PROVIDERS = {
 _LICK_HTTP_USER_AGENT = "OrpheusGuitarStudio/5.0 (+lick-ideas)"
 
 
+def _read_settings_raw() -> dict:
+    if not SETTINGS_FILE.exists():
+        return {}
+    try:
+        return json.loads(SETTINGS_FILE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+# TONE3000's publishable key (t3k_pub_...) is the OAuth client_id, not a
+# secret: it travels in the browser's authorize URL by design, and the PKCE
+# code challenge is what actually protects the flow. So unlike the LLM
+# provider keys above — which are real secrets and are only ever reported as
+# has_<provider>_key — this one is returned to the client verbatim, because
+# the client is the thing that needs it to start the flow.
+TONE3000_KEY_FIELD = "tone3000_publishable_key"
+
+
 def svc_load_settings() -> dict:
-    raw = {}
-    if SETTINGS_FILE.exists():
-        try:
-            raw = json.loads(SETTINGS_FILE.read_text())
-        except (json.JSONDecodeError, OSError):
-            raw = {}
-    return {f"has_{provider}_key": bool(raw.get(info["key_field"])) for provider, info in LICK_PROVIDERS.items()}
+    raw = _read_settings_raw()
+    out = {f"has_{provider}_key": bool(raw.get(info["key_field"])) for provider, info in LICK_PROVIDERS.items()}
+    out["tone3000_publishable_key"] = raw.get(TONE3000_KEY_FIELD, "")
+    return out
+
+
+def svc_save_tone3000_key(publishable_key: str) -> dict:
+    key = (publishable_key or "").strip()
+    # Fail loudly on a secret key pasted by mistake: t3k_sk_/secret keys must
+    # never reach a browser, and silently storing one would put it in every
+    # authorize URL. The publishable one is the only kind this flow uses.
+    if key and not key.startswith("t3k_pub_"):
+        raise ApiError(400, "That doesn't look like a TONE3000 publishable key — it should start with 't3k_pub_'. "
+                            "Never paste a secret key here; this one is sent to the browser by design.")
+    raw = _read_settings_raw()
+    if key:
+        raw[TONE3000_KEY_FIELD] = key
+    else:
+        raw.pop(TONE3000_KEY_FIELD, None)
+    SETTINGS_FILE.write_text(json.dumps(raw, indent=2))
+    return {"ok": True, "tone3000_publishable_key": key}
 
 
 def svc_save_provider_key(provider: str, api_key: str) -> dict:
@@ -3574,6 +3606,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/settings/provider_key":
                 body = self._read_json_body()
                 result = svc_save_provider_key(body.get("provider", ""), body.get("api_key", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/settings/tone3000_key":
+                body = self._read_json_body()
+                result = svc_save_tone3000_key(body.get("publishable_key", ""))
                 return self._send_json(200, result)
 
             if path == "/api/lick/suggest":
