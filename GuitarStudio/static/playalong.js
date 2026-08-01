@@ -1684,6 +1684,31 @@ async function gsDiag() {
     out.namPong = "PA.namNode is null — Play Along graph not built";
   }
 
+  // Looper: "I recorded a loop but hear nothing" has several possible
+  // causes that look identical from the outside — no loop committed, a
+  // loop of the wrong length, the record tap muted (the tuner parks
+  // outputMute at 0), or a stale saved loop restored into "stopped" so the
+  // primary button resumes instead of records. Report all of them at once
+  // rather than one at a time across a conversation.
+  if (PA.looperNode) {
+    const lenSec = PA.looperLengthFrames ? PA.looperLengthFrames / ctx.sampleRate : 0;
+    out.looper = {
+      state: PA.looperState,
+      loopLengthSec: +lenSec.toFixed(2),
+      bars: PA.looperBars,
+      // 0 here means the looper is recording silence — the tuner mute and
+      // a mid-switch preset fade both park this node at 0.
+      recordTapGain: PA.outputMute ? PA.outputMute.gain.value : "no outputMute",
+      playbackBusGain: PA.loopSum ? PA.loopSum.gain.value : "no loopSum",
+      outputGain: PA.outputGain ? PA.outputGain.gain.value : "no outputGain",
+      hint: PA.looperState === "stopped"
+        ? "state is 'stopped' — the big button RESUMES this loop; press Clear first if you meant to record a new one"
+        : (PA.looperState === "idle" ? "no loop committed yet" : ""),
+    };
+  } else {
+    out.looper = "PA.looperNode is null — looper not built (open Tone Lab or Play Along once)";
+  }
+
   // rmsOf is app.js's shared helper (V3-E6) — this used to be a local copy.
   // A single instantaneous reading can't distinguish "user wasn't playing"
   // from "signal not flowing" — watch all three taps for 5 seconds (the
@@ -3534,6 +3559,19 @@ function paSelectMidiDevice(id) {
   PA.midiInput.onmidimessage = paHandleMidiMessage;
   localStorage.setItem(PA_MIDI_DEVICE_KEY, id);
   statusEl.textContent = `Connected: ${input.name || input.id}.`;
+  paUpdateLooperMidiHint();
+}
+
+// The Looper card's footswitch rows live on Play Along, but the device
+// picker they depend on is in Tone Lab (one device for the whole app) —
+// so the Looper card has to say which state that shared picker is in,
+// otherwise "Learn…" over there looks broken for no visible reason.
+function paUpdateLooperMidiHint() {
+  const el = document.getElementById("looper-midi-hint");
+  if (!el) return;
+  el.textContent = PA.midiInput
+    ? `Footswitch: ${PA.midiInput.name || PA.midiInput.id}.`
+    : "Pick your MIDI device in Tone Lab → Rig presets first.";
 }
 
 // V6-MEM2: this used to request access AND render the list AND install the
@@ -3920,7 +3958,14 @@ function paLooperUpdateUI() {
   } else if (PA.looperBars) {
     hintEl.textContent = `Loop length: locked to ${PA.looperBars} bar${PA.looperBars === 1 ? "" : "s"} (${Math.round(PA.looperBpm)} BPM).`;
   } else {
-    hintEl.textContent = `Loop length: ${(PA.looperLengthFrames / Audio.ctx.sampleRate).toFixed(1)}s (free-running — no song loaded).`;
+    // "no song loaded" was the only reason this branch could be reached
+    // before; a take that lands too far off a bar boundary to snap now
+    // reaches it too (see LOOP_BAR_SNAP_TOLERANCE in looper-processor.js),
+    // so say which case it actually is rather than assert the wrong one.
+    const why = (State.analysis && State.analysis.bpm)
+      ? "free-running — take wasn't close enough to a whole bar to snap"
+      : "free-running — no song loaded";
+    hintEl.textContent = `Loop length: ${(PA.looperLengthFrames / Audio.ctx.sampleRate).toFixed(1)}s (${why}).`;
   }
 }
 
@@ -4073,6 +4118,7 @@ function wireLooper() {
   document.getElementById("looper-undo-btn").addEventListener("click", paLooperUndoPress);
   document.getElementById("looper-clear-btn").addEventListener("click", paLooperClearPress);
   paLooperUpdateUI();
+  paUpdateLooperMidiHint();
 }
 
 wirePAControls();
