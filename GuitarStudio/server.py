@@ -2903,6 +2903,9 @@ def svc_tabs_list() -> dict:
             "name": name,
             "title": meta.get("title", ""),
             "artist": meta.get("artist", ""),
+            # So the client knows not to overwrite a hand-picked name with
+            # the .gp file's embedded title — see onTabScoreLoaded.
+            "user_named": bool(meta.get("user_named")),
         })
     return {"tabs": tabs, "playlists": library["playlists"]}
 
@@ -2931,7 +2934,16 @@ def resolve_tab_file(filename: str) -> Path:
 def svc_tab_set_metadata(filename: str, title: str, artist: str) -> dict:
     name = safe_name(filename)
     library = _load_tab_library()
-    library["tabs"][name] = {"title": (title or "").strip(), "artist": (artist or "").strip()}
+    existing = library["tabs"].get(name, {})
+    entry = {"title": (title or "").strip(), "artist": (artist or "").strip()}
+    if existing.get("user_named"):
+        # This tab was renamed by hand. The client reports the .gp file's own
+        # embedded title on every load, which would silently undo that rename
+        # the next time the tab was opened — keep the user's name, but still
+        # take the artist, which they didn't choose.
+        entry["title"] = existing.get("title", "")
+        entry["user_named"] = True
+    library["tabs"][name] = entry
     _save_tab_library(library)
     return {"ok": True}
 
@@ -2946,8 +2958,18 @@ def svc_tab_rename(filename: str, new_name: str) -> dict:
         raise ApiError(409, f"'{new_name_safe}' already exists")
     old_path.rename(new_path)
     library = _load_tab_library()
-    if filename in library["tabs"]:
-        library["tabs"][new_name_safe] = library["tabs"].pop(filename)
+    # The library list shows the sidecar's `title` when there is one (see
+    # tabDisplayLabel in tabview.js), and that title comes from the metadata
+    # embedded INSIDE the .gp file, not from the filename. So renaming the
+    # file alone changed nothing the user could see — the row kept showing
+    # the tab's embedded title while the rename dialog, which reads the
+    # filename, showed the new one. Renaming is an explicit naming act, so
+    # it now sets the displayed title too, and marks the entry user_named so
+    # the next score load doesn't overwrite it back (see svc_tab_set_metadata).
+    entry = library["tabs"].pop(filename, {})
+    entry["title"] = Path(new_name_safe).stem
+    entry["user_named"] = True
+    library["tabs"][new_name_safe] = entry
     for tracks in library["playlists"].values():
         for i, t in enumerate(tracks):
             if t == filename:

@@ -185,7 +185,14 @@ async function ensureTabViewApi() {
   // scrollOffsetY nudges the target row down by the sticky screen-header's
   // height (+ a small gap) so the row alphaTab scrolls to doesn't end up
   // hidden underneath it.
-  const headerHeight = document.getElementById("tabview-header").getBoundingClientRect().height;
+  // #tabview-header is the screen's Close bar. It does not exist on every
+  // layout — the V9 shell drops it entirely (the always-visible activity
+  // rail replaces it), and reading getBoundingClientRect() off the missing
+  // element threw right here, taking the whole tab load down with
+  // "Cannot read properties of null". Absent header simply means there is
+  // nothing sticky above the score to scroll clear of, i.e. no offset.
+  const headerEl = document.getElementById("tabview-header");
+  const headerHeight = headerEl ? headerEl.getBoundingClientRect().height : 0;
 
   const api = new alphaTab.AlphaTabApi(document.getElementById("tabview-canvas"), {
     core: {
@@ -271,7 +278,11 @@ function onTabScoreLoaded(score) {
 
   const title = score.title || "";
   const artist = score.artist || "";
-  document.getElementById("tabview-bar-tab-name").textContent = title || TabView.currentTab;
+  const libEntry = TabView.library.find((t) => t.name === TabView.currentTab);
+  // Same rule as the library row below: if the user renamed this tab, the
+  // play bar shows THEIR name, not the .gp file's embedded title.
+  const barName = (libEntry && libEntry.user_named && libEntry.title) || title || TabView.currentTab;
+  document.getElementById("tabview-bar-tab-name").textContent = barName;
   document.getElementById("tabview-track-artist").textContent = artist;
 
   // alphaTab already parsed this metadata as part of loading the file for
@@ -281,11 +292,17 @@ function onTabScoreLoaded(score) {
   // something svc_tab_upload does itself. Best-effort: a failed save here
   // just means the library list keeps showing the bare filename a little
   // longer, not a broken tab.
-  const entry = TabView.library.find((t) => t.name === TabView.currentTab);
-  if (entry && (entry.title !== title || entry.artist !== artist)) {
-    entry.title = title;
+  const entry = libEntry;
+  // A hand-renamed tab keeps the name the user gave it: the embedded title
+  // would otherwise overwrite the library row every time the tab was
+  // opened, which is what made a rename look like it hadn't taken. The
+  // server enforces the same rule (svc_tab_set_metadata); this keeps the
+  // list from flashing the old name before the next refresh agrees.
+  const nextTitle = (entry && entry.user_named) ? entry.title : title;
+  if (entry && (entry.title !== nextTitle || entry.artist !== artist)) {
+    entry.title = nextTitle;
     entry.artist = artist;
-    Api.post("/api/tabs/metadata", { filename: TabView.currentTab, title, artist }).catch(() => {});
+    Api.post("/api/tabs/metadata", { filename: TabView.currentTab, title: nextTitle, artist }).catch(() => {});
     renderTabLibrary();
   }
 }
