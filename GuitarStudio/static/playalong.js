@@ -606,6 +606,14 @@ async function _buildPAGraph() {
   // other stage — gate's own node serves as both its fan-in and fan-out
   // (a single AudioWorkletNode); amp's fan-in is PA.ampIn, the one node
   // every mode's entry point fans out from (see setAmpMode).
+  // T-1a: a second, parallel way into the pedal chain, used by Tab View's
+  // "play through my rig" bridge. It joins the chain at exactly the point
+  // the gate feeds (see rewirePedalChain), NOT into the gate itself — a
+  // noise gate whose threshold is set for a real guitar would chop or mute
+  // a synthesized tab signal, which would read as "the toggle does
+  // nothing". Everything after the gate (amp, cab IR, EQ, FX) still applies.
+  PA.tabIn = Audio.ctx.createGain();
+
   PA.pedalStages = {
     gate: { inputs: [PA.gateNode], output: PA.gateNode },
     amp: { inputs: [PA.ampIn], output: PA.ampOut },
@@ -679,6 +687,12 @@ function paSavePedalOrder() {
 // gate and output is exactly PA.pedalOrder, stage by stage.
 function rewirePedalChain() {
   const stageOutput = (id) => PA.pedalStages[id].output;
+  // T-1a: whatever the gate feeds is also what PA.tabIn feeds — computed the
+  // same way for the old and new orders so the tab bridge follows a pedal
+  // reorder automatically instead of being left pointing at a stage that is
+  // no longer first.
+  const headTargets = (chainIds) =>
+    chainIds.length > 1 ? PA.pedalStages[chainIds[1]].inputs : [PA.outputGain];
 
   const prevChain = ["gate", ...(PA.wiredPedalOrder || [])];
   for (let i = 0; i < prevChain.length - 1; i++) {
@@ -689,6 +703,11 @@ function rewirePedalChain() {
   }
   if (PA.wiredPedalOrder) {
     try { stageOutput(prevChain[prevChain.length - 1]).disconnect(PA.outputGain); } catch (e) { /* wasn't connected */ }
+    if (PA.tabIn) {
+      for (const inp of headTargets(prevChain)) {
+        try { PA.tabIn.disconnect(inp); } catch (e) { /* wasn't connected */ }
+      }
+    }
   }
 
   const chain = ["gate", ...PA.pedalOrder];
@@ -697,6 +716,7 @@ function rewirePedalChain() {
     for (const inp of PA.pedalStages[chain[i + 1]].inputs) out.connect(inp);
   }
   stageOutput(chain[chain.length - 1]).connect(PA.outputGain);
+  if (PA.tabIn) for (const inp of headTargets(chain)) PA.tabIn.connect(inp);
 
   PA.wiredPedalOrder = [...PA.pedalOrder];
 }
@@ -2030,6 +2050,41 @@ async function paFetchIrBuffer(filename) {
   return buffer;
 }
 
+// R-2: the review proposed truncating loaded IRs to ~100ms on the reasoning
+// that "convolution CPU is proportional to length". Measured, that premise
+// does not hold for ConvolverNode, which uses partitioned FFT convolution —
+// cost grows far slower than length:
+//
+//   render 8s of audio through the convolver (this machine, 48kHz):
+//     no convolver ............  13 ms
+//     500ms IR ................ 110 ms
+//     2s IR ................... 179 ms      <- 4x the length, 1.7x the cost
+//     2s IR truncated to 100ms .  89 ms
+//
+// So even a pathological 2s IR costs ~2% of the real-time budget, and
+// capping it to 100ms buys back only ~1% — against §1's stems at 45.8%, that
+// is noise. Meanwhile truncation is NOT free tonally: measured in
+// third-octave bands (single-frequency dB readings are useless here, they
+// land on nulls and swing several dB for no audible reason), a 100ms cap
+// costs ~0.65dB in the lowest band and a 50ms cap ~0.9-1.6dB — always in the
+// low end, which is exactly the part of a cab IR players care about.
+//
+// Trading ~0.65dB of low end for ~1% of CPU is a bad deal for a guitar app,
+// so the truncation is deliberately NOT implemented. What IS useful is
+// telling the user what they actually loaded, since a suspiciously long file
+// is usually a reverb impulse grabbed by mistake rather than a cab.
+const PA_IR_LONG_MS = 1000;
+function paDescribeIr(buffer) {
+  if (!buffer) return "";
+  const ms = Math.round(1000 * buffer.length / buffer.sampleRate);
+  const rate = buffer.sampleRate >= 1000 ? `${(buffer.sampleRate / 1000).toFixed(1).replace(/\.0$/, "")} kHz` : `${buffer.sampleRate} Hz`;
+  let s = ` — ${ms} ms, ${rate}`;
+  if (ms > PA_IR_LONG_MS) {
+    s += `. That's very long for a cab IR (cab impulses are usually under 500 ms) — if this is a reverb/room impulse it will sound washed out and costs more CPU than a cab IR needs.`;
+  }
+  return s;
+}
+
 async function paLoadIr(filename) {
   const statusEl = document.getElementById("pa-ir-status");
   if (!filename) {
@@ -2044,7 +2099,7 @@ async function paLoadIr(filename) {
     PA.convolver.buffer = await paFetchIrBuffer(filename);
     PA.irMakeupGain.gain.value = computeIrMakeupGain(PA.convolver.buffer);
     PA.irLoaded = filename; // GP-02: so a rig preset capture knows which IR is active
-    statusEl.textContent = `Loaded: ${filename}`;
+    statusEl.textContent = `Loaded: ${filename}` + paDescribeIr(PA.convolver.buffer);
   } catch (e) {
     // Previously unhandled — a failed fetch/decode silently left the old
     // (or no) IR buffer in place with zero feedback, indistinguishable

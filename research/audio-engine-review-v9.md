@@ -586,3 +586,113 @@ no-op, conflict stealing, and post-conflict dispatch), plus 15 assertions
 covering the caching/prewarm regression surface. Still **not** tested
 against real footswitch hardware — the same caveat the original MIDI
 feature carries.
+
+---
+
+## 10. Follow-up pass: IR verification (R-1/R-2) and tab-through-rig (T-1a)
+
+### 10.1 R-1 — IR sample-rate conversion: verified correct, no change made
+
+Measured with a synthesized 48 kHz cab IR (500 ms) rendered through the real
+shipped path (`ConvolverNode` with `normalize=false` + the manual
+peak-normalise), loaded into a 48 kHz context (native) and a 44.1 kHz
+context (`decodeAudioData` resamples):
+
+| | 48 kHz ctx | 44.1 kHz ctx |
+|---|---|---|
+| decoded frames | 24000 | 22049 (correct 44.1/48 ratio) |
+| worst response deviation, 80 Hz – 10 kHz | — | **−0.15 dB @ 10 kHz** |
+
+Acceptance was ±0.5 dB to 10 kHz. **Passes with margin — R-1 needs no code
+change.** `decodeAudioData`'s resampling is the right behaviour for an IR
+(unlike for a NAM model, §4) and it is doing it accurately.
+
+### 10.2 R-2 — IR length cap: measured, and deliberately NOT implemented
+
+R-2's stated rationale was "convolution CPU is proportional to length". That
+premise is **wrong for `ConvolverNode`**, which uses partitioned FFT
+convolution. Measured (render 8 s of noise, 48 kHz):
+
+| IR | frames | render ms | convolution cost |
+|---|---|---|---|
+| none (baseline) | 0 | 13 | — |
+| 500 ms | 24000 | 110 | 97 ms |
+| 2 s | 96000 | 179 | 166 ms |
+| 2 s → 500 ms cap | 24000 | 120 | 107 ms |
+| 2 s → 100 ms cap | 4800 | 89 | 76 ms |
+
+**4× the IR length costs only 1.7× the CPU.** Even a pathological 2 s IR is
+~2 % of the real-time budget; capping it to 100 ms buys back ~1 %. Against
+§1's stems at 45.8 %, that is noise.
+
+And truncation is not free. Measured in **third-octave bands** — single
+frequency-point dB readings are useless here, they land on spectral nulls
+and swing 4–6 dB for no audible reason (I initially misread exactly that as
+"truncation is tonally harmful"; the dry-cab control case, which holds 99 %
+of its energy inside 100 ms, showed the same 4.4 dB "deviation", which is
+what exposed the artifact):
+
+| cap | worst band deviation |
+|---|---|
+| 200 ms | −0.64 dB @ 80–100 Hz |
+| 100 ms | −0.61 … −0.70 dB @ 80–100 Hz |
+| 50 ms | −0.88 … −1.57 dB @ 80–100 Hz |
+
+Always in the lowest band — exactly the part of a cab IR players care about.
+**Trading ~0.65 dB of low end for ~1 % of CPU is a bad deal for a guitar
+app, so the truncation was not implemented.**
+
+What *was* implemented is the non-destructive part: `paLoadIr` now reports
+the loaded IR's **length and sample rate**, and warns when a file is over
+1 s ("very long for a cab IR… if this is a reverb/room impulse it will sound
+washed out"), since that is nearly always a reverb impulse picked by
+mistake. No silent tone changes.
+
+### 10.3 T-1a — "Through my rig" toggle in Tab View
+
+Implemented and working. The tab's synthesized audio is routed into Tone
+Lab's chain (amp → cab IR → EQ/FX), so a tab can be played through a NAM
+capture instead of the GM soundfont's output.
+
+**How the bridge works.** alphaTab owns its own `AudioContext` and Web Audio
+nodes cannot cross contexts, so the audio leaves alphaTab as a
+`MediaStreamDestination` and re-enters the app context as a
+`MediaStreamSource`. The non-obvious part is *where to intercept*: both of
+alphaTab 1.8.4's backends (`AlphaSynthScriptProcessorOutput`,
+`AlphaSynthAudioWorkletOutput`) create their output node inside `play()` and
+destroy it in `pause()`, and the worklet path does so asynchronously inside
+a promise — so there is no single node to capture once at setup. Instead of
+reaching for whichever private field currently holds it (`_audioNode` vs
+`_worklet`) and redoing it on every transport change, the bridge intercepts
+the one thing both paths always do: `connect(theirContext.destination)`.
+The patch is scoped to exactly that (a node whose own context is alphaTab's,
+targeting alphaTab's destination), so nothing else in the app is affected.
+
+**Injection point.** A new `PA.tabIn` gain node joins the pedal chain at the
+same point the noise gate feeds it — *not* into the gate. A gate with a
+threshold set for a real guitar would chop or mute a synthesized tab signal,
+which would read as "the toggle does nothing". `rewirePedalChain` computes
+`tabIn`'s target the same way for the old and new orders, so the bridge
+follows a pedal reorder instead of being orphaned.
+
+**Measured added latency: median 21 ms** (7 trials, 20.7–24.9 ms; measured
+as bridged-vs-native arrival of a gated tone across two contexts). Fine for
+playback — this is not live monitoring of your own playing — and it is why
+the feature is a toggle rather than the default.
+
+*Acceptance met:* with the toggle on, tab audio measurably reaches the rig
+input (peak 0.065); with it off, exactly 0.000. Verified with 15 assertions
+covering the full flow, plus 6 more on the pedal-chain wiring (including
+that repeated rewires do not accumulate duplicate connections).
+
+**Known rough edge:** the interceptor only affects *new* `connect()` calls,
+so toggling mid-playback needs a Play/Stop cycle to take effect. The status
+line says so. Making it seamless would mean forcing alphaTab to re-create
+its output node on toggle, which is more intrusive than the benefit
+justifies for a first cut.
+
+**Not addressed:** T-1b (a better guitar sample set) is still the other half
+of §6 — the bridge raises the ceiling, but the source is still a GM
+soundfont, so the tab will sound like a clean GM guitar *through* a good
+amp, not like a real player. Pairing T-1a with a clean-guitar program and a
+velocity-layered sample set is the natural next step.
