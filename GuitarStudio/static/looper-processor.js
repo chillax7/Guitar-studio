@@ -22,6 +22,12 @@
 // approach riff-capture-processor.js already uses for the same reason.
 const RECORD_INITIAL_SECONDS = 30;
 
+// How far off a whole number of bars a take may be and still get snapped to
+// that bar count (see "stop_and_loop"). 0.25 = a quarter of a bar either
+// way — comfortably covers ordinary human timing slop on the stop press,
+// while refusing to stretch a take that clearly was not a whole bar.
+const LOOP_BAR_SNAP_TOLERANCE = 0.25;
+
 class LooperProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -84,8 +90,22 @@ class LooperProcessor extends AudioWorkletProcessor {
         let targetLen = rawLen;
         let bars = null;
         if (msg.barLengthFrames) {
-          bars = Math.max(1, Math.round(rawLen / msg.barLengthFrames));
-          targetLen = bars * msg.barLengthFrames;
+          const inBars = rawLen / msg.barLengthFrames;
+          const nearest = Math.max(1, Math.round(inBars));
+          // Only snap when the take is actually NEAR a bar boundary. The
+          // old code snapped unconditionally, so a take shorter than half a
+          // bar became `Math.max(1, 0)` = one whole bar — measured: a 1.2s
+          // recording against a 60 BPM song turned into a 4.0s loop that
+          // was 70% silence. That plays back as a short blip and a long
+          // gap, which is indistinguishable from "the looper is broken",
+          // and it gets worse when BPM detection lands on half-time (common
+          // on metal), because the bar is then twice as long again.
+          // Within tolerance the musical snap is what you want and still
+          // happens; outside it, the honest answer is the length you played.
+          if (Math.abs(inBars - nearest) <= LOOP_BAR_SNAP_TOLERANCE) {
+            bars = nearest;
+            targetLen = nearest * msg.barLengthFrames;
+          }
         }
         const outL = new Float32Array(targetLen);
         const outR = new Float32Array(targetLen);

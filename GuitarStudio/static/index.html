@@ -528,6 +528,23 @@
               </div>
               <p class="hint" id="looper-length-hint"></p>
               <p class="hint" id="looper-status"></p>
+              <!-- Footswitch bindings live with the pedal they drive, not
+                   over in Tone Lab's rig-preset card where the learn
+                   mechanism happens to be shared from. Same Learn… flow;
+                   the device picker itself stays in Tone Lab since it is
+                   one device for the whole app, not per-pedal. -->
+              <div class="looper-midi">
+                <div class="pa-subcard-label">Footswitch</div>
+                <div class="row">
+                  <label style="margin:0">Record/overdub: <kbd id="pa-midi-looper-primary-display">not set</kbd></label>
+                  <button id="pa-midi-looper-primary-learn-btn">Learn…</button>
+                </div>
+                <div class="row">
+                  <label style="margin:0">Stop: <kbd id="pa-midi-looper-stop-display">not set</kbd></label>
+                  <button id="pa-midi-looper-stop-learn-btn">Learn…</button>
+                </div>
+                <p class="hint" id="looper-midi-hint">Pick your MIDI device in Tone Lab → Rig presets first.</p>
+              </div>
             </div>
           </section>
 
@@ -807,18 +824,10 @@
             <label style="margin:0">Cycle backward: <kbd id="pa-midi-backward-display">not set</kbd></label>
             <button id="pa-midi-backward-learn-btn">Learn…</button>
           </div>
-          <!-- Same Learn… mechanism, pointed at the Looper's own pedal
-               actions. The record/overdub button is the looper's single
-               primary button (record -> loop -> overdub -> stop overdub ->
-               resume), exactly like a hardware looper pedal. -->
-          <div class="row">
-            <label style="margin:0">Looper record/overdub: <kbd id="pa-midi-looper-primary-display">not set</kbd></label>
-            <button id="pa-midi-looper-primary-learn-btn">Learn…</button>
-          </div>
-          <div class="row">
-            <label style="margin:0">Looper stop: <kbd id="pa-midi-looper-stop-display">not set</kbd></label>
-            <button id="pa-midi-looper-stop-learn-btn">Learn…</button>
-          </div>
+          <!-- The Looper's own footswitch bindings use this same Learn…
+               mechanism but live on the Looper card itself (Play Along),
+               next to the pedal they actually drive. The device picker
+               above is shared by all of them. -->
         </section>
 
         <!-- v4.7 Tone Lab redesign (research/ui-review-and-tonelab-redesign.md
