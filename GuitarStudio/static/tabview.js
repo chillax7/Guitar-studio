@@ -36,6 +36,126 @@ const TabView = {
 const TABVIEW_TAB_EXTS = [".gp3", ".gp4", ".gp5", ".gpx", ".gp"];
 
 // ---------------------------------------------------------------------------
+// T-1a: "Play through my rig" — route the tab's synthesized audio through
+// Tone Lab's amp/cab/effects chain instead of straight out of alphaTab.
+//
+// Why this is worth doing: the ceiling on tab playback is the General MIDI
+// soundfont, whose distorted-guitar programs (29/30) are a single looped
+// sample with no velocity layers or articulation — which is why tab playback
+// sounds synthetic no matter how good the notation is. Feeding a CLEAN tab
+// tone through a real NAM capture is the one move that uses what this app
+// already has and no tab reader does.
+//
+// The constraint: alphaTab creates and owns its own AudioContext, and Web
+// Audio nodes cannot connect across contexts. So the audio has to leave
+// alphaTab's context as a MediaStream and re-enter ours — which costs some
+// latency. That is fine here (this is playback, not live monitoring of your
+// own playing) but it is why this is a toggle and not the default.
+//
+// How the interception works, and why it is done this way: both of alphaTab
+// 1.8.4's Web Audio backends (AlphaSynthScriptProcessorOutput and
+// AlphaSynthAudioWorkletOutput) create their output node inside play() and
+// destroy it in pause(), and the worklet one does it asynchronously inside a
+// promise. So there is no single node to grab once at setup. Rather than
+// reach into whichever private field currently holds it (_audioNode vs
+// _worklet) and re-do it on every transport change, we intercept the one
+// thing both paths always do: connect(theirContext.destination). The patch
+// below is scoped to exactly that — a node whose own context is alphaTab's,
+// targeting alphaTab's destination — so nothing else in the app is affected.
+// ---------------------------------------------------------------------------
+const TabRig = {
+  enabled: false,        // user's toggle state
+  installed: false,      // connect() interceptor installed
+  msDest: null,          // MediaStreamAudioDestinationNode, in alphaTab's context
+  srcNode: null,         // MediaStreamAudioSourceNode, in the app's context
+  atCtx: null,           // alphaTab's AudioContext
+};
+
+function tabRigStatus(msg) {
+  const el = document.getElementById("tabview-rig-status");
+  if (el) el.textContent = msg || "";
+}
+
+// alphaTab's output object (AlphaSynthWebAudioOutputBase) exposes a public
+// `context`, but only once the player has been created and opened.
+function tabRigAlphaTabContext() {
+  try {
+    const out = TabView.api && TabView.api.player && TabView.api.player.output;
+    return (out && out.context) || null;
+  } catch (e) { return null; }
+}
+
+function tabRigInstallInterceptor(atCtx) {
+  if (TabRig.installed) return;
+  TabRig.atCtx = atCtx;
+  TabRig.msDest = atCtx.createMediaStreamDestination();
+  const origConnect = AudioNode.prototype.connect;
+  AudioNode.prototype.connect = function (destination, ...rest) {
+    if (TabRig.enabled && TabRig.msDest &&
+        destination === TabRig.atCtx.destination && this.context === TabRig.atCtx) {
+      // Diverted into the bridge instead of alphaTab's own speakers. Note
+      // this returns the MediaStreamDestination rather than the original
+      // target, which is what connect() is contracted to return (the
+      // destination node) — callers in alphaTab ignore it either way.
+      return origConnect.call(this, TabRig.msDest);
+    }
+    return origConnect.call(this, destination, ...rest);
+  };
+  TabRig.installed = true;
+}
+
+// Rebuild the app-side half of the bridge. Safe to call repeatedly.
+async function tabRigConnectToRig() {
+  if (!TabRig.msDest) return false;
+  // The rig graph (and PA.tabIn) only exists once Tone Lab/Play Along has
+  // been opened at least once this session; build it on demand so the
+  // toggle works even if the user came straight to Tab View.
+  if (typeof paEnsureRigSessionReady === "function") await paEnsureRigSessionReady();
+  if (typeof PA === "undefined" || !PA.tabIn) return false;
+  if (TabRig.srcNode) { try { TabRig.srcNode.disconnect(); } catch (e) { /* already gone */ } }
+  TabRig.srcNode = Audio.ctx.createMediaStreamSource(TabRig.msDest.stream);
+  TabRig.srcNode.connect(PA.tabIn);
+  if (Audio.ctx.state === "suspended") await Audio.ctx.resume();
+  return true;
+}
+
+function tabRigDisconnect() {
+  if (TabRig.srcNode) { try { TabRig.srcNode.disconnect(); } catch (e) { /* already gone */ } }
+  TabRig.srcNode = null;
+}
+
+async function setTabRigEnabled(on) {
+  const btn = document.getElementById("tabview-rig-btn");
+  if (on) {
+    const atCtx = tabRigAlphaTabContext();
+    if (!atCtx) {
+      // The player context does not exist until a tab has been loaded and
+      // the player initialised — say so rather than silently doing nothing.
+      tabRigStatus("Load a tab and press Play once first, then turn this on.");
+      if (btn) btn.classList.remove("active");
+      TabRig.enabled = false;
+      return;
+    }
+    tabRigInstallInterceptor(atCtx);
+    TabRig.enabled = true;              // must be set before the reconnect below
+    const ok = await tabRigConnectToRig();
+    if (!ok) {
+      TabRig.enabled = false;
+      if (btn) btn.classList.remove("active");
+      tabRigStatus("Couldn't reach the rig — open Tone Lab once, then try again.");
+      return;
+    }
+    if (btn) btn.classList.add("active");
+    tabRigStatus("Tab audio is going through your Tone Lab rig. Press Play again to re-route if you were already playing.");
+  } else {
+    TabRig.enabled = false;
+    tabRigDisconnect();
+    if (btn) btn.classList.remove("active");
+    tabRigStatus("Tab audio is back on alphaTab's own output. Press Play again to take effect.");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // alphaTab lazy load + API construction
 // ---------------------------------------------------------------------------
 
@@ -213,6 +333,9 @@ function formatTabViewTime(ms) {
 function wireTabViewTransport() {
   document.getElementById("tabview-play-btn").addEventListener("click", () => {
     if (TabView.api) TabView.api.playPause();
+  });
+  document.getElementById("tabview-rig-btn").addEventListener("click", () => {
+    setTabRigEnabled(!TabRig.enabled);
   });
   document.getElementById("tabview-stop-btn").addEventListener("click", () => {
     if (TabView.api) TabView.api.stop();

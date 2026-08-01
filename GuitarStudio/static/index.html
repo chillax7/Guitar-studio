@@ -1543,7 +1543,13 @@
             <button id="tabview-zoom-out-btn" title="Zoom out">−</button>
             <span id="tabview-zoom-display">100%</span>
             <button id="tabview-zoom-in-btn" title="Zoom in">+</button>
+            <!-- T-1a: send the tab's synthesized audio through Tone Lab's
+                 amp/cab/FX instead of alphaTab's own output. See TabRig in
+                 tabview.js for why this needs a MediaStream bridge (and
+                 therefore costs some latency), which is why it's opt-in. -->
+            <button id="tabview-rig-btn" title="Play the tab through your Tone Lab rig (amp, cab IR, effects) instead of the built-in soundfont output">Through my rig</button>
           </div>
+          <p class="hint" id="tabview-rig-status"></p>
           <p class="hint" id="tabview-track-artist"></p>
           <!-- Direct request: select a section of the tab itself and loop
                over just that. Built entirely on alphaTab's own click-drag
