@@ -2455,16 +2455,31 @@ def svc_transcribe_tab(source_path: str, model: str, stem: str, tuning: str,
     if not engine.has_cached_stems(out_dir):
         raise ApiError(400, "Separate this song first — the tab is generated from its isolated guitar stem.")
 
-    candidates = [stem] if stem else []
-    candidates += ["guitar_lead", "guitar", "other"]
+    # Which file is "the guitar" is not always a file literally called
+    # guitar.wav. An imported stem pack (multi-stem-import-spec.md) keeps
+    # whatever names the source files had, and the app already has a way for
+    # the user to nominate one — GP-16's guitarStemOverride, which Rate My
+    # Take and Suggest a Tone honour via resolvedGuitarStemName() on the
+    # client. This endpoint hardcoded a name list and so refused those packs
+    # outright; now the caller's nominated stem is tried first, through
+    # resolve_stem_file so a CUSTOM stem (which lives in the track-scoped
+    # dir, not this model's out_dir) resolves too.
     stem_path = None
-    for name in candidates:
-        cand = out_dir / f"{name}.wav"
-        if cand.exists():
-            stem_path = cand
+    tried = []
+    for name in ([stem] if stem else []) + ["guitar_lead", "guitar", "other"]:
+        if not name or name in tried:
+            continue
+        tried.append(name)
+        try:
+            stem_path = resolve_stem_file(source_path, model, name)
             break
+        except ApiError:
+            continue
     if stem_path is None:
-        raise ApiError(400, "No guitar stem found for this song. Separate with a model that produces one.")
+        raise ApiError(400,
+            "No guitar stem found for this song. If this is an imported stem pack, mark one of its "
+            "stems as the guitar with the guitar button on its mixer lane — the same one Rate My Take "
+            "and Suggest a Tone use — then try again.")
 
     analysis = engine.ensure_analysis(out_dir) or {}
     beats = analysis.get("beats") or []
