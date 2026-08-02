@@ -2971,3 +2971,61 @@ svg.ailab-fretboard { display: block; }
 .tabsearch-result-meta { font-size: 0.78em; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabsearch-result a { font-size: 0.78em; white-space: nowrap; }
 #tabsearch-query { flex: 1; min-width: 0; }
+
+/* ---------------------------------------------------------------------------
+   Global busy overlay. Long jobs (generate a tab, export a take, download a
+   tone) used to leave the screen looking dead while they ran. Ref-counted by
+   gsBusy()/withBusy() in app.js.
+
+   The guitar rocks rather than spinning a full 360: an emoji rotating end
+   over end reads as a glitch, while a pendulum swing reads as "working".
+   prefers-reduced-motion drops the animation but keeps the overlay, since
+   the overlay itself is the signal that the app is busy.
+--------------------------------------------------------------------------- */
+#gs-busy {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.62);
+  align-items: center; justify-content: center; z-index: 900;
+  backdrop-filter: blur(2px);
+}
+#gs-busy.show { display: flex; }
+#gs-busy-inner { text-align: center; }
+#gs-busy-guitar {
+  font-size: 64px; line-height: 1;
+  animation: gs-busy-rock 1.1s ease-in-out infinite;
+}
+#gs-busy-label {
+  margin: 14px 0 0; color: var(--text); font-size: 14px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
+@keyframes gs-busy-rock {
+  0%, 100% { transform: rotate(-24deg) scale(1); }
+  50%      { transform: rotate(24deg) scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #gs-busy-guitar { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Metronome — shares the Riff Capture card, below a divider.
+--------------------------------------------------------------------------- */
+.pa-card-split {
+  border-top: 1px solid var(--border);
+  margin: 14px 0 10px;
+}
+#metro-bpm-readout {
+  font-family: "Share Tech Mono", monospace;
+  font-size: 20px; color: var(--text);
+  white-space: nowrap;
+}
+#metro-bpm-readout .metro-unit { font-size: 11px; color: var(--text-dim); }
+#metro-nudge-row { gap: 6px; }
+#metro-nudge-row button { flex: 1; }
+/* The beacon is the only visual feedback while the click runs, so it has to
+   read at a glance from across the room: a wide bar, not a dot. */
+#metro-beacon {
+  height: 8px; border-radius: 4px; margin-top: 10px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  transition: background-color 90ms linear;
+}
+#metro-beacon.beat   { background: var(--accent); }
+#metro-beacon.accent { background: var(--solo); }

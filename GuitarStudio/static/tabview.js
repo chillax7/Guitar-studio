@@ -481,16 +481,25 @@ async function uploadTabFiles(files) {
 
   let done = 0;
   const failed = [];
-  for (const f of tabs) {
-    hintEl.textContent = `Importing ${done + 1} of ${tabs.length}: ${f.name}…`;
-    try {
-      await Api.postRaw(`/api/tabs/upload?filename=${encodeURIComponent(f.name)}`, await f.arrayBuffer());
-      done++;
-    } catch (e) {
-      failed.push(f.name);
+  // One overlay for the whole batch, relabelled per file — a folder import
+  // can be hundreds of tabs, and flashing the overlay per file would strobe.
+  let busy = gsBusy(`Importing 1 of ${tabs.length}…`);
+  try {
+    for (const f of tabs) {
+      hintEl.textContent = `Importing ${done + 1} of ${tabs.length}: ${f.name}…`;
+      busy();
+      busy = gsBusy(`Importing ${done + 1} of ${tabs.length}: ${f.name}`);
+      try {
+        await Api.postRaw(`/api/tabs/upload?filename=${encodeURIComponent(f.name)}`, await f.arrayBuffer());
+        done++;
+      } catch (e) {
+        failed.push(f.name);
+      }
     }
+    await refreshTabLibrary();
+  } finally {
+    busy();
   }
-  await refreshTabLibrary();
   hintEl.textContent = `Imported ${done} tab${done === 1 ? "" : "s"}` +
     (skipped ? `, skipped ${skipped} non-tab file${skipped === 1 ? "" : "s"}` : "") +
     (failed.length ? `, ${failed.length} failed (${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "…" : ""})` : "") + ".";
@@ -708,20 +717,74 @@ async function tabGenBuildAndExport(at, data, songTitle, songArtist) {
       voice.addBeat(rest);
       continue;
     }
+    // Walk the bar's grid rather than just appending notes back to back.
+    // Appending packs every bar hard against beat 1 and writes each note as a
+    // single grid unit, which is what made the first exports sound staccato
+    // and land nowhere near the recording. Gaps become rests, and a note held
+    // over several steps becomes tied beats.
+    const barSteps = notes[0].bar_steps || 16;
+    const trip = !!notes[0].triplet;
+    let pos = 0;
     for (const n of notes) {
-      const beat = new M.Beat();
-      beat.duration = tabGenDuration(M, n.gp_duration);
-      const note = new M.Note();
-      note.string = n.string;
-      note.fret = n.fret;
-      beat.addNote(note);
-      voice.addBeat(beat);
+      const at = Math.max(pos, n.gp_step || 0);
+      if (at > pos) tabGenAddRests(M, voice, pos, at - pos, n.gp_duration, trip);
+      const len = Math.max(1, Math.min(n.gp_steps || 1, barSteps - at));
+      tabGenAddNote(M, voice, at, len, n, trip);
+      pos = at + len;
+    }
+    if (pos < barSteps) {
+      tabGenAddRests(M, voice, pos, barSteps - pos, notes[0].gp_duration, trip);
     }
   }
   score.finish(new at.Settings());
 
   const exporter = new at.exporter.Gp7Exporter();
   return exporter.export(score, new at.Settings());
+}
+
+// Split a run of `steps` grid units starting at `pos` into beats a score can
+// actually hold: powers of two that don't straddle a metric boundary. On a
+// triplet grid nothing merges — a merged triplet needs a nested tuplet, and
+// writing one wrong is worse than writing three tied notes.
+function tabGenSplitRun(pos, steps, denom, triplet) {
+  const chunks = [];
+  let p = pos, k = steps;
+  while (k > 0) {
+    let c = 1;
+    if (!triplet) {
+      while (c * 2 <= k && p % (c * 2) === 0 && denom % (c * 2) === 0) c *= 2;
+    }
+    chunks.push({ denom: denom / c, steps: c });
+    p += c; k -= c;
+  }
+  return chunks;
+}
+
+function tabGenAddRests(M, voice, pos, steps, denom, triplet) {
+  for (const c of tabGenSplitRun(pos, steps, denom, triplet)) {
+    const beat = new M.Beat();
+    beat.duration = tabGenDuration(M, c.denom);
+    beat.isEmpty = true;  // an empty beat IS a rest in alphaTab's model
+    if (triplet) { beat.tupletNumerator = 3; beat.tupletDenominator = 2; }
+    voice.addBeat(beat);
+  }
+}
+
+function tabGenAddNote(M, voice, pos, steps, n, triplet) {
+  const chunks = tabGenSplitRun(pos, steps, n.gp_duration, triplet);
+  chunks.forEach((c, i) => {
+    const beat = new M.Beat();
+    beat.duration = tabGenDuration(M, c.denom);
+    if (triplet) { beat.tupletNumerator = 3; beat.tupletDenominator = 2; }
+    const note = new M.Note();
+    note.string = n.string;
+    note.fret = n.fret;
+    // Everything after the first chunk continues the same sounding note.
+    // score.finish() resolves tieOrigin from the previous beat on this string.
+    if (i > 0) note.isTieDestination = true;
+    beat.addNote(note);
+    voice.addBeat(beat);
+  });
 }
 
 function tabGenDuration(M, denom) {
@@ -747,6 +810,7 @@ async function tabGenerate() {
   if (win.error) { tabGenStatus(win.error); return; }
   btn.disabled = true;
   tabGenStatus("Listening to the guitar stem… (pitch tracking runs about 1.5x faster than real time)");
+  const busy = gsBusy("Transcribing the guitar stem…");
   try {
     const data = await Api.post("/api/transcribe_tab", {
       source_path: State.track, model: State.model,
@@ -790,15 +854,17 @@ async function tabGenerate() {
     if (Math.abs(data.tuning_offset_cents) > 20) {
       caveats.push(`the recording sits ${data.tuning_offset_cents} cents off concert pitch, which was corrected for`);
     }
+    const start = tabGenFormatTime(data.start_sec || 0);
     const fromTo = data.end_sec != null
-      ? `${tabGenFormatTime(data.start_sec)}-${tabGenFormatTime(data.end_sec)}`
-      : `from ${tabGenFormatTime(data.start_sec)}`;
+      ? `${start}-${tabGenFormatTime(data.end_sec)}`
+      : `${start} onwards`;
     tabGenStatus(`Wrote "${saved.name}" — ${data.note_count} notes in ${data.tuning}, from ${fromTo}. ` +
       `This is a machine transcription of a separated stem, so treat it as a starting point, not gospel.` +
       (caveats.length ? " Note: " + caveats.join("; ") + "." : ""));
   } catch (e) {
     tabGenStatus(e.message || String(e));
   } finally {
+    busy();
     btn.disabled = false;
   }
 }

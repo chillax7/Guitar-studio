@@ -2991,8 +2991,27 @@ def _tab_extract_notes(y, sr: int, frame_length: int, tuning_offset_semitones: f
     case measured 12.5% without onset splitting and 100% with it."""
     import librosa
 
+    # pyin scores HARMONIC content; a distorted guitar stem carries a lot of
+    # broadband noise (the distortion itself, plus separation artifacts) that
+    # drags its confidence down until nothing clears the floor. Measured on a
+    # real separated Iron Maiden lead stem: mean voiced probability 0.0105 raw
+    # (nothing at all above the 0.5 floor) vs 0.0613 after taking the harmonic
+    # component — a 6x improvement on the exact material that was producing
+    # unusable transcriptions.
+    #
+    # A high-pass was tried alongside this and dropped: at 180Hz it helped
+    # again (0.098), but 180Hz is above the fundamental of every note on the
+    # low string of a drop tuning, so it would delete real notes. Set safely
+    # from the tuning instead (0.8x the lowest fundamental) it measured
+    # 0.0627 — inside the noise, and not worth the extra failure mode.
+    #
+    # Costs about 11% of real time on top of pyin. Onsets stay on the
+    # ORIGINAL signal: the harmonic component is precisely the part with the
+    # transients taken out, which is what onset detection needs.
+    harmonic = librosa.effects.harmonic(y, margin=3.0)
+
     f0, _, voiced = librosa.pyin(
-        y, fmin=TAB_FMIN_HZ, fmax=TAB_FMAX_HZ, sr=sr,
+        harmonic, fmin=TAB_FMIN_HZ, fmax=TAB_FMAX_HZ, sr=sr,
         frame_length=frame_length, hop_length=TAB_HOP_LENGTH,
     )
     times = librosa.times_like(f0, sr=sr, hop_length=TAB_HOP_LENGTH)
@@ -3091,19 +3110,36 @@ def _tab_quantize(notes: list, beats: list) -> list:
             err = sum(abs(n["onset"] - (b0 + round((n["onset"] - b0) / step) * step)) for n in inbar)
             err /= len(inbar)
             if best is None or err * TAB_GRID_TOLERANCE < best[0]:
-                best = (err, step, gp_dur, is_trip)
-        _, step, gp_dur, is_trip = best
-        for n in inbar:
-            k = round((n["onset"] - b0) / step)
-            q_on = b0 + k * step
+                best = (err, step, gp_dur, is_trip, div)
+        err, step, gp_dur, is_trip, div = best
+        bar_steps = 4 * div  # v1 is 4/4, so four beats of `div` steps each
+
+        # Position AND length are both expressed in grid steps. The writer
+        # needs the position: without it the only way to place a note is
+        # "next to the previous one", which packs every bar against beat 1
+        # and destroys the rhythm. It needs the length for the same reason —
+        # a held note that gets written as one grid unit is what makes the
+        # playback sound staccato.
+        placed = []
+        for n in sorted(inbar, key=lambda x: x["onset"]):
+            k = min(bar_steps - 1, max(0, round((n["onset"] - b0) / step)))
             steps = max(1, int(round((n["offset"] - n["onset"]) / step)))
-            out.append({**n,
-                        "onset": round(q_on, 4),
-                        "duration": round(steps * step, 4),
-                        "gp_duration": gp_dur,
-                        "gp_steps": steps,
-                        "triplet": is_trip,
-                        "bar": bi})
+            placed.append({**n, "gp_step": k, "gp_steps": steps})
+
+        # The transcription is monophonic, so two notes can never sound at
+        # once. Rounding can still push one note's tail past the next one's
+        # onset; clip rather than emit an overlap the writer can't notate.
+        for i, n in enumerate(placed):
+            limit = placed[i + 1]["gp_step"] if i + 1 < len(placed) else bar_steps
+            n["gp_steps"] = max(1, min(n["gp_steps"], limit - n["gp_step"]))
+            q_on = b0 + n["gp_step"] * step
+            n.update({"onset": round(q_on, 4),
+                      "duration": round(n["gp_steps"] * step, 4),
+                      "gp_duration": gp_dur,
+                      "bar_steps": bar_steps,
+                      "triplet": is_trip,
+                      "bar": bi})
+        out.extend(placed)
     out.sort(key=lambda n: n["onset"])
     return out
 

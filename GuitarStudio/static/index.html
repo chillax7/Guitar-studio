@@ -588,6 +588,45 @@
             <p class="hint">Always rolling in the background once your rig is active — hit Save that! any time within ~20s of playing something worth keeping.</p>
             <button id="riff-save-btn" class="primary">🎸 Save that!</button>
             <p class="hint" id="riff-status"></p>
+
+            <!-- Metronome shares this card's lower half. It's deliberately
+                 independent of the backing track's tempo: the point is
+                 practising to a click at whatever speed you choose, not
+                 following the song. -->
+            <div class="pa-card-split"></div>
+            <h3>Metronome</h3>
+            <div class="row">
+              <button id="metro-toggle-btn" class="primary">Start</button>
+              <div id="metro-bpm-readout"><span id="metro-bpm-value">100</span> <span class="metro-unit">BPM</span></div>
+            </div>
+            <input type="range" id="metro-bpm" min="1" max="300" step="1" value="100"
+                   aria-label="Metronome tempo in beats per minute">
+            <div class="row" id="metro-nudge-row">
+              <button id="metro-minus-btn" title="Slower">−</button>
+              <button id="metro-tap-btn" title="Tap four times to set the tempo">Tap</button>
+              <button id="metro-plus-btn" title="Faster">+</button>
+            </div>
+            <label for="metro-subdiv">Click on</label>
+            <select id="metro-subdiv">
+              <option value="1">Whole notes</option>
+              <option value="2">Half notes</option>
+              <option value="4" selected>Quarter notes</option>
+              <option value="8">8th notes</option>
+              <option value="16">16th notes</option>
+              <option value="8t">8th triplets</option>
+              <option value="16t">16th triplets</option>
+            </select>
+            <label for="metro-accent">Accent every</label>
+            <select id="metro-accent">
+              <option value="0">No accent</option>
+              <option value="2">2 beats</option>
+              <option value="3">3 beats</option>
+              <option value="4" selected>4 beats</option>
+              <option value="6">6 beats</option>
+            </select>
+            <div id="metro-beacon" aria-hidden="true"></div>
+            <p class="hint" id="metro-hint">The BPM slider sets the pulse; "Click on" only changes how the beat is
+              subdivided, so switching to 16ths doesn't make the tempo four times faster.</p>
           </section>
         </div>
 
@@ -1754,6 +1793,17 @@
         <button id="text-prompt-cancel-btn">Cancel</button>
         <button id="text-prompt-ok-btn" class="primary">OK</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Global busy overlay. Anything that makes the app pause — generating a
+       tab, exporting, downloading a tone — shows this rather than leaving a
+       dead-looking screen. Ref-counted in app.js (gsBusy/withBusy), so two
+       overlapping jobs don't uncover it early. -->
+  <div id="gs-busy" aria-hidden="true">
+    <div id="gs-busy-inner" role="status" aria-live="polite">
+      <div id="gs-busy-guitar" aria-hidden="true">🎸</div>
+      <p id="gs-busy-label">Working…</p>
     </div>
   </div>
 
