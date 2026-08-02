@@ -578,9 +578,58 @@ const TABGEN_TUNINGS = [
   "E standard", "Drop D", "D standard", "Drop C", "C# standard",
   "Drop C#", "B standard", "Drop B", "7-string B",
 ];
-const TABGEN_RANGES = [
-  ["30", "First 30 seconds"], ["60", "First minute"], ["0", "Whole song (slow)"],
+const TABGEN_STARTS = [
+  ["playhead", "From the playhead"], ["loop", "Loop selection"], ["0", "From the start"],
 ];
+const TABGEN_LENGTHS = [
+  ["15", "15 seconds"], ["30", "30 seconds"], ["60", "1 minute"], ["0", "To the end (slow)"],
+];
+
+// Resolve the two pickers into an actual {start, end} window in song time.
+// Kept separate from tabGenerate so the hint under the button can show
+// exactly what is about to be transcribed BEFORE committing to a run that
+// takes a while — picking the wrong section and waiting is the annoying
+// failure mode this avoids.
+function tabGenWindow() {
+  const startMode = (document.getElementById("tabgen-start") || {}).value || "playhead";
+  const lenSec = Number((document.getElementById("tabgen-length") || {}).value || 30);
+
+  if (startMode === "loop") {
+    const loop = (typeof State !== "undefined" && State.ui && State.ui.loop) || null;
+    if (!loop || !(loop.end > loop.start)) {
+      return { error: "No loop selection — drag a loop range in the Mixer first, or pick another start point." };
+    }
+    // The loop defines BOTH ends; the length picker doesn't apply.
+    return { start: loop.start, end: loop.end, source: "loop selection" };
+  }
+
+  let start = 0;
+  if (startMode === "playhead") {
+    start = (typeof currentPosition === "function" ? currentPosition() : 0) || 0;
+  }
+  const end = lenSec ? start + lenSec : null;
+  return { start, end, source: startMode === "playhead" ? "playhead" : "song start" };
+}
+
+function tabGenFormatTime(t) {
+  const m = Math.floor(t / 60), s = Math.floor(t % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function tabGenRenderWindow() {
+  const el = document.getElementById("tabgen-window");
+  if (!el) return;
+  const w = tabGenWindow();
+  const lenEl = document.getElementById("tabgen-length");
+  // A loop selection carries its own length, so the length picker would be
+  // a lie next to it.
+  if (lenEl) lenEl.disabled = (document.getElementById("tabgen-start") || {}).value === "loop";
+  if (w.error) { el.textContent = w.error; return; }
+  const span = w.end == null ? "to the end" : `${tabGenFormatTime(w.start)} - ${tabGenFormatTime(w.end)}`;
+  const secs = w.end == null ? null : Math.round(w.end - w.start);
+  el.textContent = `Will transcribe ${span} (${w.source})` +
+    (secs ? ` - about ${Math.max(1, Math.round(secs * 0.65))}s of processing.` : ".");
+}
 
 function tabGenStatus(msg) {
   const el = document.getElementById("tabgen-status");
@@ -589,11 +638,17 @@ function tabGenStatus(msg) {
 
 function wireTabGenerate() {
   const tuningEl = document.getElementById("tabgen-tuning");
-  const rangeEl = document.getElementById("tabgen-range");
+  const startEl = document.getElementById("tabgen-start");
+  const lenEl = document.getElementById("tabgen-length");
   if (tuningEl && !tuningEl.options.length) for (const t of TABGEN_TUNINGS) tuningEl.appendChild(new Option(t, t));
-  if (rangeEl && !rangeEl.options.length) for (const [v, l] of TABGEN_RANGES) rangeEl.appendChild(new Option(l, v));
+  if (startEl && !startEl.options.length) for (const [v, l] of TABGEN_STARTS) startEl.appendChild(new Option(l, v));
+  if (lenEl && !lenEl.options.length) for (const [v, l] of TABGEN_LENGTHS) lenEl.appendChild(new Option(l, v));
+  if (lenEl) lenEl.value = "30";
+  if (startEl) startEl.addEventListener("change", tabGenRenderWindow);
+  if (lenEl) lenEl.addEventListener("change", tabGenRenderWindow);
   const btn = document.getElementById("tabgen-btn");
   if (btn) btn.addEventListener("click", tabGenerate);
+  tabGenRenderWindow();
 }
 
 // Build an alphaTab Score from the server's note list and export it.
@@ -688,13 +743,18 @@ async function tabGenerate() {
   }
   const btn = document.getElementById("tabgen-btn");
   const tuning = document.getElementById("tabgen-tuning").value;
-  const rangeSec = Number(document.getElementById("tabgen-range").value || 30);
+  const win = tabGenWindow();
+  if (win.error) { tabGenStatus(win.error); return; }
   btn.disabled = true;
   tabGenStatus("Listening to the guitar stem… (pitch tracking runs about 1.5x faster than real time)");
   try {
     const data = await Api.post("/api/transcribe_tab", {
       source_path: State.track, model: State.model,
-      tuning, start_sec: 0, end_sec: rangeSec || null,
+      // GP-16: on an imported stem pack there is no file called guitar.wav,
+      // so pass whichever stem the user nominated on its mixer lane — the
+      // same resolution Rate My Take and Suggest a Tone use.
+      stem: (typeof resolvedGuitarStemName === "function" ? resolvedGuitarStemName() : "") || "",
+      tuning, start_sec: win.start, end_sec: win.end,
     });
 
     if (data.polyphonic || !data.notes.length) {
@@ -716,7 +776,8 @@ async function tabGenerate() {
     } catch (e) { /* untitled is fine */ }
 
     const bytes = await tabGenBuildAndExport(at, data, title ? `${title} (transcribed)` : "Transcribed", artist);
-    const filename = `${(title || State.track).replace(/\.[^.]+$/, "").replace(/[^\w\- ]+/g, "")} transcribed.gp`;
+    const stamp = data.start_sec ? ` ${tabGenFormatTime(data.start_sec).replace(":", "m")}s` : "";
+    const filename = `${(title || State.track).replace(/\.[^.]+$/, "").replace(/[^\w\- ]+/g, "")} transcribed${stamp}.gp`;
     const saved = await Api.postRaw(`/api/tabs/upload?filename=${encodeURIComponent(filename)}`, bytes.buffer || bytes);
     await refreshTabLibrary();
     await selectTab(saved.name);
@@ -729,7 +790,10 @@ async function tabGenerate() {
     if (Math.abs(data.tuning_offset_cents) > 20) {
       caveats.push(`the recording sits ${data.tuning_offset_cents} cents off concert pitch, which was corrected for`);
     }
-    tabGenStatus(`Wrote "${saved.name}" — ${data.note_count} notes in ${data.tuning}. ` +
+    const fromTo = data.end_sec != null
+      ? `${tabGenFormatTime(data.start_sec)}-${tabGenFormatTime(data.end_sec)}`
+      : `from ${tabGenFormatTime(data.start_sec)}`;
+    tabGenStatus(`Wrote "${saved.name}" — ${data.note_count} notes in ${data.tuning}, from ${fromTo}. ` +
       `This is a machine transcription of a separated stem, so treat it as a starting point, not gospel.` +
       (caveats.length ? " Note: " + caveats.join("; ") + "." : ""));
   } catch (e) {

@@ -3207,12 +3207,23 @@ def transcribe_stem_to_tab(stem_path, beats: list, tuning: str = "E standard",
     notes = _tab_quantize(notes, windowed)
     notes = _tab_assign_frets(notes, tuning_midi)
 
+    # Bar indices come out numbered from the SONG's first beat, so
+    # transcribing a solo at 2:00 would otherwise emit ~60 leading empty bars
+    # before the first note. Renumber from the first bar that actually has
+    # something in it, and report the offset so the UI can still say which
+    # part of the song this came from.
+    first_bar = min((n["bar"] for n in notes), default=0)
+    for n in notes:
+        n["bar"] -= first_bar
+
     voiced_mean = getattr(_tab_extract_notes, "last_voiced_mean", 0.0)
     polyphonic = voiced_mean < TAB_POLYPHONY_VOICED_MEAN
 
     fast = sum(1 for n in notes if n.get("duration", 1) < TAB_RELIABLE_NOTE_SEC)
     return {
         "notes": notes,
+        "start_sec": round(offset, 2),
+        "end_sec": round(float(end_sec), 2) if end_sec else None,
         "polyphonic": polyphonic,
         "voiced_mean": round(voiced_mean, 3),
         "tuning": tuning,
