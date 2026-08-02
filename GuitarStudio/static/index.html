@@ -131,6 +131,21 @@
            this searches and links out; you get the file from Songsterr
            yourself and drop it in above. No download button here is
            deliberate, not missing. -->
+      <!-- Audio -> tab (research/audio-to-tab-spec.md). Generates a tab
+           from THIS song's isolated guitar stem, which sidesteps the
+           licensing problem that rules out downloading tabs, and produces
+           something no tab site can: a tab of this take, in this tuning.
+           v1 is lead lines only - see tabGenerate in tabview.js. -->
+      <div id="tabgen-box">
+        <div class="pa-subcard-label">Tab this song's guitar</div>
+        <div class="row">
+          <select id="tabgen-tuning" title="Tuning to write the tab in"></select>
+          <select id="tabgen-range" title="How much to transcribe"></select>
+        </div>
+        <button id="tabgen-btn" class="primary">Generate tab from audio</button>
+        <p class="hint" id="tabgen-status"></p>
+      </div>
+
       <div id="tabsearch-box">
         <div class="row">
           <input type="text" id="tabsearch-query" placeholder="Search Songsterr for a tab…">
