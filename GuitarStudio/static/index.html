@@ -428,6 +428,9 @@
         <p class="hint">Limits how much quiet mixes get boosted, reducing amplified separation artifacts.</p>
       </div>
       <p class="hint">Recombined AI-separated stems have a mild "processed" character even with nothing muted — this is a limit of the separation engine, not your mix.</p>
+      <!-- Only shown while something is soloed, so the export can't quietly
+           contain a different mix from the one you were just listening to. -->
+      <p class="hint" id="export-solo-hint"></p>
       <button id="run-export-btn" class="primary">Export</button>
       <div id="export-result"></div>
     </section>

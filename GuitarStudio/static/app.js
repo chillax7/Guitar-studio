@@ -911,9 +911,21 @@ async function setSpeedTune(speed, pitchRatio) {
   if (wasPlaying) startPlaybackAt(pos);
 }
 
+// Solo is applied to the export too (see runExport), so say so wherever a
+// solo is live — an export silently narrower than the full mix is exactly
+// the surprise this is here to prevent, in both directions.
+function updateExportSoloHint() {
+  const el = document.getElementById("export-solo-hint");
+  if (!el) return;
+  el.textContent = State.mix.solo
+    ? `"${State.mix.solo}" is soloed — the export will contain only that stem.`
+    : "";
+}
+
 // Static per-stem gain from mute/solo/fader state (everything except live
 // mute-region preview, which is layered on top every frame).
 function applyMixToGains() {
+  updateExportSoloHint();
   const soloStem = State.mix.solo;
   for (const name in Audio.gains) {
     let g = State.mix.gains[name] ?? 1.0;
@@ -3385,11 +3397,22 @@ function wireExportPanel() {
 }
 
 async function runExport() {
-  // Export bounces exactly what's heard, except solo — solo is a monitoring
-  // convenience only (ui-spec.md §5.4), so it's deliberately not applied here.
+  // Export bounces exactly what's heard, solo included.
+  //
+  // This used to deliberately ignore solo, on the reading that solo is a
+  // monitoring convenience (ui-spec.md §5.4). Real report: soloing the lead
+  // guitar and exporting produced an mp3 with every stem in it. Whatever the
+  // spec intended, an export that silently differs from what you were just
+  // listening to is a bug — soloing a stem is how you say "just this one",
+  // and there is no other way to ask for that in one click. The hint below
+  // the Export button says so while a solo is live, so the reverse surprise
+  // (a solo left on from ten minutes ago) can't happen either.
+  const soloStem = State.mix.solo;
   const gains = {};
   for (const stem of State.stems) {
-    gains[stem.name] = State.mix.muted[stem.name] ? 0 : (State.mix.gains[stem.name] ?? 1.0);
+    let g = State.mix.muted[stem.name] ? 0 : (State.mix.gains[stem.name] ?? 1.0);
+    if (soloStem && stem.name !== soloStem) g = 0;
+    gains[stem.name] = g;
   }
   const body = {
     source_path: State.track,

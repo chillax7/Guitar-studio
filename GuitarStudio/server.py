@@ -1056,7 +1056,15 @@ def svc_mix(source_path: str, model: str, gains: dict, mute_ranges: dict,
         raise ApiError(400, f"Unknown stem name(s): {', '.join(sorted(unknown))}. "
                              f"Available: {', '.join(valid_stems)}")
 
-    full_gains = {stem: 1.0 for stem in valid_stems}
+    # A caller that sent any gains at all has enumerated the mix it wants, so
+    # a stem missing from that dict is one it did not ask for — default it to
+    # silence, not to full volume. Defaulting the other way meant any stem the
+    # client didn't know about (a file on disk it never drew a fader for)
+    # landed in the bounce at full level with nothing in the UI to explain it.
+    # The empty-gains case still means "everything", which is what a bare
+    # "bounce this track" request should do.
+    default = 1.0 if not gains else 0.0
+    full_gains = {stem: default for stem in valid_stems}
     full_gains.update(gains)
     active_stems = [s for s in valid_stems if full_gains[s] != 0.0]
     if not active_stems:
