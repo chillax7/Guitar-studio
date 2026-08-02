@@ -13,9 +13,16 @@
      if THEME_ORDER ever gains another theme, this needs the same addition
      or that one new theme will flash-of-wrong-theme on every reload
      (R2-5/R2-6 caught this exact gap already only handling two of what
-     were about to become four non-default themes). -->
+     were about to become four non-default themes).
+     data-room defaults to "song" here (the app always opens on Mixer) and
+     is kept in sync at runtime by paSetActiveScreen (playalong.js) — it's
+     layout-only now (hides the drawer on Tone Lab to free width for the
+     pedal chain), not tied to color: the 5 named themes above are back to
+     being the sole source of palette/font, restored after a v9 A/B pass
+     that briefly replaced them with a light/dark toggle. -->
 <script>
   (function () {
+    document.documentElement.setAttribute("data-room", "song");
     var t = localStorage.getItem("gs_theme");
     var nonDefault = ["brightspark", "futuremetal", "castlerock"];
     if (t === "studio") return;
@@ -26,14 +33,41 @@
 <body>
 <div id="app">
 
+  <!-- V9 "Two Rooms": the activity rail (research/v9-two-rooms-implementation-plan.md
+       §5 step 1) — replaces the old sidebar-embedded 2-col nav grid with a
+       full-height 56px icon column, always in the same place regardless of
+       which room (song/rig) is open. Same .nav-screen-row/.nav-screen-btn
+       classes/IDs as before (playalong.js's paSetActiveScreen queries
+       ".nav-screen-row .nav-screen-btn" and toggles .active on them) so no
+       screen-switching JS needed to change — only the container moved and
+       the visual treatment changed. Help split out to its own slot at the
+       bottom (flex:1 spacer above it) since it's a transient modal, not a
+       persistent screen, matching the design handoff's rail layout. -->
+  <div id="activity-rail">
+    <div class="nav-screen-row">
+      <button id="mixer-open-btn" class="nav-screen-btn" title="Mixer" aria-label="Mixer">M</button>
+      <button id="tonelab-open-btn" class="nav-screen-btn" title="Tone Lab" aria-label="Tone Lab">T</button>
+      <button id="playalong-open-btn" class="nav-screen-btn" title="Play Along" aria-label="Play Along">P</button>
+      <button id="ailab-open-btn" class="nav-screen-btn" title="AI Lab" aria-label="AI Lab">A</button>
+      <button id="tabview-open-btn" class="nav-screen-btn" title="Guitar Pro Tab View" aria-label="Guitar Pro Tab View">G</button>
+    </div>
+    <div id="activity-rail-spacer"></div>
+    <button id="help-open-btn" class="nav-screen-btn" title="Help" aria-label="Help">?</button>
+  </div>
+
   <div id="top-banner">
     <img id="app-logo" src="app-icon.svg" alt="">
-    <span id="app-title">Orpheus Guitar Studio</span>
-    <span id="app-version">v8</span>
-    <!-- Centered on the full window width (not just the canvas column) via
-         absolute positioning in CSS — see #top-banner-screen-label. Kept in
-         sync with the current screen by paSetActiveScreen (playalong.js),
-         the same function that highlights the sidebar nav button. -->
+    <span id="app-title">Orpheus Guitar Studio V9</span>
+    <!-- The design handoff's own screens never show a page title (only the
+         wordmark + active rail icon) — flagged as a real gap and fixed here
+         rather than carried over: this label is what actually answers
+         "which of the five rooms am I in" without relying solely on which
+         rail icon happens to be lit. Kept in sync with the current screen
+         by paSetActiveScreen (playalong.js), the same function that
+         highlights the rail button. No longer absolutely centered on the
+         window (that trick existed to center it over sidebar+canvas+
+         inspector as a group; v9's top bar is a single flex row where it
+         just sits next to the wordmark like the rest of the spine). -->
     <span id="top-banner-screen-label">Mixer</span>
     <!-- ui-review-v5-full.md §2.5: global rig status pill, visible on
          every screen — Enable Input stays in Tone Lab (it's rig setup),
@@ -45,29 +79,25 @@
     <button id="rig-status-pill" title="Rig status — click to open Tone Lab's Input card">
       <span id="rig-status-led"></span><span id="rig-status-label">Rig silent</span>
     </button>
-    <!-- ui-review-v5-full.md §6: "Molten Obsidian" theme, shipped as a
-         toggle (data-theme attribute on <html>) rather than a replacement
-         — the existing look stays one click away for anyone who prefers
-         it. Persisted via localStorage (wireThemeToggle, app.js). -->
-    <button id="theme-toggle-btn" title="Switch visual theme">🔥</button>
+    <!-- V9: A/B theme toggle, scoped per-room (data-v9-theme on <html>,
+         combined with data-room to pick one of the 4 palettes — see
+         styles.css's :root[data-room][data-v9-theme] blocks). Replaces the
+         old 5-theme cycle button on this branch only; wireThemeToggle
+         (app.js) has its own v9 branch now. -->
+    <button id="theme-toggle-btn" title="Switch light/dark for this room">☾</button>
   </div>
 
   <div id="sidebar">
-    <!-- Screen nav — top-left corner, one shared .nav-screen-btn class so
-         all 6 are identical in size/shape, one 2-column grid. Mixer isn't a
-         real overlay (it's just the base grid below), so its button just
-         closes whatever overlay is open. Help stays a modal, not a
-         persistent "screen," so it never gets .active highlighting, but —
-         per direct request — otherwise sits in the grid like any other
-         button (previously its own full-width row below the other four;
-         that row is gone now that Tab View fills the slot next to it). -->
-    <div class="nav-screen-row">
-      <button id="mixer-open-btn" class="nav-screen-btn">🎚 Mixer</button>
-      <button id="tonelab-open-btn" class="nav-screen-btn">🎛 Tone Lab</button>
-      <button id="playalong-open-btn" class="nav-screen-btn">🎸 Play Along</button>
-      <button id="ailab-open-btn" class="nav-screen-btn">🧠 AI Lab</button>
-      <button id="tabview-open-btn" class="nav-screen-btn">🎼 Tab View</button>
-      <button id="help-open-btn" class="nav-screen-btn">❓ Help</button>
+    <!-- V9: Songs/Tabs filter chips per the design handoff's drawer —
+         "one file browser, one mental model" instead of Tab View reading
+         as a whole separate library. The underlying swap (song-library-panel
+         <-> tab-library-panel) is unchanged; these chips are a real nav
+         control on top of it (Tabs opens Tab View, Songs returns to Mixer),
+         kept in sync with the active screen by paSetActiveScreen
+         (playalong.js) rather than tracking their own state. -->
+    <div class="drawer-filter-row">
+      <button id="drawer-filter-songs" class="drawer-filter-chip on">Songs</button>
+      <button id="drawer-filter-tabs" class="drawer-filter-chip">Tabs</button>
     </div>
     <!-- orpheus-tabview-spec.md follow-up (direct request): this whole
          panel swaps out for #tab-library-panel below while Tab View is the
@@ -439,9 +469,12 @@
 
   <div id="playalong-overlay" class="screen-overlay">
     <div id="playalong-panel" class="screen-panel">
-      <div id="playalong-header" class="screen-header">
-        <button id="playalong-close-btn">✕ Close</button>
-      </div>
+      <!-- Direct feedback: the Close bar/button was removed — the
+           persistent activity rail (M/T/P/A/G) is always visible and
+           already switches screens, making a dedicated close affordance
+           redundant. closePlayAlong() (playalong.js) is unwired from any
+           button now but stays as the function other code paths (e.g.
+           closeAllScreens) call to leave this screen programmatically. -->
       <div id="playalong-body" class="screen-body">
 
         <!-- orpheus-transport-spec.md: same shared .transport-bar treatment
@@ -645,7 +678,12 @@
             <p class="hint" id="rec-practice-hint">Needs a loop region set and Loop enabled (Mixer) — each pass through the loop is saved as its own take automatically.</p>
             <div id="rec-result" class="hint"></div>
 
-            <details id="rec-setup" open>
+            <!-- V9: collapsed by default (was open) — the design handoff's
+                 own "Deprioritized / hidden by default" call: camera setup
+                 only earns screen space once someone's actually using a
+                 camera, most sessions are audio-only. Still one click away,
+                 same disclosure element/JS as before. -->
+            <details id="rec-setup">
               <summary>Setup: camera, quality &amp; sync</summary>
               <div class="row">
                 <label style="margin:0">Show framing guides</label>
@@ -753,9 +791,8 @@
 
   <div id="tonelab-overlay" class="screen-overlay">
     <div id="tonelab-panel" class="screen-panel">
-      <div id="tonelab-header" class="screen-header">
-        <button id="tonelab-close-btn">✕ Close</button>
-      </div>
+      <!-- Direct feedback: Close bar/button removed, same reasoning as
+           Play Along's above — the always-visible rail already covers it. -->
       <div id="tonelab-body" class="screen-body">
 
         <!-- orpheus-transport-spec.md: Tone Lab had no transport at all
@@ -1248,7 +1285,7 @@
         <div class="ailab-tabs" id="ailab-tabs">
           <button id="ailab-tab-scales" class="ailab-tab-btn on" data-panel="scales">Scales</button>
           <button id="ailab-tab-ratemytake" class="ailab-tab-btn" data-panel="ratemytake">Rate My Take</button>
-          <button id="ailab-tab-lickideas" class="ailab-tab-btn" data-panel="lickideas">AI Assistant</button>
+          <button id="ailab-tab-lickideas" class="ailab-tab-btn" data-panel="lickideas">Assistant</button>
         </div>
         <button id="ailab-close-btn">✕ Close</button>
       </div>
@@ -1466,7 +1503,7 @@
             <div id="ailab-lick-suggestion"></div>
           </section>
 
-          <section class="pa-card" id="ailab-explain-mode-card" style="display:none;">
+          <section class="pa-card ailab-violet-card" id="ailab-explain-mode-card" style="display:none;">
             <h3>Ask AI</h3>
             <p class="hint">Ask anything about this song's theory, this track, or this artist — grounded in the song info above and any detected key/tempo/chords, where relevant. Guarded to music/this-track/this-artist questions only; off-topic questions get politely declined, not answered anyway. Single question in, single answer back (not a running conversation).</p>
             <div class="ailab-explain-examples" id="ailab-explain-examples">
@@ -1584,9 +1621,8 @@
        Tone Lab/Play Along/AI Lab. -->
   <div id="tabview-overlay" class="screen-overlay">
     <div id="tabview-panel" class="screen-panel">
-      <div id="tabview-header" class="screen-header">
-        <button id="tabview-close-btn">✕ Close</button>
-      </div>
+      <!-- Direct feedback: Close bar/button removed, same reasoning as
+           Play Along's above — the always-visible rail already covers it. -->
       <div id="tabview-body" class="screen-body">
         <!-- Direct request: control over the loaded SONG track (whatever's
              in State.track, same as Mixer/Play Along/Tone Lab) from here

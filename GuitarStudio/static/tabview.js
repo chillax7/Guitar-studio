@@ -1195,7 +1195,6 @@ function closeTabView() {
 
 function wireTabView() {
   document.getElementById("tabview-open-btn").addEventListener("click", openTabView);
-  document.getElementById("tabview-close-btn").addEventListener("click", closeTabView);
   wireTabViewImport();
   wireTabSearch();
   wireTabGenerate();

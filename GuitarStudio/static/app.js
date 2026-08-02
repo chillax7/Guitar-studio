@@ -4061,6 +4061,12 @@ function wireQuestLog() {
 // among THEME_ORDER counts — anything else (absence, an old build's
 // literal "molten") falls back to the default, so the default flip never
 // needed a migration for existing users.
+// Direct feedback on redesign/v9-two-rooms: the V9 mockup's single global
+// light/dark toggle (data-v9-theme, four hand-built palettes) was reverted
+// in favor of bringing back all 5 of these classic named themes with their
+// original colours AND fonts — the V9 shell (activity rail, drawer,
+// per-screen title) stays, but the palette/typography system underneath
+// it is this original one again, untouched in substance from before v9.
 const THEME_KEY = "gs_theme";
 // R2-5/R2-6: Future Metal and Castle Rock are additions, not replacements —
 // appended rather than inserted, so the existing three keep the exact same

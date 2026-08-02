@@ -80,8 +80,13 @@
      --accent happens to be blue already. A dedicated teal reads as its own
      thing in every theme instead of coinciding with whatever --accent is. */
   --dry-take-accent: #3fa9a0;
-  --topbar-height: 44px;
-  --sidebar-width: 240px; /* wireSidebarResize (app.js) overrides this live + persists it */
+  /* V9 shell dimensions (kept across the theme-restoration pass below —
+     these are layout, not color/font, so the request to bring back the
+     classic 5 themes' colours/fonts doesn't touch them): 56px activity
+     rail, a taller top bar for it, and a slightly narrower default drawer. */
+  --v9-rail-width: 56px;
+  --topbar-height: 46px;
+  --sidebar-width: 220px; /* wireSidebarResize (app.js) overrides this live + persists it */
   --inspector-width: 280px; /* wireInspectorCollapse (app.js) overrides this live + persists it */
   --heading-font: inherit;
   --heading-transform: none;
@@ -525,13 +530,43 @@ input[type="number"], [id$="-val"],
   font-family: var(--font-mono);
 }
 
+/* V9: rail is a new full-height column left of everything else (the design
+   handoff's "activity rail" — see research/v9-two-rooms-implementation-plan.md
+   §5 step 1). Named areas instead of relying on DOM-order auto-placement,
+   since the rail's addition means #sidebar/#canvas/#inspector are no longer
+   simply columns 1/2/3 in source order. */
 #app {
   display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr var(--inspector-width);
-  grid-template-rows: auto 1fr;
+  grid-template-columns: var(--v9-rail-width) var(--sidebar-width) 1fr var(--inspector-width);
+  grid-template-rows: var(--topbar-height) 1fr;
+  grid-template-areas:
+    "rail topbar topbar topbar"
+    "rail drawer canvas inspector";
   height: 100vh;
   position: relative; /* anchors #sidebar-resize-handle/#inspector-toggle-btn, which sit outside the grid flow */
 }
+#activity-rail { grid-area: rail; }
+#top-banner { grid-area: topbar; }
+#sidebar { grid-area: drawer; }
+#canvas { grid-area: canvas; }
+#inspector { grid-area: inspector; }
+
+/* V9: Tone Lab (the "rig room") hides the drawer entirely to reclaim its
+   width for the pedal chain — the design handoff's own explicit choice
+   ("rig room reclaims that width"), not a bug. Collapsing the grid
+   column to 0 (rather than just hiding #sidebar) is what actually gives
+   the freed space to #canvas, since grid columns don't renegotiate their
+   own track sizes just because one cell's content disappeared. data-room
+   is kept live by paSetActiveScreen (playalong.js), so this needs no
+   per-screen JS of its own. */
+html[data-room="rig"] #app {
+  grid-template-columns: var(--v9-rail-width) 0px 1fr var(--inspector-width);
+}
+html[data-room="rig"] #sidebar,
+html[data-room="rig"] #sidebar-resize-handle {
+  display: none;
+}
+html[data-room="rig"] .screen-overlay { left: var(--v9-rail-width); }
 
 /* Drag left/right to resize #sidebar — a hit-target wider than its visible
    line (position:absolute so it isn't itself a grid item/column) sitting
@@ -542,7 +577,7 @@ input[type="number"], [id$="-val"],
   position: absolute;
   top: var(--topbar-height);
   bottom: 0;
-  left: var(--sidebar-width);
+  left: calc(var(--v9-rail-width) + var(--sidebar-width));
   width: 7px;
   margin-left: -3px;
   cursor: col-resize;
@@ -555,68 +590,118 @@ input[type="number"], [id$="-val"],
   opacity: 0.5;
 }
 
-/* ---------- Top banner ---------- */
+/* ---------- Activity rail (V9) ---------- */
 
+/* Full-height, spans both grid rows (grid-area:rail set above). Direct
+   feedback: was colored by room identity (a fixed cream/near-black
+   regardless of theme) per the design handoff's original intent — changed
+   to match the main pane's own --bg exactly, with just a border for
+   definition, so the rail reads as part of the same surface rather than
+   a permanently-tinted strip next to it. */
+#activity-rail {
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 0;
+  gap: 10px;
+}
+#activity-rail .nav-screen-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0;
+}
+#activity-rail-spacer { flex: 1; }
+/* Rail dots: 34x34, single-letter monograms, Space Grotesk per the handoff.
+   Overrides the old 2-col-grid .nav-screen-btn sizing/shape entirely —
+   same class, new shape, so paSetActiveScreen's existing
+   ".nav-screen-row .nav-screen-btn" queries keep working untouched. */
+#activity-rail .nav-screen-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 8px;
+  font: 600 11px var(--heading-font); /* direct feedback: theme's own font, not a hard-coded V9 one */
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+#activity-rail .nav-screen-btn:hover:not(.active) { color: var(--text); border-color: var(--accent); filter: none; }
+#activity-rail .nav-screen-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  filter: none;
+  box-shadow: none;
+}
+/* Coach (AI Lab) is the one rail icon that stays violet even when active —
+   "the one color that always means this is AI," per the handoff — instead
+   of the room's warm/ember accent every other active icon gets. */
+#activity-rail #ailab-open-btn.active {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+}
+#activity-rail #help-open-btn {
+  border-radius: 50%;
+  font-size: 13px;
+}
+
+/* ---------- Top banner (V9 layout, theme-relative colors) ---------- */
+
+/* Direct feedback: originally a fixed dark "spine" bar regardless of
+   theme (the design handoff's idea — "the one piece of chrome that
+   never changes"). Reverted to theme-relative --panel/--border so it
+   follows whichever of the 5 classic themes (Studio/Molten Obsidian/
+   Bright Spark/Future Metal/Castle Rock) is active, same as every other
+   panel in the app. */
 #top-banner {
-  position: relative; /* anchors #top-banner-screen-label's absolute centering */
-  grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
   height: var(--topbar-height);
-  padding: 0 14px;
+  padding: 0 20px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
 }
 
-/* The app icon at title-bar scale. Its own artwork carries the dark rounded
-   backplate, so no extra framing needed here. */
 #app-logo {
   width: 26px;
   height: 26px;
   display: block;
 }
 
-/* Same treatment as #sidebar h2 (LIBRARY) / #inspector h3 (TRACK) — small
-   uppercase label style, just carried through to the app's own title. */
 #app-title {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font: 600 15px var(--heading-font);
   color: var(--text);
-  font-weight: 600;
-}
-#app-version {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
+  letter-spacing: var(--heading-tracking);
+  text-transform: none;
 }
 
-/* Current-screen label — centered on the *whole* window width (not just
-   the canvas column), so it lines up the same way regardless of sidebar
-   width. Absolute + left:50%/translateX(-50%) achieves that independent
-   of how wide the logo/title/version group on the left ends up being. */
+/* The per-screen title, restored (was dropped by the design handoff's own
+   mockups — see research/v9-two-rooms-implementation-plan.md §1). Sits
+   right after the wordmark in v9's single continuous flex-row top bar. */
 #top-banner-screen-label {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 13px;
-  font-weight: 600;
+  font: 500 12px var(--font-mono);
   color: var(--text-dim);
+  padding-left: 2px;
 }
 
 /* ui-review-v5-full.md §2.5: global rig status pill — pushed to the far
-   right of the banner (margin-left:auto — #top-banner-screen-label is
-   absolutely positioned so it doesn't take up flex space to push against).
-   Three states: silent (neutral, input never enabled this session), live
-   (green, pulsing), clipped (red, latched — same "stays lit until Clear"
-   contract as Tone Lab's own clip indicator). */
+   right of the banner. Three states: silent (neutral, input never enabled
+   this session), live (green, pulsing), clipped (red, latched — same
+   "stays lit until Clear" contract as Tone Lab's own clip indicator).
+   Direct feedback: restored to theme-relative colors (var(--panel-2)/
+   var(--success)/var(--danger)) instead of the fixed "spine" tokens the
+   design handoff called for — those don't exist once the 5 classic
+   themes are back in charge of the palette. */
 #rig-status-pill {
   margin-left: auto;
   display: flex; align-items: center; gap: 7px;
   background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim);
   border-radius: 999px; padding: 4px 12px; font-size: 11.5px; cursor: pointer;
+  white-space: nowrap; flex: none;
 }
 #rig-status-pill:hover { filter: brightness(1.2); }
 #rig-status-led {
@@ -626,6 +711,11 @@ input[type="number"], [id$="-val"],
 #rig-status-pill.live #rig-status-led { background: var(--success); box-shadow: 0 0 6px var(--success); animation: rig-pulse 2.2s infinite; }
 #rig-status-pill.clipped { border-color: var(--danger); color: var(--text); background: #3a2323; }
 #rig-status-pill.clipped #rig-status-led { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+
+/* Direct feedback: restored the classic 5-theme cycle button (plain house
+   button styling, emoji icon swap per theme in wireThemeToggle/app.js) —
+   the V9 circular light/dark toggle this replaced doesn't apply once the
+   palette is back to being theme-driven, not room/light-dark-driven. */
 @keyframes rig-pulse { 50% { opacity: 0.5; } }
 @media (prefers-reduced-motion: reduce) { #rig-status-pill.live #rig-status-led { animation: none; } }
 
@@ -646,6 +736,19 @@ input[type="number"], [id$="-val"],
      respect the grid row's height so overflow-y:auto can do its job. */
   min-height: 0;
 }
+
+/* V9: Songs/Tabs drawer filter chips — see index.html's #sidebar comment. */
+.drawer-filter-row { display: flex; gap: 8px; padding: 12px 12px 0; }
+.drawer-filter-chip {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font: 600 10px var(--font-mono);
+  padding: 5px 12px;
+  border-radius: 999px;
+}
+.drawer-filter-chip.on { background: var(--accent); color: #fff; }
+.drawer-filter-chip:hover:not(.on) { background: var(--panel-2); color: var(--text); }
 
 #sidebar h2 {
   font-size: 12px;
@@ -876,6 +979,26 @@ input[type="number"], [id$="-val"],
 #timeline-zoom-slider { width: 90px; }
 #click-volume-slider { width: 70px; }
 
+/* V9: toolbar utility buttons read as small pill "chips" (design handoff's
+   term) — quiet, transparent, JetBrains Mono — distinct from a card's
+   actual primary action (Separate/Re-separate keep the house button.primary
+   solid-fill treatment, untouched by this). Scoped to the toolbar row and
+   the model badge rather than globally, since Mixer's toolbar is the one
+   place this app already groups a run of small utility actions together
+   the way the design's "chip" examples (+ Marker, Zoom to loop, EQ) do. */
+#toolbar-tools button, #model-badge-label {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 999px;
+  font: 500 10.5px var(--font-mono);
+  padding: 5px 12px;
+}
+#toolbar-tools button:hover { color: var(--text); border-color: var(--accent); background: transparent; }
+#toolbar-tools button.active, #toolbar-tools button.on, #toolbar-tools button.running {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+
 /* House rule (button state model — one consistent language everywhere):
      • QUIET at rest — every button is dark (panel-2) with a border. A wall of
        buttons reads calm; nothing shouts until it means something.
@@ -895,7 +1018,7 @@ button {
   background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 4px;
+  border-radius: 6px; /* V9: was 4px — matches the design handoff's 6-8px card/row radius */
   padding: 5px 10px;
   cursor: pointer;
   font-size: 12px;
@@ -1140,9 +1263,15 @@ button:disabled:hover { filter: none; }
   display: grid;
   grid-template-columns: 150px 1fr;
   gap: 8px;
-  border-bottom: 1px solid var(--border);
+  /* V9: card row instead of a flat divided list — border+radius+margin per
+     lane, matching the design handoff's per-stem card treatment, without
+     touching the grid/sticky mechanics applyZoomWidth (app.js) depends on. */
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
   padding: 6px 0;
   align-items: stretch;
+  background: var(--panel);
 }
 
 .lane-header {
@@ -1160,12 +1289,17 @@ button:disabled:hover { filter: none; }
      pinned to the left edge of #workspace's scrolling viewport instead
      of scrolling away with the waveform — the frozen-track-header
      pattern every DAW uses. Opaque background + z-index so the waveform
-     scrolling underneath doesn't show through. */
+     scrolling underneath doesn't show through. Matches .lane's own new
+     --panel card background (was --bg) so the sticky header doesn't look
+     like a seam cut into the card as it scrolls under it. */
   position: sticky;
   left: 0;
   z-index: 3;
-  background: var(--bg);
+  background: var(--panel);
+  border-radius: 8px 0 0 8px;
 }
+
+.lane-name { font-family: var(--heading-font); font-weight: 600; }
 
 /* UI-1 (design review v1): color-code a lane by instrument type. Each rule
    only overrides --waveform WITHIN that lane's own scope (drawWaveform,
@@ -1291,7 +1425,15 @@ button:disabled:hover { filter: none; }
   position: relative;
   height: 20px;
   margin-top: 3px;
-  background: #1a1c22;
+  /* Direct feedback: was a hard-coded near-black (#1a1c22) that read fine
+     on old dark themes but slammed against every light V9 palette —
+     var(--panel-2) already resolves to each theme's own "quiet paintable
+     surface" shade (the same one .lane-body canvas already uses below),
+     so this now looks right automatically in all four room/theme
+     combinations instead of needing a per-theme override (see the old
+     brightspark-only fix this generalizes). */
+  background: var(--panel-2);
+  border: 1px solid var(--border);
   border-radius: 3px;
   cursor: crosshair;
   overflow: hidden; /* BT-17 — same reasoning as #ruler's own overflow:hidden */
@@ -1495,9 +1637,16 @@ button:disabled:hover { filter: none; }
   position: absolute;
   top: 0; bottom: 0;
   width: 1px;
-  background: rgba(255, 255, 255, 0.12);
+  /* Direct feedback (same class of bug as .mute-lane's old hard-coded
+     near-black): this was a fixed rgba(255,255,255,...) — invisible-thin
+     white lines read fine on old dark themes but nearly disappeared
+     against every light V9 palette's pale ruler background. var(--text)
+     is dark in light themes and light in dark themes by construction, so
+     mixing it toward transparent stays visible in all four room/theme
+     combinations instead of needing a per-theme override. */
+  background: color-mix(in srgb, var(--text) 18%, transparent);
 }
-.beat-tick.downbeat { background: rgba(255, 255, 255, 0.3); }
+.beat-tick.downbeat { background: color-mix(in srgb, var(--text) 40%, transparent); }
 #loop-region {
   position: absolute;
   top: 0; bottom: 0;
@@ -1575,6 +1724,7 @@ h3:first-child { margin-top: 0; }
 :root[data-theme="brightspark"] h3 {
   letter-spacing: 0.08em;
 }
+
 
 /* Collapsible Track/Speed Trainer/Export panel (real user report: it eats
    screen width on the Mixer that could go to the lanes). Same "own CSS var
@@ -1768,7 +1918,7 @@ h3:first-child { margin-top: 0; }
      sidebar wider/narrower on the Mixer carries over correctly once you
      open Tone Lab or Play Along too, instead of the overlay's edge
      sitting under the sidebar or leaving a gap next to it. */
-  top: var(--topbar-height); left: var(--sidebar-width); right: 0; bottom: 0;
+  top: var(--topbar-height); left: calc(var(--v9-rail-width) + var(--sidebar-width)); right: 0; bottom: 0;
   background: var(--bg);
   z-index: 50;
   overflow-y: auto;
@@ -1791,7 +1941,7 @@ h3:first-child { margin-top: 0; }
 .pa-card {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px; /* V9: was 6px, matches the design handoff's card radius */
   padding: 12px 14px;
 }
 .pa-card label { display: block; font-size: 11px; color: var(--text-dim); margin: 8px 0 2px; }
@@ -1886,10 +2036,10 @@ h3:first-child { margin-top: 0; }
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  min-width: 56px;
+  min-width: 64px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px; /* V9: was 6px, matches the design handoff's pedal-card radius */
   padding: 8px 10px;
   color: var(--text-dim);
   cursor: pointer;
@@ -2529,15 +2679,17 @@ h3:first-child { margin-top: 0; }
   padding: 7px 14px; cursor: pointer;
 }
 .ailab-mode-toggle button + button { border-left: 1px solid var(--border); }
-.ailab-mode-toggle button.on { background: var(--accent); color: #fff; }
+.ailab-mode-toggle button.on { background: var(--accent-2); color: #fff; } /* V9: violet, not room accent — Coach is AI-branded throughout, per the design handoff */
 .ailab-mode-toggle button:not(.on):hover { filter: brightness(1.2); }
 
 .ailab-explain-examples { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
 .ailab-explain-example-btn {
-  border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim);
+  /* V9: violet-tinted pill, not the plain grey chip — these live inside
+     .ailab-violet-card, matching the design handoff's "Ask AI" mockup. */
+  border: none; background: var(--accent-2-dim); color: var(--accent-2);
   font-size: 11px; padding: 5px 10px; border-radius: 999px; cursor: pointer;
 }
-.ailab-explain-example-btn:hover { filter: brightness(1.2); }
+.ailab-explain-example-btn:hover { filter: brightness(1.15); }
 
 .ailab-jumprow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .ailab-scale-chip {
@@ -2600,7 +2752,13 @@ svg.ailab-fretboard { display: block; }
   background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim);
   font-size: 12px; font-weight: 600; padding: 7px 16px; border-radius: 6px;
 }
-.ailab-tab-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ailab-tab-btn.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; } /* V9: violet — see .ailab-mode-toggle button.on above */
+/* V9: Ask AI's card gets a violet outline, per the design handoff's mockup —
+   the one card on this screen meant to draw the eye as "the AI part." */
+.ailab-violet-card { border-color: var(--accent-2); }
+.ailab-violet-card h3 { color: var(--accent-2); }
+.ailab-violet-card button.primary { background: var(--accent-2); border-color: var(--accent-2); }
+.ailab-violet-card button.primary:hover { background: var(--accent-2); filter: brightness(1.1); }
 .ailab-tab-btn:not(.on):hover { filter: brightness(1.2); }
 
 /* ui-review-v5-full.md §2.7: collapsible AI Assistant setup cards */

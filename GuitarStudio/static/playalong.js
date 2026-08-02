@@ -2312,14 +2312,28 @@ const PA_SCREEN_LABELS = {
   "mixer-open-btn": "Mixer",
   "tonelab-open-btn": "Tone Lab",
   "playalong-open-btn": "Play Along",
-  "ailab-open-btn": "AI Lab",
-  "tabview-open-btn": "Tab View",
+  "ailab-open-btn": "AI Lab", // V9 direct feedback: reverted the "Coach" rename in the title bar (kept elsewhere — violet theming, "Assistant" tab label)
+  "tabview-open-btn": "Guitar Pro Tab View", // direct feedback: clarifies what the rail's "G" monogram stands for
 };
 function paSetActiveScreen(id) {
   document.querySelectorAll(".nav-screen-row .nav-screen-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.id === id);
   });
   document.getElementById("top-banner-screen-label").textContent = PA_SCREEN_LABELS[id] || "";
+  // V9 shell: Tone Lab is the "rig room," every other screen is the "song
+  // room" — this no longer drives the color palette (reverted back to the
+  // classic 5 named themes, data-theme, per direct feedback), but it's
+  // still what styles.css's html[data-room="rig"] rule keys off to hide
+  // the drawer and reclaim its width for the pedal chain on this one
+  // screen. See research/v9-two-rooms-implementation-plan.md §2.
+  document.documentElement.setAttribute("data-room", id === "tonelab-open-btn" ? "rig" : "song");
+  // V9: Songs/Tabs drawer filter chips reflect which screen (and therefore
+  // which of song-library-panel/tab-library-panel) is actually showing —
+  // no separate state of their own, just a read of the same fact
+  // paSetActiveScreen already knows.
+  const isTabs = id === "tabview-open-btn";
+  document.getElementById("drawer-filter-songs").classList.toggle("on", !isTabs);
+  document.getElementById("drawer-filter-tabs").classList.toggle("on", isTabs);
 }
 
 // Code-review finding: MIDI access used to be requested unconditionally at
@@ -2447,10 +2461,12 @@ function updateTremoloDepthGain() {
 
 function wirePAControls() {
   document.getElementById("mixer-open-btn").addEventListener("click", closeAllScreens);
+  // V9: Songs/Tabs drawer filter chips are just another way to reach the
+  // same two rail buttons — no separate navigation path to keep in sync.
+  document.getElementById("drawer-filter-songs").addEventListener("click", () => document.getElementById("mixer-open-btn").click());
+  document.getElementById("drawer-filter-tabs").addEventListener("click", () => document.getElementById("tabview-open-btn").click());
   document.getElementById("tonelab-open-btn").addEventListener("click", openToneLab);
-  document.getElementById("tonelab-close-btn").addEventListener("click", closeToneLab);
   document.getElementById("playalong-open-btn").addEventListener("click", openPlayAlong);
-  document.getElementById("playalong-close-btn").addEventListener("click", closePlayAlong);
   document.getElementById("pa-enable-btn").addEventListener("click", paEnableInput);
   // Picking a different device in the list did nothing on its own — input
   // stayed on whatever was live already (often the system default, since
