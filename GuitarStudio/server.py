@@ -35,7 +35,7 @@ import traceback
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -2942,6 +2942,105 @@ def svc_tabs_list() -> dict:
     return {"tabs": tabs, "playlists": library["playlists"]}
 
 
+# ---------------------------------------------------------------------------
+# Tab search (Songsterr) — FIND ONLY, never fetch.
+#
+# There is no sanctioned API anywhere for downloading Guitar Pro files.
+# Ultimate Guitar has no public API at all; Songsterr has an open search
+# endpoint but its terms say content "may not be distributed, modified,
+# transmitted, reused, downloaded, reposted, copied" without written
+# permission, and every .gp downloader in the wild is a scraper working
+# against those terms. So this proxies SEARCH only and hands back a link —
+# the user obtains the tab themselves, through Songsterr, and imports it
+# with the drop zone like any other file. No download path exists here on
+# purpose; adding one is not a missing feature, it is the line.
+#
+# Proxied server-side rather than called from the browser for two reasons:
+# songsterr.com sends no CORS headers for this endpoint, and going through
+# here means one place to set a truthful User-Agent and to fail politely.
+#
+# The response shape is normalised defensively: it could not be verified
+# against the live service from the development container (every request
+# 403'd through its egress proxy), so rather than hard-code one guess,
+# _normalize_songsterr_hits accepts the shapes this endpoint is documented
+# and reported to return and passes the raw payload back when it recognises
+# none of them — so a shape change shows up as something debuggable rather
+# than as a silent empty list.
+# ---------------------------------------------------------------------------
+SONGSTERR_SEARCH_URL = "https://www.songsterr.com/a/ra/songs.json?pattern={}"
+_TAB_SEARCH_USER_AGENT = "OrpheusGuitarStudio/1.0 (local practice app; tab search, no downloading)"
+
+
+def _normalize_songsterr_hits(payload) -> list:
+    """Best-effort flatten of whatever the search endpoint returns.
+
+    Handles a bare list of songs, and a dict wrapping one under a few
+    plausible keys. Artist may be a nested object or a plain string.
+    """
+    rows = payload
+    if isinstance(payload, dict):
+        for key in ("songs", "results", "data", "items"):
+            if isinstance(payload.get(key), list):
+                rows = payload[key]
+                break
+        else:
+            rows = []
+    if not isinstance(rows, list):
+        return []
+
+    out = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        artist = row.get("artist")
+        if isinstance(artist, dict):
+            artist = artist.get("name") or artist.get("nameWithoutThePrefix") or ""
+        artist = artist or row.get("artistName") or ""
+        title = row.get("title") or row.get("name") or ""
+        song_id = row.get("id") or row.get("songId")
+        if not (title or artist):
+            continue
+        # Songsterr's canonical per-song URL is /a/wsa/<slug>-tab-s<id>; the
+        # id alone is enough for it to resolve, and building the slug
+        # ourselves would be guesswork.
+        url = f"https://www.songsterr.com/a/wa/song?id={song_id}" if song_id else "https://www.songsterr.com/"
+        out.append({
+            "id": song_id, "title": str(title), "artist": str(artist), "url": url,
+            "has_chords": bool(row.get("chordsPresent") or row.get("hasChords")),
+        })
+    return out
+
+
+def svc_tab_search(query: str) -> dict:
+    query = (query or "").strip()
+    if not query:
+        raise ApiError(400, "Type something to search for.")
+    req = Request(
+        SONGSTERR_SEARCH_URL.format(quote(query)),
+        headers={"user-agent": _TAB_SEARCH_USER_AGENT, "accept": "application/json"},
+    )
+    try:
+        with urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except HTTPError as exc:
+        raise ApiError(exc.code, f"Songsterr search returned {exc.code}. Their search endpoint is not a "
+                                f"contracted API and can change or block requests without notice.")
+    except URLError as exc:
+        raise ApiError(502, f"Couldn't reach Songsterr: {exc.reason}")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        raise ApiError(502, "Songsterr didn't return JSON — their search endpoint has probably changed.")
+    hits = _normalize_songsterr_hits(payload)
+    out = {"results": hits, "source": "songsterr"}
+    if not hits:
+        # Distinguish "nothing matched" from "we no longer understand the
+        # response" — those need very different follow-up.
+        out["unrecognized_shape"] = bool(payload) and not isinstance(payload, list)
+        out["raw_preview"] = raw[:400]
+    return out
+
+
 def svc_tab_upload(filename: str, data: bytes) -> dict:
     if not data:
         raise ApiError(400, "Empty upload")
@@ -3389,6 +3488,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(200, svc_load_settings())
             if path == "/api/tabs":
                 return self._send_json(200, svc_tabs_list())
+            if path == "/api/tabs/search":
+                return self._send_json(200, svc_tab_search(query.get("query", "")))
             if path == "/api/tabs/file":
                 return self._send_file(resolve_tab_file(query.get("filename", "")), cacheable=True)
             if path.startswith("/api/"):
