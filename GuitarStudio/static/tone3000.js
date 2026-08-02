@@ -347,7 +347,52 @@ async function t3kDownloadModel(tone, model) {
     try { msg = (await up.json()).error || msg; } catch (e) { /* not json */ }
     throw new Error(`Saving to your library failed: ${msg}`);
   }
-  return { filename, isIr, json: await up.json().catch(() => ({})) };
+  const info = await up.json().catch(() => ({}));
+  // Use the path the SERVER reports, not the one we asked for — it is the
+  // real location relative to the models root (folder included), which is
+  // exactly the key the loader and the browser list use. Backslashes are
+  // normalised because that relative path is built with the host OS's
+  // separator.
+  const savedName = (info.filename || ("TONE3000/" + filename)).replace(/\\/g, "/");
+  return { filename: savedName, isIr, json: info };
+}
+
+// Make a freshly-downloaded capture the live one. Downloading a tone and
+// then having to go find it in the picker is a pointless extra step — the
+// reason you downloaded it is to hear it.
+//
+// Order matters: the model is loaded FIRST and the amp only switches to
+// Neural once that succeeded. paLoadNamModel legitimately refuses a capture
+// too heavy to run in real time (NAM_REFUSE_RT_FACTOR), and switching first
+// would leave the rig on a neural amp with nothing loaded — i.e. silence,
+// with the reason buried on another card.
+async function t3kActivateDownloaded(saved) {
+  if (typeof paEnsureRigSessionReady === "function") await paEnsureRigSessionReady();
+
+  if (saved.isIr) {
+    if (typeof paLoadIr !== "function") return "";
+    await paLoadIr(saved.filename);
+    paHighlightBrowserSelection("ir", saved.filename);
+    const bypass = document.getElementById("pa-ir-bypass");
+    // Deliberately NOT auto-un-bypassed: with a full-rig NAM capture already
+    // loaded, stacking an IR on top is the exact "too dark" mistake the
+    // gear_type note warns about (§N-2). Say it instead of deciding it.
+    return bypass && bypass.checked
+      ? " Loaded into the Cab IR slot — turn off its Bypass to hear it."
+      : " Loaded into the Cab IR slot and active.";
+  }
+
+  if (typeof paLoadNamModel !== "function") return "";
+  await paLoadNamModel(saved.filename);
+  if (PA.namLoaded !== saved.filename) {
+    // The NAM card's own status line already says exactly why (too heavy for
+    // this machine, unsupported architecture, ...) — don't paraphrase it badly.
+    return " It didn't load, though — see the Amp card's Neural tab for why.";
+  }
+  paHighlightBrowserSelection("nam", saved.filename);
+  const switched = PA.ampMode !== "neural";
+  if (switched && typeof setAmpMode === "function") setAmpMode("neural");
+  return switched ? " Amp switched to Neural and this capture is live." : " It's live on the Neural amp now.";
 }
 
 // ---------------------------------------------------------------------------
@@ -494,10 +539,21 @@ async function t3kDownloadTone(tone, btn) {
     const model = t3kPickModel(models.data || []);
     if (!model) throw new Error("That tone has no downloadable files.");
     const saved = await t3kDownloadModel(tone, model);
-    t3kStatus(`Saved "${saved.filename}" to your ${saved.isIr ? "IR" : "NAM"} library (TONE3000 folder).`);
-    // Refresh whichever local browser now has a new entry in it.
+    // Refresh the local browser BEFORE activating: the picker highlight
+    // below targets a row that has to exist in the list first.
     if (saved.isIr) { if (typeof paRefreshIrModels === "function") await paRefreshIrModels(); }
     else if (typeof paRefreshNamModels === "function") await paRefreshNamModels();
+
+    let activated = "";
+    try {
+      activated = await t3kActivateDownloaded(saved);
+    } catch (e) {
+      // A download that saved fine but couldn't be auto-activated is still a
+      // successful download — report both truthfully rather than turning the
+      // whole thing into an error.
+      activated = ` Saved, but couldn't make it active automatically: ${e.message || e}`;
+    }
+    t3kStatus(`Saved "${saved.filename}" to your ${saved.isIr ? "IR" : "NAM"} library.${activated}`);
     if (btn) btn.textContent = "Downloaded";
   } catch (e) {
     t3kStatus(e.message || String(e));
