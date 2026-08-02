@@ -3091,19 +3091,36 @@ def _tab_quantize(notes: list, beats: list) -> list:
             err = sum(abs(n["onset"] - (b0 + round((n["onset"] - b0) / step) * step)) for n in inbar)
             err /= len(inbar)
             if best is None or err * TAB_GRID_TOLERANCE < best[0]:
-                best = (err, step, gp_dur, is_trip)
-        _, step, gp_dur, is_trip = best
-        for n in inbar:
-            k = round((n["onset"] - b0) / step)
-            q_on = b0 + k * step
+                best = (err, step, gp_dur, is_trip, div)
+        err, step, gp_dur, is_trip, div = best
+        bar_steps = 4 * div  # v1 is 4/4, so four beats of `div` steps each
+
+        # Position AND length are both expressed in grid steps. The writer
+        # needs the position: without it the only way to place a note is
+        # "next to the previous one", which packs every bar against beat 1
+        # and destroys the rhythm. It needs the length for the same reason —
+        # a held note that gets written as one grid unit is what makes the
+        # playback sound staccato.
+        placed = []
+        for n in sorted(inbar, key=lambda x: x["onset"]):
+            k = min(bar_steps - 1, max(0, round((n["onset"] - b0) / step)))
             steps = max(1, int(round((n["offset"] - n["onset"]) / step)))
-            out.append({**n,
-                        "onset": round(q_on, 4),
-                        "duration": round(steps * step, 4),
-                        "gp_duration": gp_dur,
-                        "gp_steps": steps,
-                        "triplet": is_trip,
-                        "bar": bi})
+            placed.append({**n, "gp_step": k, "gp_steps": steps})
+
+        # The transcription is monophonic, so two notes can never sound at
+        # once. Rounding can still push one note's tail past the next one's
+        # onset; clip rather than emit an overlap the writer can't notate.
+        for i, n in enumerate(placed):
+            limit = placed[i + 1]["gp_step"] if i + 1 < len(placed) else bar_steps
+            n["gp_steps"] = max(1, min(n["gp_steps"], limit - n["gp_step"]))
+            q_on = b0 + n["gp_step"] * step
+            n.update({"onset": round(q_on, 4),
+                      "duration": round(n["gp_steps"] * step, 4),
+                      "gp_duration": gp_dur,
+                      "bar_steps": bar_steps,
+                      "triplet": is_trip,
+                      "bar": bi})
+        out.extend(placed)
     out.sort(key=lambda n: n["onset"])
     return out
 
