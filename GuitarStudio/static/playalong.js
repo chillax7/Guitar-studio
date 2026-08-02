@@ -3908,6 +3908,10 @@ const METRO_TAP_TIMEOUT_SEC = 2.5;  // longer than this and it's a new count-in
 
 const Metro = {
   on: false, bpm: 100, subdiv: "4", accentBeats: 4,
+  // 1 is the click's designed level and the slider's centre. Above 1 is a
+  // real boost, which is what a loud room needs; the click levels below are
+  // set well under full scale so 2x still can't clip.
+  volume: 1,
   gain: null, timer: null, nextTime: 0, click: 0, taps: [],
 };
 
@@ -3973,6 +3977,7 @@ function metroStart() {
   if (Audio.ctx.state === "suspended") Audio.ctx.resume();
   if (!Metro.gain) {
     Metro.gain = Audio.ctx.createGain();
+    Metro.gain.gain.value = Metro.volume;
     // Straight to the speakers, NOT through the rig: the click is a
     // practice aid, and routing it into the pedal chain would put it in
     // Riff Capture takes and looper overdubs.
@@ -4002,6 +4007,15 @@ function metroSetBpm(bpm) {
   // waiting out an already-scheduled interval at the old tempo.
   if (Metro.on) Metro.nextTime = Math.min(Metro.nextTime, Audio.ctx.currentTime + metroInterval());
   metroRender();
+}
+
+function metroSetVolume(v) {
+  Metro.volume = Math.min(2, Math.max(0, v));
+  // Ramp rather than jump: a step change on a gain node that already has
+  // scheduled clicks running through it is an audible tick of its own.
+  if (Metro.gain) {
+    Metro.gain.gain.setTargetAtTime(Metro.volume, Audio.ctx.currentTime, 0.01);
+  }
 }
 
 function metroRender() {
@@ -4034,6 +4048,11 @@ function wireMetronome() {
   document.getElementById("metro-minus-btn").addEventListener("click", () => metroSetBpm(Metro.bpm - 1));
   document.getElementById("metro-plus-btn").addEventListener("click", () => metroSetBpm(Metro.bpm + 1));
   document.getElementById("metro-tap-btn").addEventListener("click", metroTap);
+  const vol = document.getElementById("metro-volume");
+  vol.addEventListener("input", () => metroSetVolume(Number(vol.value) / 100));
+  // Double-click snaps back to the default level, the same gesture the mixer
+  // faders use for their reset.
+  vol.addEventListener("dblclick", () => { vol.value = "100"; metroSetVolume(1); });
   document.getElementById("metro-toggle-btn").addEventListener("click", () => {
     if (Metro.on) metroStop(); else metroStart();
   });

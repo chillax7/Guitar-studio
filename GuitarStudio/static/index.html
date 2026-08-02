@@ -564,6 +564,13 @@
             <h3>Metronome</h3>
             <div class="row">
               <button id="metro-toggle-btn" class="primary">Start</button>
+              <!-- Centre detent = the click's built-in level, so the slider
+                   reads as "quieter / louder than stock" rather than an
+                   absolute scale you have to re-find by ear. -->
+              <span id="metro-volume-icon" aria-hidden="true">🔊</span>
+              <input type="range" id="metro-volume" min="0" max="200" step="1" value="100"
+                     title="Click volume — centre is the default level"
+                     aria-label="Metronome click volume">
               <div id="metro-bpm-readout"><span id="metro-bpm-value">100</span> <span class="metro-unit">BPM</span></div>
             </div>
             <input type="range" id="metro-bpm" min="1" max="300" step="1" value="100"
