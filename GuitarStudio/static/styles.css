@@ -3029,3 +3029,10 @@ svg.ailab-fretboard { display: block; }
 }
 #metro-beacon.beat   { background: var(--accent); }
 #metro-beacon.accent { background: var(--solo); }
+/* Sits between Start/Stop and the BPM readout; the flex basis keeps it from
+   squeezing the readout onto a second line in the narrow Play Along column. */
+/* Sits between Start/Stop and the BPM readout. The speaker glyph is not
+   decoration: without it this slider and the BPM slider directly below are
+   visually identical and there is no way to tell which is which. */
+#metro-volume { flex: 1 1 auto; min-width: 55px; margin: 0 8px 0 4px; width: auto; }
+#metro-volume-icon { font-size: 12px; margin-left: 8px; opacity: 0.75; }
