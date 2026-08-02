@@ -43,6 +43,7 @@ const T3K_TOKENS_KEY = "gs_t3k_tokens";
 const T3K_VERIFIER_KEY = "gs_t3k_code_verifier";
 const T3K_STATE_KEY = "gs_t3k_state";
 const T3K_PENDING_KEY = "gs_t3k_pending_flow";
+const T3K_RETURN_SCREEN_KEY = "gs_t3k_return_screen";
 
 const T3K = {
   publishableKey: "",
@@ -128,6 +129,34 @@ function t3kIsConnected() {
 // OAuth flows
 // ---------------------------------------------------------------------------
 
+// Both flows leave the app entirely (window.location -> TONE3000 -> back),
+// so the return trip is a FULL PAGE LOAD and the app boots on its default
+// screen — the Mixer. Reported as "hitting Connect works but switches the
+// view back to the Mixer". Remember which screen was open and restore it
+// once the redirect has been handled.
+function t3kRememberScreen() {
+  const open = ["tonelab-overlay", "playalong-overlay", "ailab-overlay", "tabview-overlay"]
+    .find((id) => { const el = document.getElementById(id); return el && el.classList.contains("show"); });
+  try { sessionStorage.setItem(T3K_RETURN_SCREEN_KEY, open || ""); } catch (e) { /* private mode */ }
+}
+
+async function t3kRestoreScreen() {
+  let want = "";
+  try {
+    want = sessionStorage.getItem(T3K_RETURN_SCREEN_KEY) || "";
+    sessionStorage.removeItem(T3K_RETURN_SCREEN_KEY);
+  } catch (e) { return; }
+  if (!want) return;
+  const openers = {
+    "tonelab-overlay": "openToneLab",
+    "playalong-overlay": "openPlayAlong",
+    "ailab-overlay": "openAiLab",
+    "tabview-overlay": "openTabView",
+  };
+  const fn = window[openers[want]];
+  if (typeof fn === "function") await fn();
+}
+
 async function t3kBuildAuthorizeUrl(extra) {
   const codeVerifier = t3kRandomBase64Url(32);
   const state = t3kRandomBase64Url(16);
@@ -149,6 +178,7 @@ async function t3kBuildAuthorizeUrl(extra) {
 async function t3kConnect() {
   if (!T3K.publishableKey) { t3kStatus("Add your TONE3000 publishable key first."); return; }
   sessionStorage.setItem(T3K_PENDING_KEY, "connect");
+  t3kRememberScreen();
   window.location.href = await t3kBuildAuthorizeUrl({});
 }
 
@@ -162,6 +192,7 @@ async function t3kBrowseOnTone3000() {
   // Only offer formats this app can actually load, so the hosted picker
   // can't hand back something we'd have to refuse afterwards.
   extra.format = "nam";
+  t3kRememberScreen();
   window.location.href = await t3kBuildAuthorizeUrl(extra);
 }
 
@@ -672,6 +703,9 @@ async function initTone3000() {
   } catch (e) { /* settings unavailable — the panel just stays unconfigured */ }
   t3kLoadTokens();
   const redirect = await t3kHandleRedirect();
+  // Reopen whatever screen the user launched the flow from, before any status
+  // message or auto-download lands — those write into that screen's panel.
+  if (redirect) await t3kRestoreScreen();
   if (redirect && redirect.ok) {
     t3kStatus("Connected to TONE3000.");
     // The Select flow comes back with the tone the user picked — fetch and
