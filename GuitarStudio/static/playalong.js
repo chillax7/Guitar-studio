@@ -2170,22 +2170,92 @@ async function paSuggestClosestModel() {
   return paSuggestNamModel();
 }
 
-// Each candidate costs a fetch + a real offline render through the model
-// (measured ~740ms/model on this machine, dominated by rendering — this is
-// a from-scratch, non-WASM WaveNet, slower than real-time). That was fine
-// against the two bundled starter captures this was built/tested against,
-// but a real community NAM library can run to hundreds of files — 261
-// measured extrapolates to ~3 minutes with zero feedback, indistinguishable
-// from hung. Cap the candidate count and stride evenly through the full
-// (folder-sorted) list so a capped sample still spans every pack rather
-// than just whichever sorts first; report live progress since even the
-// capped run takes several seconds.
-const SUGGEST_MAX_CANDIDATES = 30;
+// Widening this search: what actually costs the time, measured.
+//
+// The old cap of 30 was set against a pre-WASM JS WaveNet at ~740ms/model.
+// Re-measured on the current dual-WASM engine, over 12 real captures:
+//
+//   fetch + parse .nam            7.9 ms/model
+//   OfflineAudioContext + worklet
+//     + WASM module send         13.5 ms/model
+//   full probe (load + render)    348 ms/model
+//
+// So the engine change did NOT make this cheap. Nearly all of it is the
+// model BUILD — uploading weights and constructing the WaveNet inside WASM
+// — not inference, not setup, not I/O. Three things were tried against that
+// and none of them helped:
+//
+//   - Reusing one context/node for every candidate: 426ms/model, no better
+//     (setup was never the cost).
+//   - Skipping the output-gain calibration: 361ms vs 360ms. No effect, and
+//     ZCR is a sign-change count so a gain change couldn't move the score
+//     anyway.
+//   - Probing 4 or 8 at a time: 467ms and 497ms per model — actively WORSE.
+//     The builds contend rather than overlap.
+//
+// 100 candidates at 348ms is ~35 seconds, which is too long to sit through
+// every time. What makes it viable is that a model's brightness score does
+// not depend on the track: it is the model's response to a fixed test
+// signal, so it can be measured once and reused forever. The cache below
+// makes the first wide run cost ~35s and every later one effectively free,
+// with only newly-added captures needing work.
+//
+// That only holds if the test signal is identical between runs, so the
+// noise is generated from a FIXED SEED rather than Math.random(). That also
+// makes the ranking reproducible, which it previously wasn't — two runs
+// over the same library could disagree.
+const SUGGEST_MAX_CANDIDATES = 100;
 const SUGGEST_TEST_SECONDS = 0.15; // enough samples for a stable ZCR reading
+const SUGGEST_NOISE_SEED = 0x9e3779b9;
+const SUGGEST_CACHE_KEY = "gs_nam_brightness_v1";
+
+// mulberry32 — small, fast, and deterministic across browsers, which
+// Math.random() explicitly is not.
+function paSeededRandom(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function paSuggestTestSignal(sampleRate) {
+  const rand = paSeededRandom(SUGGEST_NOISE_SEED);
+  const sig = new Float32Array(Math.floor(sampleRate * SUGGEST_TEST_SECONDS));
+  for (let i = 0; i < sig.length; i++) sig[i] = (rand() * 2 - 1) * 0.3;
+  return sig;
+}
+
+// Cached scores are keyed by size as well as name: replacing a capture with
+// a different one under the same filename is exactly the case a name-only
+// key would silently get wrong. Sample rate is in the key because the probe
+// renders at the context's rate and a NAM model's response is rate-dependent.
+function paSuggestCacheKey(model, sampleRate) {
+  return `${model.filename}|${model.size || 0}|${sampleRate}`;
+}
+
+function paLoadSuggestCache() {
+  try {
+    return JSON.parse(localStorage.getItem(SUGGEST_CACHE_KEY) || "{}");
+  } catch (e) { return {}; }
+}
+
+function paSaveSuggestCache(cache) {
+  // Best-effort: a full or unavailable localStorage costs speed on the next
+  // run, never correctness, so it must not break the suggestion itself.
+  try { localStorage.setItem(SUGGEST_CACHE_KEY, JSON.stringify(cache)); } catch (e) { /* private mode / quota */ }
+}
 
 async function paSuggestNamModel() {
   const resultEl = document.getElementById("pa-suggest-result");
   resultEl.textContent = "Analyzing…";
+  // A first run over an uncached library is ~35s of blocked UI (see the
+  // measurements above), which needs the overlay; later runs lift it again
+  // almost immediately, which is the point.
+  const busy = gsBusy("Comparing captures against this track's guitar…");
   try {
     const targetZcr = await paTargetGuitarZcr();
     if (!PA.namModels.length) await paRefreshNamModels();
@@ -2195,30 +2265,45 @@ async function paSuggestNamModel() {
     const candidates = [];
     for (let i = 0; i < all.length && candidates.length < SUGGEST_MAX_CANDIDATES; i += step) candidates.push(all[i]);
 
-    const testSignal = new Float32Array(Math.floor(Audio.ctx.sampleRate * SUGGEST_TEST_SECONDS));
-    for (let i = 0; i < testSignal.length; i++) testSignal[i] = (Math.random() * 2 - 1) * 0.3;
+    const sampleRate = Audio.ctx.sampleRate;
+    const testSignal = paSuggestTestSignal(sampleRate);
+    const cache = paLoadSuggestCache();
 
     const scored = [];
-    let tooHeavy = 0;
+    let tooHeavy = 0, measured = 0, reused = 0;
     for (let ci = 0; ci < candidates.length; ci++) {
       const m = candidates[ci];
-      resultEl.textContent = `Analyzing… (${ci + 1}/${candidates.length})`;
-      try {
-        const namJson = await (await fetch(`/api/nam_model_file?filename=${encodeURIComponent(m.filename)}`)).json();
-        // V3-E6: was its own from-scratch OfflineAudioContext/node/wasm-
-        // module/load dance, duplicating paProbeNamModel's — reuse it with
-        // this loop's own noise test signal (paProbeNamModel's default is a
-        // sine, no good for a zero-crossing-rate brightness proxy) and ask
-        // for the rendered audio back to score.
-        const probe = await paProbeNamModel(namJson, { testSignal, returnAudio: true });
-        if (probe.rtFactor === null) continue; // failed to build/load/render
-        // Same speed guardrail as paLoadNamModel: never suggest a capture
-        // that can't run live — it would be refused at load anyway.
-        if (probe.rtFactor >= NAM_REFUSE_RT_FACTOR) { tooHeavy++; continue; }
-        const modelZcr = zeroCrossingRate(probe.audio);
-        scored.push({ name: m.name, filename: m.filename, distance: Math.abs(modelZcr - targetZcr) });
-      } catch (e) { /* skip a model that fails to load/render offline */ }
+      const key = paSuggestCacheKey(m, sampleRate);
+      let entry = cache[key];
+      if (!entry) {
+        // Only uncached captures cost anything, so the progress text counts
+        // the work actually left rather than the whole candidate list.
+        resultEl.textContent = `Analyzing… (${ci + 1}/${candidates.length}, ${measured} measured)`;
+        try {
+          const namJson = await (await fetch(`/api/nam_model_file?filename=${encodeURIComponent(m.filename)}`)).json();
+          // V3-E6: was its own from-scratch OfflineAudioContext/node/wasm-
+          // module/load dance, duplicating paProbeNamModel's — reuse it with
+          // this loop's own noise test signal (paProbeNamModel's default is a
+          // sine, no good for a zero-crossing-rate brightness proxy) and ask
+          // for the rendered audio back to score.
+          const probe = await paProbeNamModel(namJson, { testSignal, returnAudio: true });
+          if (probe.rtFactor === null) continue; // failed to build/load/render
+          entry = { zcr: zeroCrossingRate(probe.audio), rt: probe.rtFactor };
+          cache[key] = entry;
+          measured++;
+        } catch (e) { continue; /* skip a model that fails to load/render offline */ }
+      } else {
+        reused++;
+      }
+      // Same speed guardrail as paLoadNamModel: never suggest a capture that
+      // can't run live — it would be refused at load anyway. Applied to
+      // cached entries too, since rt is a property of this machine and the
+      // cache is only ever read on the machine that wrote it.
+      if (entry.rt >= NAM_REFUSE_RT_FACTOR) { tooHeavy++; continue; }
+      scored.push({ name: m.name, filename: m.filename, distance: Math.abs(entry.zcr - targetZcr) });
     }
+    paSaveSuggestCache(cache);
+
     scored.sort((a, b) => a.distance - b.distance);
     if (!scored.length) {
       resultEl.textContent = tooHeavy
@@ -2231,14 +2316,26 @@ async function paSuggestNamModel() {
     const heavyNote = tooHeavy ? ` ${tooHeavy} sampled capture${tooHeavy === 1 ? " was" : "s were"} skipped as too heavy to run live.` : "";
     const sampledNote = all.length > candidates.length
       ? ` (sampled ${candidates.length} of ${all.length} models across the library)` : "";
-    resultEl.innerHTML = `Closest match: <b>${escapeHtml(best.name)}</b> ` +
-      `(brightness-proxy match, not a guaranteed tone match — audition and pick by ear)${sampledNote}.${heavyNote}<br>` +
-      `Ranking: ${scored.map((s) => escapeHtml(s.name)).join(" → ")}`;
+    // Say when scores were reused: a run that finishes instantly after one
+    // that took half a minute otherwise looks like it silently did nothing.
+    const cacheNote = reused
+      ? ` ${reused} score${reused === 1 ? " was" : "s were"} reused from a previous run${measured ? `, ${measured} newly measured` : ""}.`
+      : "";
+    // Ranking only lists the leaders now — 100 names is a wall of text, and
+    // everything past the first handful is noise against a proxy this rough.
+    const TOP_N = 8;
+    const top = scored.slice(0, TOP_N);
+    resultEl.innerHTML = `Closest match: <b>${escapeHtml(best.name)}</b>, now loaded and live ` +
+      `(brightness-proxy match, not a guaranteed tone match — audition and pick by ear)${sampledNote}.${heavyNote}${cacheNote}<br>` +
+      `Top ${top.length}: ${top.map((s) => escapeHtml(s.name)).join(" → ")}` +
+      (scored.length > top.length ? ` … and ${scored.length - top.length} more compared.` : "");
     await paLoadNamModel(best.filename);
     paHighlightBrowserSelection("nam", best.filename);
     setAmpMode("neural");
   } catch (e) {
     resultEl.textContent = "Could not analyze: " + e.message;
+  } finally {
+    busy();
   }
 }
 
