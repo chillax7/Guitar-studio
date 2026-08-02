@@ -150,9 +150,25 @@
     <div id="tab-library-panel" style="display:none;">
       <h2>Library</h2>
       <div id="tabview-library-list"></div>
-      <div id="tabview-dropzone">Drop a Guitar Pro file here<br><span class="import-drop-sub">.gp3 / .gp4 / .gp5 / .gpx</span><br>or click to import</div>
-      <input type="file" id="tabview-import-input" accept=".gp3,.gp4,.gp5,.gpx,.gp" style="display:none">
+      <div id="tabview-dropzone">Drop Guitar Pro files or a folder here<br><span class="import-drop-sub">.gp3 / .gp4 / .gp5 / .gpx / .gp</span><br>or click to import</div>
+      <input type="file" id="tabview-import-input" accept=".gp3,.gp4,.gp5,.gpx,.gp" multiple style="display:none">
+      <input type="file" id="tabview-import-folder" webkitdirectory multiple style="display:none">
+      <p class="hint"><a href="#" id="tabview-import-folder-link">Import a whole folder…</a></p>
       <p class="hint" id="tabview-import-hint"></p>
+
+      <!-- Find-only tab search. There is no sanctioned API for downloading
+           Guitar Pro files anywhere (see svc_tab_search in server.py), so
+           this searches and links out; you get the file from Songsterr
+           yourself and drop it in above. No download button here is
+           deliberate, not missing. -->
+      <div id="tabsearch-box">
+        <div class="row">
+          <input type="text" id="tabsearch-query" placeholder="Search Songsterr for a tab…">
+          <button id="tabsearch-btn">Find</button>
+        </div>
+        <p class="hint" id="tabsearch-status"></p>
+        <div id="tabsearch-results"></div>
+      </div>
     </div>
   </div>
 

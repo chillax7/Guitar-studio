@@ -423,11 +423,18 @@ function wireTabViewImport() {
   const panelEl = document.getElementById("tab-library-panel");
   const inputEl = document.getElementById("tabview-import-input");
 
+  const folderEl = document.getElementById("tabview-import-folder");
+
   dropEl.addEventListener("click", () => inputEl.click());
   inputEl.addEventListener("change", (e) => {
-    const f = e.target.files[0];
-    if (f) uploadTabFile(f);
+    uploadTabFiles([...e.target.files]);
     inputEl.value = "";
+  });
+  const folderLink = document.getElementById("tabview-import-folder-link");
+  if (folderLink) folderLink.addEventListener("click", (e) => { e.preventDefault(); folderEl.click(); });
+  if (folderEl) folderEl.addEventListener("change", (e) => {
+    uploadTabFiles([...e.target.files]);
+    folderEl.value = "";
   });
 
   // stopPropagation, not just preventDefault: #tab-library-panel lives
@@ -450,9 +457,98 @@ function wireTabViewImport() {
     e.preventDefault();
     e.stopPropagation();
     dropEl.classList.remove("dragover");
-    const f = e.dataTransfer.files[0];
-    if (f) uploadTabFile(f);
+    uploadTabFiles([...e.dataTransfer.files]);
   });
+}
+
+// Multi-file / whole-folder import. A folder pick (webkitdirectory) hands
+// back everything inside it, most of which won't be tabs — so non-tab files
+// are counted and reported rather than each raising its own error, which
+// would bury the result of a 200-file drop in noise. Sequential on purpose:
+// these go to the same local server, and firing 200 parallel uploads at it
+// buys nothing.
+async function uploadTabFiles(files) {
+  const hintEl = document.getElementById("tabview-import-hint");
+  const tabs = files.filter((f) => TABVIEW_TAB_EXTS.includes("." + (f.name.split(".").pop() || "").toLowerCase()));
+  const skipped = files.length - tabs.length;
+  if (!tabs.length) {
+    hintEl.textContent = files.length
+      ? `Nothing to import — none of those ${files.length} file(s) are Guitar Pro tabs (${TABVIEW_TAB_EXTS.join("/")}).`
+      : "";
+    return;
+  }
+  if (tabs.length === 1 && !skipped) return uploadTabFile(tabs[0]); // keep the single-file path's auto-open
+
+  let done = 0;
+  const failed = [];
+  for (const f of tabs) {
+    hintEl.textContent = `Importing ${done + 1} of ${tabs.length}: ${f.name}…`;
+    try {
+      await Api.postRaw(`/api/tabs/upload?filename=${encodeURIComponent(f.name)}`, await f.arrayBuffer());
+      done++;
+    } catch (e) {
+      failed.push(f.name);
+    }
+  }
+  await refreshTabLibrary();
+  hintEl.textContent = `Imported ${done} tab${done === 1 ? "" : "s"}` +
+    (skipped ? `, skipped ${skipped} non-tab file${skipped === 1 ? "" : "s"}` : "") +
+    (failed.length ? `, ${failed.length} failed (${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "…" : ""})` : "") + ".";
+}
+
+// ---------------------------------------------------------------------------
+// Tab search — find only, never fetch.
+//
+// See svc_tab_search in server.py for the full reasoning: no sanctioned API
+// exists for downloading Guitar Pro files, so this searches Songsterr and
+// links out. The absence of a Download button is the feature working as
+// intended, and the panel says so rather than leaving you hunting for one.
+// ---------------------------------------------------------------------------
+function tabSearchStatus(msg) {
+  const el = document.getElementById("tabsearch-status");
+  if (el) el.textContent = msg || "";
+}
+
+async function runTabSearch() {
+  const q = document.getElementById("tabsearch-query").value.trim();
+  const list = document.getElementById("tabsearch-results");
+  if (!q) { tabSearchStatus("Type a song or artist to search for."); return; }
+  list.innerHTML = "";
+  tabSearchStatus("Searching Songsterr…");
+  try {
+    const r = await Api.get(`/api/tabs/search?query=${encodeURIComponent(q)}`);
+    const hits = r.results || [];
+    if (!hits.length) {
+      tabSearchStatus(r.unrecognized_shape
+        ? "Songsterr answered, but not in a shape this build recognises — their search endpoint has probably changed."
+        : "No tabs matched that.");
+      return;
+    }
+    for (const hit of hits.slice(0, 25)) {
+      const row = document.createElement("div");
+      row.className = "tabsearch-result";
+      row.innerHTML =
+        `<div class="tabsearch-result-main">` +
+        `<div class="tabsearch-result-title">${escapeHtml(hit.title || "Untitled")}</div>` +
+        `<div class="tabsearch-result-meta">${escapeHtml(hit.artist || "")}</div></div>`;
+      const a = document.createElement("a");
+      a.href = hit.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+      a.textContent = "Open on Songsterr ↗";
+      row.appendChild(a);
+      list.appendChild(row);
+    }
+    tabSearchStatus(`${hits.length} result${hits.length === 1 ? "" : "s"} — open one on Songsterr, then drop the file above to import it. ` +
+      `Orpheus doesn't download tabs: there's no licensed API for it, and their terms don't permit it.`);
+  } catch (e) {
+    tabSearchStatus(e.message || String(e));
+  }
+}
+
+function wireTabSearch() {
+  const btn = document.getElementById("tabsearch-btn");
+  const box = document.getElementById("tabsearch-query");
+  if (btn) btn.addEventListener("click", runTabSearch);
+  if (box) box.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); runTabSearch(); } });
 }
 
 async function uploadTabFile(file) {
@@ -782,6 +878,7 @@ function closeTabView() {
 function wireTabView() {
   document.getElementById("tabview-open-btn").addEventListener("click", openTabView);
   wireTabViewImport();
+  wireTabSearch();
   wireTabViewTransport();
 }
 

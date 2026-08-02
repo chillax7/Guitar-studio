@@ -2957,3 +2957,17 @@ svg.ailab-fretboard { display: block; }
 .t3k-result-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .t3k-result-meta { font-size: 0.82em; opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #t3k-key-input, #t3k-query { flex: 1; min-width: 0; }
+
+/* Tab search results (tabview.js) — find-only, so a row links out rather
+   than offering a download; see svc_tab_search in server.py for why. */
+#tabsearch-box { margin-top: 10px; }
+#tabsearch-results { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.tabsearch-result {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px;
+}
+.tabsearch-result-main { flex: 1; min-width: 0; }
+.tabsearch-result-title { font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabsearch-result-meta { font-size: 0.78em; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabsearch-result a { font-size: 0.78em; white-space: nowrap; }
+#tabsearch-query { flex: 1; min-width: 0; }
