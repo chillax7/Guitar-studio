@@ -2440,6 +2440,47 @@ def svc_practice_tips(source_path: str, take_path: str, model: str, stem: str,
     return result
 
 
+def svc_transcribe_tab(source_path: str, model: str, stem: str, tuning: str,
+                       start_sec, end_sec) -> dict:
+    """Audio -> Guitar Pro tab notes (research/audio-to-tab-spec.md).
+
+    Returns a note list with string/fret already assigned; the client turns
+    that into an actual .gp via alphaTab's Gp7Exporter (the writer lives
+    there, not here). Deliberately a plain function of a stem + the cached
+    beat grid, so it can be re-run on a different section or tuning without
+    re-separating anything.
+    """
+    input_path = resolve_source_path(source_path)
+    out_dir = engine.track_stem_dir(input_path, model)
+    if not engine.has_cached_stems(out_dir):
+        raise ApiError(400, "Separate this song first — the tab is generated from its isolated guitar stem.")
+
+    candidates = [stem] if stem else []
+    candidates += ["guitar_lead", "guitar", "other"]
+    stem_path = None
+    for name in candidates:
+        cand = out_dir / f"{name}.wav"
+        if cand.exists():
+            stem_path = cand
+            break
+    if stem_path is None:
+        raise ApiError(400, "No guitar stem found for this song. Separate with a model that produces one.")
+
+    analysis = engine.ensure_analysis(out_dir) or {}
+    beats = analysis.get("beats") or []
+    if not beats:
+        raise ApiError(400, "No beat grid for this song — the tab's rhythm is quantised against it. "
+                            "Re-run analysis, or pick a song where beats were detected.")
+
+    result = engine.transcribe_stem_to_tab(
+        stem_path, beats, tuning=tuning or "E standard",
+        start_sec=start_sec, end_sec=end_sec,
+    )
+    result["stem"] = stem_path.stem
+    result["bpm"] = analysis.get("bpm")
+    return result
+
+
 def svc_song_structure(source_path: str, model: str) -> dict:
     """SS-1 (ai-lab-song-structure-spec.md): the deterministic part-by-part
     structural summary for the AI Lab Song Structure tab. No LLM, no key
@@ -3743,6 +3784,17 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/trackinfo":
                 body = self._read_json_body()
                 result = svc_save_track_info(body.get("track", ""), body.get("artist", ""), body.get("title", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/transcribe_tab":
+                body = self._read_json_body()
+                def _num(v):
+                    try: return float(v) if v is not None else None
+                    except (TypeError, ValueError): return None
+                result = svc_transcribe_tab(
+                    body.get("source_path", ""), body.get("model", engine.DEFAULT_MODEL),
+                    body.get("stem", ""), body.get("tuning", "E standard"),
+                    _num(body.get("start_sec")), _num(body.get("end_sec")))
                 return self._send_json(200, result)
 
             if path == "/api/song_structure":

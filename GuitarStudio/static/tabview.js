@@ -551,6 +551,194 @@ function wireTabSearch() {
   if (box) box.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); runTabSearch(); } });
 }
 
+
+// ---------------------------------------------------------------------------
+// Audio -> Guitar Pro tab (research/audio-to-tab-spec.md).
+//
+// The server (svc_transcribe_tab -> transcribe_stem_to_tab) does the DSP and
+// hands back notes that already carry string/fret. This side turns those into
+// an alphaTab Score and writes a real .gp with Gp7Exporter.
+//
+// Two things worth knowing before editing:
+//
+//   1. The exporter is NOT in alphaTab.min.mjs — it is tree-shaken out, and
+//      that is the module the rest of this screen imports. Export has to pull
+//      alphaTab.core.mjs, which is why this does its own dynamic import
+//      rather than reusing loadAlphaTabModule(). Verified: importing a real
+//      .gp5 and re-exporting round-trips to a valid ZIP with title, tracks
+//      and bars intact.
+//   2. v1 is LEAD LINES. The pitch tracker is monophonic, so chords come back
+//      as nothing at all — measured, on controlled input: single notes read
+//      95.7% confident frames, power chords and triads both 0.0%. The server
+//      flags that as `polyphonic` so this can explain itself instead of
+//      silently producing an empty tab, which is exactly what the first real
+//      separated stem did.
+// ---------------------------------------------------------------------------
+const TABGEN_TUNINGS = [
+  "E standard", "Drop D", "D standard", "Drop C", "C# standard",
+  "Drop C#", "B standard", "Drop B", "7-string B",
+];
+const TABGEN_RANGES = [
+  ["30", "First 30 seconds"], ["60", "First minute"], ["0", "Whole song (slow)"],
+];
+
+function tabGenStatus(msg) {
+  const el = document.getElementById("tabgen-status");
+  if (el) el.textContent = msg || "";
+}
+
+function wireTabGenerate() {
+  const tuningEl = document.getElementById("tabgen-tuning");
+  const rangeEl = document.getElementById("tabgen-range");
+  if (tuningEl && !tuningEl.options.length) for (const t of TABGEN_TUNINGS) tuningEl.appendChild(new Option(t, t));
+  if (rangeEl && !rangeEl.options.length) for (const [v, l] of TABGEN_RANGES) rangeEl.appendChild(new Option(l, v));
+  const btn = document.getElementById("tabgen-btn");
+  if (btn) btn.addEventListener("click", tabGenerate);
+}
+
+// Build an alphaTab Score from the server's note list and export it.
+async function tabGenBuildAndExport(at, data, songTitle, songArtist) {
+  const M = at.model;
+  const score = new M.Score();
+  score.title = songTitle || "Transcribed";
+  score.artist = songArtist || "";
+  // Score.tempo is READ-ONLY in alphaTab — it reads through to
+  // masterBars[0].tempoAutomations[0]. Assigning it throws
+  // "Cannot set property tempo of #<Score> which has only a getter", so the
+  // tempo goes on the first MasterBar as an automation instead (below).
+  const tempoBpm = Math.round(data.bpm || 120);
+
+  const track = new M.Track();
+  track.name = "Transcribed guitar";
+  score.addTrack(track);
+  // A fresh Track has NO staves — track.staves[0] is undefined until one is
+  // added, which throws on the very next line if you assume otherwise.
+  const staff = new M.Staff();
+  track.addStaff(staff);
+  // stringTuning is ordered top tablature line first, i.e. HIGH string
+  // first, while the server sends open strings low-to-high (the order a
+  // player names them). Hence the reverse; getting it wrong silently writes
+  // an upside-down tab that still opens fine.
+  staff.stringTuning = new M.Tuning(data.tuning || "", [...data.tuning_midi].reverse(), false);
+  staff.showTablature = true;
+  staff.showStandardNotation = true;
+
+  const byBar = new Map();
+  for (const n of data.notes) {
+    if (!byBar.has(n.bar)) byBar.set(n.bar, []);
+    byBar.get(n.bar).push(n);
+  }
+  const lastBar = Math.max(0, ...byBar.keys());
+
+  for (let b = 0; b <= lastBar; b++) {
+    const master = new M.MasterBar();
+    // v1 writes 4/4. The server groups notes into 4-beat bars to match; a
+    // real meter detector is a separate job and guessing here would silently
+    // misbar everything.
+    master.timeSignatureNumerator = 4;
+    master.timeSignatureDenominator = 4;
+    if (b === 0) master.tempoAutomations.push(M.Automation.buildTempoAutomation(false, 0, tempoBpm, 0));
+    score.addMasterBar(master);
+
+    const bar = new M.Bar();
+    staff.addBar(bar);
+    const voice = new M.Voice();
+    bar.addVoice(voice);
+
+    const notes = (byBar.get(b) || []).sort((x, y) => x.onset - y.onset);
+    if (!notes.length) {
+      const rest = new M.Beat();
+      rest.isEmpty = true;
+      rest.duration = M.Duration.Whole;
+      voice.addBeat(rest);
+      continue;
+    }
+    for (const n of notes) {
+      const beat = new M.Beat();
+      beat.duration = tabGenDuration(M, n.gp_duration);
+      const note = new M.Note();
+      note.string = n.string;
+      note.fret = n.fret;
+      beat.addNote(note);
+      voice.addBeat(beat);
+    }
+  }
+  score.finish(new at.Settings());
+
+  const exporter = new at.exporter.Gp7Exporter();
+  return exporter.export(score, new at.Settings());
+}
+
+function tabGenDuration(M, denom) {
+  switch (denom) {
+    case 1: return M.Duration.Whole;
+    case 2: return M.Duration.Half;
+    case 4: return M.Duration.Quarter;
+    case 8: return M.Duration.Eighth;
+    case 16: return M.Duration.Sixteenth;
+    case 32: return M.Duration.ThirtySecond;
+    default: return M.Duration.Eighth;
+  }
+}
+
+async function tabGenerate() {
+  if (typeof State === "undefined" || !State.track) {
+    tabGenStatus("Load a song in the Mixer first — the tab is generated from its separated guitar stem.");
+    return;
+  }
+  const btn = document.getElementById("tabgen-btn");
+  const tuning = document.getElementById("tabgen-tuning").value;
+  const rangeSec = Number(document.getElementById("tabgen-range").value || 30);
+  btn.disabled = true;
+  tabGenStatus("Listening to the guitar stem… (pitch tracking runs about 1.5x faster than real time)");
+  try {
+    const data = await Api.post("/api/transcribe_tab", {
+      source_path: State.track, model: State.model,
+      tuning, start_sec: 0, end_sec: rangeSec || null,
+    });
+
+    if (data.polyphonic || !data.notes.length) {
+      tabGenStatus(data.polyphonic
+        ? `No single-note line found — this stem reads as polyphonic (chords). Confidence ${data.voiced_mean}, ` +
+          `where single notes measure ~0.9 and chords ~0.01. Version 1 transcribes lead lines only; ` +
+          `try a section with a solo, or a lead-guitar stem if this song has one.`
+        : "No confident notes found in that section — try a part where the guitar is clearly audible.");
+      return;
+    }
+
+    tabGenStatus(`Found ${data.note_count} notes — writing the tab…`);
+    const at = await import("./vendor/alphatab/alphaTab.core.mjs");
+    let artist = "", title = "";
+    try {
+      const info = await Api.get(`/api/trackinfo?track=${encodeURIComponent(State.track)}`);
+      artist = info.artist || info.guessed_artist || "";
+      title = info.title || info.guessed_title || "";
+    } catch (e) { /* untitled is fine */ }
+
+    const bytes = await tabGenBuildAndExport(at, data, title ? `${title} (transcribed)` : "Transcribed", artist);
+    const filename = `${(title || State.track).replace(/\.[^.]+$/, "").replace(/[^\w\- ]+/g, "")} transcribed.gp`;
+    const saved = await Api.postRaw(`/api/tabs/upload?filename=${encodeURIComponent(filename)}`, bytes.buffer || bytes);
+    await refreshTabLibrary();
+    await selectTab(saved.name);
+
+    const caveats = [];
+    if (data.fast_note_count) {
+      caveats.push(`${data.fast_note_count} note(s) are faster than ${data.reliable_note_sec}s, where pitch tracking ` +
+                   `gets unreliable — check those by ear`);
+    }
+    if (Math.abs(data.tuning_offset_cents) > 20) {
+      caveats.push(`the recording sits ${data.tuning_offset_cents} cents off concert pitch, which was corrected for`);
+    }
+    tabGenStatus(`Wrote "${saved.name}" — ${data.note_count} notes in ${data.tuning}. ` +
+      `This is a machine transcription of a separated stem, so treat it as a starting point, not gospel.` +
+      (caveats.length ? " Note: " + caveats.join("; ") + "." : ""));
+  } catch (e) {
+    tabGenStatus(e.message || String(e));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function uploadTabFile(file) {
   const hintEl = document.getElementById("tabview-import-hint");
   const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
@@ -879,6 +1067,7 @@ function wireTabView() {
   document.getElementById("tabview-open-btn").addEventListener("click", openTabView);
   wireTabViewImport();
   wireTabSearch();
+  wireTabGenerate();
   wireTabViewTransport();
 }
 
