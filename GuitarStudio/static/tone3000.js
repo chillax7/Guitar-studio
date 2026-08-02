@@ -565,6 +565,7 @@ function t3kRenderResults() {
 async function t3kDownloadTone(tone, btn) {
   const original = btn ? btn.textContent : "";
   if (btn) { btn.disabled = true; btn.textContent = "Downloading…"; }
+  const busy = gsBusy(`Downloading "${tone.title || "tone"}"…`);
   try {
     const models = await t3kListModels(tone.id);
     const model = t3kPickModel(models.data || []);
@@ -589,6 +590,8 @@ async function t3kDownloadTone(tone, btn) {
   } catch (e) {
     t3kStatus(e.message || String(e));
     if (btn) { btn.disabled = false; btn.textContent = original; }
+  } finally {
+    busy();
   }
 }
 

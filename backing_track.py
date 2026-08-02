@@ -2991,8 +2991,27 @@ def _tab_extract_notes(y, sr: int, frame_length: int, tuning_offset_semitones: f
     case measured 12.5% without onset splitting and 100% with it."""
     import librosa
 
+    # pyin scores HARMONIC content; a distorted guitar stem carries a lot of
+    # broadband noise (the distortion itself, plus separation artifacts) that
+    # drags its confidence down until nothing clears the floor. Measured on a
+    # real separated Iron Maiden lead stem: mean voiced probability 0.0105 raw
+    # (nothing at all above the 0.5 floor) vs 0.0613 after taking the harmonic
+    # component — a 6x improvement on the exact material that was producing
+    # unusable transcriptions.
+    #
+    # A high-pass was tried alongside this and dropped: at 180Hz it helped
+    # again (0.098), but 180Hz is above the fundamental of every note on the
+    # low string of a drop tuning, so it would delete real notes. Set safely
+    # from the tuning instead (0.8x the lowest fundamental) it measured
+    # 0.0627 — inside the noise, and not worth the extra failure mode.
+    #
+    # Costs about 11% of real time on top of pyin. Onsets stay on the
+    # ORIGINAL signal: the harmonic component is precisely the part with the
+    # transients taken out, which is what onset detection needs.
+    harmonic = librosa.effects.harmonic(y, margin=3.0)
+
     f0, _, voiced = librosa.pyin(
-        y, fmin=TAB_FMIN_HZ, fmax=TAB_FMAX_HZ, sr=sr,
+        harmonic, fmin=TAB_FMIN_HZ, fmax=TAB_FMAX_HZ, sr=sr,
         frame_length=frame_length, hop_length=TAB_HOP_LENGTH,
     )
     times = librosa.times_like(f0, sr=sr, hop_length=TAB_HOP_LENGTH)

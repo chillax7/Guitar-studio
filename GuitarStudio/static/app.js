@@ -242,6 +242,54 @@ function escapeHtml(s) {
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
 // Real user report: a Rip that ran ~4 minutes unattended in a background
+// Global busy overlay (#gs-busy). Long jobs — generating a tab, exporting a
+// take, downloading a tone — left the screen looking dead while they ran,
+// with no way to tell "working" from "hung".
+//
+// Ref-counted rather than a boolean: two jobs can overlap (a tone download
+// started while a tab is still exporting), and a boolean would let the first
+// one to finish uncover the screen while the other is still going. Each
+// gsBusy() returns its own end function, and the overlay lifts when the last
+// one is called. Labels are stacked so the message tracks the newest job and
+// falls back to the older one underneath it.
+const GsBusy = { jobs: [], seq: 0 };
+
+function gsBusyRender() {
+  const el = document.getElementById("gs-busy");
+  if (!el) return;
+  const on = GsBusy.jobs.length > 0;
+  el.classList.toggle("show", on);
+  el.setAttribute("aria-hidden", on ? "false" : "true");
+  const label = document.getElementById("gs-busy-label");
+  if (label && on) label.textContent = GsBusy.jobs[GsBusy.jobs.length - 1].label;
+}
+
+function gsBusy(label) {
+  const id = ++GsBusy.seq;
+  GsBusy.jobs.push({ id, label: label || "Working…" });
+  gsBusyRender();
+  let ended = false;
+  // Idempotent: a caller that ends in both a then and a catch, or that
+  // retries, must not pop somebody else's job off the stack.
+  return () => {
+    if (ended) return;
+    ended = true;
+    GsBusy.jobs = GsBusy.jobs.filter((j) => j.id !== id);
+    gsBusyRender();
+  };
+}
+
+// The shape almost every call site wants: the overlay lifts on the way out
+// whether the job succeeded or threw, and the error still propagates.
+async function withBusy(label, fn) {
+  const done = gsBusy(label);
+  try {
+    return await fn();
+  } finally {
+    done();
+  }
+}
+
 // tab, then a browser freeze/crash right after clicking Stop. The prompt()
 // called immediately afterward (to name the rip) is the prime suspect — a
 // native prompt()/alert() blocks the ENTIRE tab's event loop (no repaint,
@@ -3313,9 +3361,9 @@ function wireSplitPanel() {
     btn.disabled = true;
     btn.classList.add("running"); // green while the split crunches (button state model)
     try {
-      const r = await Api.post("/api/split_guitar", {
+      const r = await withBusy("Splitting the guitar stem…", () => Api.post("/api/split_guitar", {
         source_path: State.track, model: State.model, stem: "guitar", method: splitMethod,
-      });
+      }));
       document.getElementById("split-correlation").textContent =
         `Correlation: ${r.correlation.toFixed(2)} — diagnostic only, does not predict split ` +
         `quality. Judge by listening.`;
@@ -3364,7 +3412,7 @@ async function runExport() {
   const btn = document.getElementById("run-export-btn");
   btn.disabled = true;
   try {
-    const r = await Api.post("/api/mix", body);
+    const r = await withBusy("Mixing down and exporting…", () => Api.post("/api/mix", body));
     let html = `Exported to ${escapeHtml(r.output_path)}<br>`;
     html += (r.measured_lufs != null)
       ? `Measured ${r.measured_lufs.toFixed(1)} LUFS, applied ${r.applied_gain_db.toFixed(1)} dB`

@@ -3884,6 +3884,174 @@ function wireRiffCapture() {
 }
 
 // ---------------------------------------------------------------------------
+// Metronome (lower half of the Riff Capture card).
+//
+// Deliberately independent of the loaded song's tempo: this is for practising
+// to a click at a speed you choose, not for following the backing track.
+//
+// Clicks are SCHEDULED AHEAD on the audio clock rather than fired from a
+// timer. setInterval is subject to main-thread jitter and throttles hard in a
+// background tab, which is exactly when a metronome must not drift; a 25ms
+// timer that only queues clicks 100ms into the future gets the timer's
+// convenience with the audio clock's accuracy.
+// ---------------------------------------------------------------------------
+
+// How many clicks fall inside one quarter note. Triplet entries are the
+// reason this is a table and not `value / 4` — 8th triplets are 3 per beat,
+// which no arithmetic on the note value alone produces.
+const METRO_SUBDIVISIONS = {
+  "1": 0.25, "2": 0.5, "4": 1, "8": 2, "16": 4, "8t": 3, "16t": 6,
+};
+const METRO_LOOKAHEAD_SEC = 0.1;
+const METRO_TIMER_MS = 25;
+const METRO_TAP_TIMEOUT_SEC = 2.5;  // longer than this and it's a new count-in
+
+const Metro = {
+  on: false, bpm: 100, subdiv: "4", accentBeats: 4,
+  gain: null, timer: null, nextTime: 0, click: 0, taps: [],
+};
+
+function metroClicksPerQuarter() {
+  return METRO_SUBDIVISIONS[Metro.subdiv] || 1;
+}
+
+function metroInterval() {
+  return (60 / Metro.bpm) / metroClicksPerQuarter();
+}
+
+// The accent lands every N quarter notes, not every N clicks — otherwise
+// switching to 16ths would quietly move the accent to every 16th bar.
+function metroAccentEvery() {
+  if (!Metro.accentBeats) return 0;
+  return Math.max(1, Math.round(metroClicksPerQuarter() * Metro.accentBeats));
+}
+
+// A synthesised click rather than a sample: no asset to ship, and the pitch
+// difference between accent and beat is what makes the bar audible.
+function metroScheduleClick(time, isAccent) {
+  const ctx = Audio.ctx;
+  const osc = ctx.createOscillator();
+  const env = ctx.createGain();
+  osc.type = "square";
+  osc.frequency.value = isAccent ? 1600 : 1000;
+  // Short exponential decay: a click with a slow tail smears the downbeat and
+  // is the usual reason a metronome feels "behind" the note you play.
+  env.gain.setValueAtTime(0.0001, time);
+  env.gain.exponentialRampToValueAtTime(isAccent ? 0.5 : 0.28, time + 0.001);
+  env.gain.exponentialRampToValueAtTime(0.0001, time + 0.045);
+  osc.connect(env).connect(Metro.gain);
+  osc.start(time);
+  osc.stop(time + 0.06);
+
+  // Beacon flash, aligned to when the click will actually sound.
+  const delayMs = Math.max(0, (time - ctx.currentTime) * 1000);
+  setTimeout(() => metroFlash(isAccent), delayMs);
+}
+
+function metroFlash(isAccent) {
+  const el = document.getElementById("metro-beacon");
+  if (!el || !Metro.on) return;
+  el.classList.remove("beat", "accent");
+  void el.offsetWidth;  // restart the transition even on back-to-back clicks
+  el.classList.add(isAccent ? "accent" : "beat");
+  setTimeout(() => el.classList.remove("beat", "accent"), 80);
+}
+
+function metroTick() {
+  if (!Metro.on) return;
+  const ctx = Audio.ctx;
+  while (Metro.nextTime < ctx.currentTime + METRO_LOOKAHEAD_SEC) {
+    const every = metroAccentEvery();
+    metroScheduleClick(Metro.nextTime, every > 0 && Metro.click % every === 0);
+    Metro.nextTime += metroInterval();
+    Metro.click++;
+  }
+}
+
+function metroStart() {
+  ensureCtx();
+  if (Audio.ctx.state === "suspended") Audio.ctx.resume();
+  if (!Metro.gain) {
+    Metro.gain = Audio.ctx.createGain();
+    // Straight to the speakers, NOT through the rig: the click is a
+    // practice aid, and routing it into the pedal chain would put it in
+    // Riff Capture takes and looper overdubs.
+    Metro.gain.connect(Audio.ctx.destination);
+  }
+  Metro.on = true;
+  Metro.click = 0;
+  Metro.nextTime = Audio.ctx.currentTime + 0.06;
+  Metro.timer = setInterval(metroTick, METRO_TIMER_MS);
+  metroTick();
+  metroRender();
+}
+
+function metroStop() {
+  Metro.on = false;
+  if (Metro.timer) { clearInterval(Metro.timer); Metro.timer = null; }
+  const el = document.getElementById("metro-beacon");
+  if (el) el.classList.remove("beat", "accent");
+  metroRender();
+}
+
+function metroSetBpm(bpm) {
+  Metro.bpm = Math.min(300, Math.max(1, Math.round(bpm)));
+  const slider = document.getElementById("metro-bpm");
+  if (slider) slider.value = String(Metro.bpm);
+  // Re-anchor so a tempo change takes effect on the NEXT click instead of
+  // waiting out an already-scheduled interval at the old tempo.
+  if (Metro.on) Metro.nextTime = Math.min(Metro.nextTime, Audio.ctx.currentTime + metroInterval());
+  metroRender();
+}
+
+function metroRender() {
+  const v = document.getElementById("metro-bpm-value");
+  if (v) v.textContent = String(Metro.bpm);
+  const btn = document.getElementById("metro-toggle-btn");
+  if (btn) {
+    btn.textContent = Metro.on ? "Stop" : "Start";
+    btn.classList.toggle("primary", !Metro.on);
+  }
+}
+
+function metroTap() {
+  const now = performance.now() / 1000;
+  if (Metro.taps.length && now - Metro.taps[Metro.taps.length - 1] > METRO_TAP_TIMEOUT_SEC) {
+    Metro.taps = [];
+  }
+  Metro.taps.push(now);
+  if (Metro.taps.length > 5) Metro.taps.shift();
+  if (Metro.taps.length < 2) return;
+  const gaps = [];
+  for (let i = 1; i < Metro.taps.length; i++) gaps.push(Metro.taps[i] - Metro.taps[i - 1]);
+  const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+  if (mean > 0) metroSetBpm(60 / mean);
+}
+
+function wireMetronome() {
+  const slider = document.getElementById("metro-bpm");
+  slider.addEventListener("input", () => metroSetBpm(Number(slider.value)));
+  document.getElementById("metro-minus-btn").addEventListener("click", () => metroSetBpm(Metro.bpm - 1));
+  document.getElementById("metro-plus-btn").addEventListener("click", () => metroSetBpm(Metro.bpm + 1));
+  document.getElementById("metro-tap-btn").addEventListener("click", metroTap);
+  document.getElementById("metro-toggle-btn").addEventListener("click", () => {
+    if (Metro.on) metroStop(); else metroStart();
+  });
+  document.getElementById("metro-subdiv").addEventListener("change", (e) => {
+    Metro.subdiv = e.target.value;
+    // Restart the click counter so the accent lands on the next click
+    // rather than partway through a bar at the new subdivision.
+    Metro.click = 0;
+    if (Metro.on) Metro.nextTime = Math.min(Metro.nextTime, Audio.ctx.currentTime + metroInterval());
+  });
+  document.getElementById("metro-accent").addEventListener("change", (e) => {
+    Metro.accentBeats = Number(e.target.value);
+    Metro.click = 0;
+  });
+  metroRender();
+}
+
+// ---------------------------------------------------------------------------
 // GP-06 (looper-pedal-spec.md): real-time loop recorder/overdubber, top-strip
 // card next to Riff Capture. All the actual DSP state machine lives in
 // looper-processor.js — this is the main-thread control surface: setting up
@@ -4133,6 +4301,7 @@ document.getElementById("pa-pedalboard").addEventListener("change", (e) => {
 });
 wireRigPresets();
 wireRiffCapture();
+wireMetronome();
 wireLooper();
 // #pa-latency-hint lives on the Output card, which moved into Tone Lab
 // along with the rest of #pa-pedalboard — this listener moved with it.

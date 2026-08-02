@@ -712,7 +712,8 @@ async function refreshTakesList() {
       const statusEl = row.querySelector(".take-export-status");
       statusEl.textContent = "Exporting…";
       try {
-        const r = await Api.post("/api/recording/export_social", { path: take.path, preset });
+        const r = await withBusy("Exporting for social…",
+          () => Api.post("/api/recording/export_social", { path: take.path, preset }));
         statusEl.textContent = `Exported: ${r.filename} — `;
         const revealBtn = document.createElement("button");
         revealBtn.textContent = "Reveal in Finder";
@@ -882,7 +883,8 @@ async function trimCurrentTake() {
   }
   resultEl.textContent = "Trimming (lossless copy)…";
   try {
-    const r = await Api.post("/api/recording/trim", { path: currentTake.path, start_sec: startSec, end_sec: endSec });
+    const r = await withBusy("Trimming the take…",
+      () => Api.post("/api/recording/trim", { path: currentTake.path, start_sec: startSec, end_sec: endSec }));
     resultEl.textContent = `Trimmed take saved as ${r.filename} — original left untouched.`;
     refreshTakesList();
   } catch (e) {

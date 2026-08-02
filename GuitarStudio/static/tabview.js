@@ -481,16 +481,25 @@ async function uploadTabFiles(files) {
 
   let done = 0;
   const failed = [];
-  for (const f of tabs) {
-    hintEl.textContent = `Importing ${done + 1} of ${tabs.length}: ${f.name}…`;
-    try {
-      await Api.postRaw(`/api/tabs/upload?filename=${encodeURIComponent(f.name)}`, await f.arrayBuffer());
-      done++;
-    } catch (e) {
-      failed.push(f.name);
+  // One overlay for the whole batch, relabelled per file — a folder import
+  // can be hundreds of tabs, and flashing the overlay per file would strobe.
+  let busy = gsBusy(`Importing 1 of ${tabs.length}…`);
+  try {
+    for (const f of tabs) {
+      hintEl.textContent = `Importing ${done + 1} of ${tabs.length}: ${f.name}…`;
+      busy();
+      busy = gsBusy(`Importing ${done + 1} of ${tabs.length}: ${f.name}`);
+      try {
+        await Api.postRaw(`/api/tabs/upload?filename=${encodeURIComponent(f.name)}`, await f.arrayBuffer());
+        done++;
+      } catch (e) {
+        failed.push(f.name);
+      }
     }
+    await refreshTabLibrary();
+  } finally {
+    busy();
   }
-  await refreshTabLibrary();
   hintEl.textContent = `Imported ${done} tab${done === 1 ? "" : "s"}` +
     (skipped ? `, skipped ${skipped} non-tab file${skipped === 1 ? "" : "s"}` : "") +
     (failed.length ? `, ${failed.length} failed (${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "…" : ""})` : "") + ".";
@@ -801,6 +810,7 @@ async function tabGenerate() {
   if (win.error) { tabGenStatus(win.error); return; }
   btn.disabled = true;
   tabGenStatus("Listening to the guitar stem… (pitch tracking runs about 1.5x faster than real time)");
+  const busy = gsBusy("Transcribing the guitar stem…");
   try {
     const data = await Api.post("/api/transcribe_tab", {
       source_path: State.track, model: State.model,
@@ -844,15 +854,17 @@ async function tabGenerate() {
     if (Math.abs(data.tuning_offset_cents) > 20) {
       caveats.push(`the recording sits ${data.tuning_offset_cents} cents off concert pitch, which was corrected for`);
     }
+    const start = tabGenFormatTime(data.start_sec || 0);
     const fromTo = data.end_sec != null
-      ? `${tabGenFormatTime(data.start_sec)}-${tabGenFormatTime(data.end_sec)}`
-      : `from ${tabGenFormatTime(data.start_sec)}`;
+      ? `${start}-${tabGenFormatTime(data.end_sec)}`
+      : `${start} onwards`;
     tabGenStatus(`Wrote "${saved.name}" — ${data.note_count} notes in ${data.tuning}, from ${fromTo}. ` +
       `This is a machine transcription of a separated stem, so treat it as a starting point, not gospel.` +
       (caveats.length ? " Note: " + caveats.join("; ") + "." : ""));
   } catch (e) {
     tabGenStatus(e.message || String(e));
   } finally {
+    busy();
     btn.disabled = false;
   }
 }
