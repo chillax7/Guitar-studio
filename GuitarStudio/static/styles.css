@@ -551,23 +551,6 @@ input[type="number"], [id$="-val"],
 #canvas { grid-area: canvas; }
 #inspector { grid-area: inspector; }
 
-/* V9: Tone Lab (the "rig room") hides the drawer entirely to reclaim its
-   width for the pedal chain — the design handoff's own explicit choice
-   ("rig room reclaims that width"), not a bug. Collapsing the grid
-   column to 0 (rather than just hiding #sidebar) is what actually gives
-   the freed space to #canvas, since grid columns don't renegotiate their
-   own track sizes just because one cell's content disappeared. data-room
-   is kept live by paSetActiveScreen (playalong.js), so this needs no
-   per-screen JS of its own. */
-html[data-room="rig"] #app {
-  grid-template-columns: var(--v9-rail-width) 0px 1fr var(--inspector-width);
-}
-html[data-room="rig"] #sidebar,
-html[data-room="rig"] #sidebar-resize-handle {
-  display: none;
-}
-html[data-room="rig"] .screen-overlay { left: var(--v9-rail-width); }
-
 /* Drag left/right to resize #sidebar — a hit-target wider than its visible
    line (position:absolute so it isn't itself a grid item/column) sitting
    right on the sidebar/canvas seam. Hidden until hovered/dragging so it

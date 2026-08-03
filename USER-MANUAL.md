@@ -684,7 +684,7 @@ song and sometimes neither is clean. Solo each and judge by ear. The
 correlation number shown is diagnostic only; it does not reliably predict
 whether the split will sound good.
 
-Three split algorithms are offered:
+Four split algorithms are offered:
 
 - **Spectral** (default) — adapts the center/sides split per frequency
   bin, usually the best starting point.
@@ -698,8 +698,16 @@ Three split algorithms are offered:
   bends and vibrato. Needs a detected beat grid to do anything (falls
   back to plain Spectral without one — instrumental-only tracks or ones
   where tempo detection failed won't see a difference from Spectral).
+- **Coherent** — for the case where Spectral's Candidate A (center) is
+  already close to a clean lead-only proxy but Candidate B (sides) still
+  has strong lead bleed in it. Instead of guessing from panning alone, it
+  cancels Spectral's center estimate directly out of the original left/
+  right channels using a phase-coherent match, so only the content that's
+  actually explained by the lead gets removed rather than anything merely
+  as loud as it. Worth trying whenever Candidate B on another method
+  still sounds like it has the lead mixed in under the rhythm part.
 
-None of the three is guaranteed to beat the others on a given song —
+None of the four is guaranteed to beat the others on a given song —
 try more than one and judge by ear, same as always.
 
 Both Candidate A and Candidate B are peak-normalized against the original

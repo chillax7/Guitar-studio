@@ -2547,13 +2547,6 @@ function paSetActiveScreen(id) {
     btn.classList.toggle("active", btn.id === id);
   });
   document.getElementById("top-banner-screen-label").textContent = PA_SCREEN_LABELS[id] || "";
-  // V9 shell: Tone Lab is the "rig room," every other screen is the "song
-  // room" — this no longer drives the color palette (reverted back to the
-  // classic 5 named themes, data-theme, per direct feedback), but it's
-  // still what styles.css's html[data-room="rig"] rule keys off to hide
-  // the drawer and reclaim its width for the pedal chain on this one
-  // screen. See research/v9-two-rooms-implementation-plan.md §2.
-  document.documentElement.setAttribute("data-room", id === "tonelab-open-btn" ? "rig" : "song");
   // V9: Songs/Tabs drawer filter chips reflect which screen (and therefore
   // which of song-library-panel/tab-library-panel) is actually showing —
   // no separate state of their own, just a read of the same fact

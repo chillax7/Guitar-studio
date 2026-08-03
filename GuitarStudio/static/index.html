@@ -14,15 +14,9 @@
      or that one new theme will flash-of-wrong-theme on every reload
      (R2-5/R2-6 caught this exact gap already only handling two of what
      were about to become four non-default themes).
-     data-room defaults to "song" here (the app always opens on Mixer) and
-     is kept in sync at runtime by paSetActiveScreen (playalong.js) — it's
-     layout-only now (hides the drawer on Tone Lab to free width for the
-     pedal chain), not tied to color: the 5 named themes above are back to
-     being the sole source of palette/font, restored after a v9 A/B pass
-     that briefly replaced them with a light/dark toggle. -->
+     -->
 <script>
   (function () {
-    document.documentElement.setAttribute("data-room", "song");
     var t = localStorage.getItem("gs_theme");
     var nonDefault = ["brightspark", "futuremetal", "castlerock"];
     if (t === "studio") return;
@@ -430,6 +424,7 @@
         <button data-method="spectral" class="active">Spectral</button>
         <button data-method="midside">Mid-side</button>
         <button data-method="hybrid" title="Spectral, sharpened using onset-to-beat-grid alignment (Option D) — needs a detected beat grid, falls back to Spectral without one">Hybrid</button>
+        <button data-method="coherent" title="For when Spectral's 'center' is a clean lead but 'sides' still has strong lead bleed: phase-coherently cancels the center estimate out of the original left/right channels directly">Coherent</button>
       </div>
       <p class="hint" id="split-correlation"></p>
       <button id="run-split-btn" class="primary">Run split</button>

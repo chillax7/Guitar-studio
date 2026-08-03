@@ -178,6 +178,9 @@ MUTE_RANGE_FADE_SECONDS = 0.03  # fade in/out at mute-range edges to avoid click
 SPECTRAL_SPLIT_NPERSEG = 4096  # STFT window for the frequency-adaptive guitar split
 DEFAULT_SPLIT_METHOD = "spectral"
 HYBRID_SHARPEN_STRENGTH = 0.6  # how hard onset-grid-alignment can push hybrid_pan_split's centeredness away from 0.5
+COHERENT_SUB_NPERSEG = 4096  # STFT window for coherent_subtract
+COHERENT_SUB_WINDOW = 3  # frames averaged when smoothing the local complex gain
+COHERENT_SUB_GAIN_CAP = 1.6  # ceiling on |gain| for the genuine-subtraction (not masking) cancellation
 HASH_CHUNK_SIZE = 1 << 20  # 1 MB, for streaming the content hash
 
 # Known Demucs model -> stem names. Models not listed here fall back to the
@@ -2206,14 +2209,27 @@ def normalize_split_outputs(center_mono: np.ndarray, sides_mono: np.ndarray,
     real loudness balance between the two parts is preserved, not flattened
     to equal volume."""
     target_peak = float(max(np.max(np.abs(left)), np.max(np.abs(right)), 1e-6))
+    return _peak_normalize_mono(center_mono, target_peak), _peak_normalize_mono(sides_mono, target_peak)
 
-    def _peak_normalize(mono: np.ndarray) -> np.ndarray:
-        peak = float(np.max(np.abs(mono))) if len(mono) else 0.0
-        if peak < 1e-6:
-            return mono  # near-silent proxy (e.g. a fully-centered source's "sides") — nothing to scale
-        return (mono * (target_peak / peak)).astype(np.float32)
 
-    return _peak_normalize(center_mono), _peak_normalize(sides_mono)
+def _peak_normalize_mono(mono: np.ndarray, target_peak: float) -> np.ndarray:
+    peak = float(np.max(np.abs(mono))) if len(mono) else 0.0
+    if peak < 1e-6:
+        return mono  # near-silent proxy (e.g. a fully-centered source's "sides") — nothing to scale
+    return (mono * (target_peak / peak)).astype(np.float32)
+
+
+def _peak_normalize_stereo_pair(left: np.ndarray, right: np.ndarray, target_peak: float) -> tuple:
+    """Like _peak_normalize_mono, but scales L and R by the SAME factor so
+    their relative balance (a genuine stereo image, not a synthesized L/-R
+    pair) is preserved rather than each channel being normalized to its own
+    independent peak."""
+    peak = float(max(np.max(np.abs(left)) if len(left) else 0.0,
+                      np.max(np.abs(right)) if len(right) else 0.0, 1e-6))
+    if peak < 1e-6:
+        return left, right
+    scale = target_peak / peak
+    return (left * scale).astype(np.float32), (right * scale).astype(np.float32)
 
 
 def _onset_regularity_curve(mono: np.ndarray, samplerate: int, beat_times: list,
@@ -2297,6 +2313,83 @@ def hybrid_pan_split(left: np.ndarray, right: np.ndarray, samplerate: int,
     return _match_length(center, len(left)), _match_length(sides, len(left))
 
 
+def coherent_subtract(target: np.ndarray, ref: np.ndarray, samplerate: int,
+                       window: int = COHERENT_SUB_WINDOW,
+                       gain_cap: float = COHERENT_SUB_GAIN_CAP) -> np.ndarray:
+    """Local, PHASE-AWARE cancellation of `ref` out of `target`.
+
+    A magnitude-only mask (tried first, rejected by ear) works purely on
+    |target| vs. |ref| — "how loud is the reference here" — and throws the
+    phase away. That conflates "the reference has energy at this bin" with
+    "the reference's content at this bin explains what's in target," which
+    are different things: if the reference carries any low-level broadband
+    content across the spectrum, a magnitude mask has to treat it as real
+    leakage everywhere, which is what produced runs of near-silence at high
+    suppression strength on real material.
+
+    This instead estimates a COMPLEX gain g(f,t) = <target, ref> / <ref, ref>,
+    averaged over a short SLIDING window (a single frame is too unstable and
+    degenerate; the whole track can't track drift — both tried and dropped).
+    Where target's content at a bin is not actually phase-correlated with the
+    reference there, the correlation-based numerator stays small even if the
+    reference's raw magnitude is not, so content only gets attenuated where
+    it's ACTUALLY explained by the reference, not wherever the reference
+    happens to have any energy at all."""
+    nperseg = min(COHERENT_SUB_NPERSEG, len(target))
+    if nperseg < 8:
+        return target.copy()
+
+    stft_kwargs = dict(fs=samplerate, nperseg=nperseg, noverlap=nperseg * 3 // 4)
+    _, _, target_f = scipy.signal.stft(target, **stft_kwargs)
+    _, _, ref_f = scipy.signal.stft(ref, **stft_kwargs)
+
+    num = target_f * np.conj(ref_f)
+    den = (ref_f * np.conj(ref_f)).real
+    # Smooth numerator/denominator SEPARATELY over a short time window before
+    # dividing (not the raw single-frame ratio) — a moving average, which is
+    # what makes this "local" rather than either single-frame (unstable) or
+    # whole-track (can't track drift).
+    kernel = np.ones(window) / window
+    num_smooth = scipy.signal.convolve2d(num, kernel[np.newaxis, :], mode="same", boundary="symm")
+    den_smooth = scipy.signal.convolve2d(den, kernel[np.newaxis, :], mode="same", boundary="symm")
+    # Regularize relative to this signal's own average power, not a fixed
+    # tiny constant — keeps the gain from blowing up wherever the reference
+    # is momentarily near-silent (a second plausible source of the
+    # near-silence failure mode above).
+    eps = 1e-6 * np.mean(den_smooth)
+    gain = num_smooth / (den_smooth + eps)
+    # Cap |gain| rather than clipping a magnitude mask to [0, 1] — this is a
+    # genuine subtraction, not a gate, so an over-confident gain needs a
+    # ceiling instead of a floor.
+    gain_mag = np.abs(gain)
+    gain = np.where(gain_mag > gain_cap, gain * (gain_cap / (gain_mag + 1e-12)), gain)
+
+    residual_f = target_f - gain * ref_f
+    _, residual = scipy.signal.istft(residual_f, **stft_kwargs)
+    return _match_length(residual.astype(np.float32), len(target))
+
+
+def coherent_pan_split(left: np.ndarray, right: np.ndarray, samplerate: int) -> tuple:
+    """Real user report: on a track where the lead solo is genuinely mixed
+    dead-center, spectral_pan_split's 'center' proxy is close to a clean
+    lead-only separation — but its 'sides' proxy still carries strong lead
+    bleed, because 'sides' is a panning-position guess, not a lead-content
+    guess. Given a clean center/lead estimate, this cancels it directly out
+    of the ORIGINAL left/right channels (not the already-lossy 'sides'
+    proxy) with coherent_subtract's local phase-coherent gain. A plain
+    magnitude spectral-subtraction version of this was tried and rejected on
+    real material — it was either still audibly full of lead bleed, or
+    (pushed more aggressively) collapsed into near-silent 'squeaks', because
+    magnitude alone can't tell "the reference has energy here" apart from
+    "the reference's content here is what's actually in this channel."
+    Returns real stereo channels for 'sides' (not a synthesized L/-R pair),
+    since each channel is cancelled against the reference independently."""
+    center_mono, _ = spectral_pan_split(left, right, samplerate)
+    sides_left = coherent_subtract(left, center_mono, samplerate)
+    sides_right = coherent_subtract(right, center_mono, samplerate)
+    return center_mono, sides_left, sides_right
+
+
 def cmd_split_guitar(args: argparse.Namespace) -> None:
     """Experimental: split a stereo guitar stem by panning position rather
     than timbre. This is NOT a real lead/rhythm separation model — no such
@@ -2331,16 +2424,24 @@ def cmd_split_guitar(args: argparse.Namespace) -> None:
     else:
         correlation = 1.0
 
-    if args.method == "spectral":
-        center_mono, sides_mono = spectral_pan_split(left, right, sr)
-    elif args.method == "hybrid":
-        beats = ensure_analysis(out_dir).get("beats", [])
-        center_mono, sides_mono = hybrid_pan_split(left, right, sr, beats)
+    if args.method == "coherent":
+        center_mono, sides_left, sides_right = coherent_pan_split(left, right, sr)
+        target_peak = float(max(np.max(np.abs(left)), np.max(np.abs(right)), 1e-6))
+        center_mono = _peak_normalize_mono(center_mono, target_peak)
+        sides_left, sides_right = _peak_normalize_stereo_pair(sides_left, sides_right, target_peak)
+        center = np.stack([center_mono, center_mono], axis=1)
+        sides = np.stack([sides_left, sides_right], axis=1)
     else:
-        center_mono, sides_mono = midside_pan_split(left, right)
-    center_mono, sides_mono = normalize_split_outputs(center_mono, sides_mono, left, right)
-    center = np.stack([center_mono, center_mono], axis=1)
-    sides = np.stack([sides_mono, -sides_mono], axis=1)
+        if args.method == "spectral":
+            center_mono, sides_mono = spectral_pan_split(left, right, sr)
+        elif args.method == "hybrid":
+            beats = ensure_analysis(out_dir).get("beats", [])
+            center_mono, sides_mono = hybrid_pan_split(left, right, sr, beats)
+        else:
+            center_mono, sides_mono = midside_pan_split(left, right)
+        center_mono, sides_mono = normalize_split_outputs(center_mono, sides_mono, left, right)
+        center = np.stack([center_mono, center_mono], axis=1)
+        sides = np.stack([sides_mono, -sides_mono], axis=1)
 
     center_path = out_dir / f"{args.stem}_center.wav"
     sides_path = out_dir / f"{args.stem}_sides.wav"
@@ -2837,13 +2938,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_split.add_argument("--model", default="htdemucs_6s", help=model_help("htdemucs_6s"))
     p_split.add_argument("--stem", default="guitar",
                           help="Name of the stereo stem to split (default: guitar)")
-    p_split.add_argument("--method", choices=["spectral", "midside", "hybrid"], default=DEFAULT_SPLIT_METHOD,
+    p_split.add_argument("--method", choices=["spectral", "midside", "hybrid", "coherent"],
+                          default=DEFAULT_SPLIT_METHOD,
                           help="Split algorithm (default: spectral). 'spectral' adapts the "
                                "center/sides split per frequency bin, which can separate "
                                "partially- or inconsistently-panned mixes better than the "
                                "blunt whole-track 'midside' split. 'hybrid' (Option D) further "
                                "sharpens 'spectral' using onset-to-beat-grid alignment — falls "
-                               "back to plain 'spectral' if no beat grid is available.")
+                               "back to plain 'spectral' if no beat grid is available. 'coherent' "
+                               "is for the case where 'spectral' already gives a clean 'center' "
+                               "but its 'sides' still has strong bleed from center's content: it "
+                               "phase-coherently cancels 'spectral''s center estimate out of the "
+                               "original left/right channels directly, usually leaving much less "
+                               "bleed in 'sides' than the other methods.")
     p_split.set_defaults(func=cmd_split_guitar)
 
     p_mix = sub.add_parser("mix", help="Mix down a backing track with stems muted/gained")

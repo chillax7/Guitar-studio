@@ -1011,18 +1011,28 @@ def svc_split_guitar(source_path: str, model: str, stem: str, method: str) -> di
     else:
         correlation = 1.0
 
-    if method not in ("spectral", "midside", "hybrid"):
-        raise ApiError(400, f"Unknown split method '{method}' — use 'spectral', 'midside', or 'hybrid'")
-    if method == "spectral":
-        center_mono, sides_mono = engine.spectral_pan_split(left, right, sr)
-    elif method == "hybrid":
-        beats = engine.ensure_analysis(out_dir).get("beats", [])
-        center_mono, sides_mono = engine.hybrid_pan_split(left, right, sr, beats)
+    if method not in ("spectral", "midside", "hybrid", "coherent"):
+        raise ApiError(400, f"Unknown split method '{method}' — use 'spectral', 'midside', "
+                             f"'hybrid', or 'coherent'")
+    if method == "coherent":
+        center_mono, sides_left, sides_right = engine.coherent_pan_split(left, right, sr)
+        target_peak = float(max(engine.np.max(engine.np.abs(left)),
+                                 engine.np.max(engine.np.abs(right)), 1e-6))
+        center_mono = engine._peak_normalize_mono(center_mono, target_peak)
+        sides_left, sides_right = engine._peak_normalize_stereo_pair(sides_left, sides_right, target_peak)
+        center = engine.np.stack([center_mono, center_mono], axis=1)
+        sides = engine.np.stack([sides_left, sides_right], axis=1)
     else:
-        center_mono, sides_mono = engine.midside_pan_split(left, right)
-    center_mono, sides_mono = engine.normalize_split_outputs(center_mono, sides_mono, left, right)
-    center = engine.np.stack([center_mono, center_mono], axis=1)
-    sides = engine.np.stack([sides_mono, -sides_mono], axis=1)
+        if method == "spectral":
+            center_mono, sides_mono = engine.spectral_pan_split(left, right, sr)
+        elif method == "hybrid":
+            beats = engine.ensure_analysis(out_dir).get("beats", [])
+            center_mono, sides_mono = engine.hybrid_pan_split(left, right, sr, beats)
+        else:
+            center_mono, sides_mono = engine.midside_pan_split(left, right)
+        center_mono, sides_mono = engine.normalize_split_outputs(center_mono, sides_mono, left, right)
+        center = engine.np.stack([center_mono, center_mono], axis=1)
+        sides = engine.np.stack([sides_mono, -sides_mono], axis=1)
 
     center_path = out_dir / f"{stem}_center.wav"
     sides_path = out_dir / f"{stem}_sides.wav"
