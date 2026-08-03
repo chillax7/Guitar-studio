@@ -16,6 +16,10 @@
 
 const PA = {
   built: false,
+  // Tone-suggestion budget, loaded from /api/settings at startup. Null until
+  // then, so paSuggestSampleSize() falls back to the default rather than
+  // treating "not loaded yet" as zero.
+  suggestSampleSize: null,
   stream: null,
   source: null,
   inAnal: null,
@@ -2205,7 +2209,8 @@ async function paSuggestClosestModel() {
 // noise is generated from a FIXED SEED rather than Math.random(). That also
 // makes the ranking reproducible, which it previously wasn't — two runs
 // over the same library could disagree.
-const SUGGEST_MAX_CANDIDATES = 500;
+const SUGGEST_SAMPLE_DEFAULT = 500;
+const SUGGEST_SAMPLE_MAX = 5000;
 const SUGGEST_TEST_SECONDS = 0.15; // enough samples for a stable ZCR reading
 const SUGGEST_NOISE_SEED = 0x9e3779b9;
 const SUGGEST_CACHE_KEY = "gs_nam_brightness_v1";
@@ -2256,6 +2261,15 @@ function paSuggestCacheKey(model, sampleRate) {
   return `${model.filename}|${model.size || 0}|${sampleRate}`;
 }
 
+// Settings-backed, so it survives a reload and is not per-browser like the
+// score cache. PA.suggestSampleSize is filled in at startup from
+// /api/settings; the default stands in until that lands (or if it fails).
+function paSuggestSampleSize() {
+  const n = Number(PA.suggestSampleSize);
+  if (!Number.isFinite(n) || n < 1) return SUGGEST_SAMPLE_DEFAULT;
+  return Math.min(SUGGEST_SAMPLE_MAX, Math.round(n));
+}
+
 function paSuggestEta(ms) {
   const sec = Math.round(ms / 1000);
   if (sec < 60) return `${sec}s`;
@@ -2287,19 +2301,36 @@ async function paSuggestNamModel() {
     if (!PA.namModels.length) await paRefreshNamModels();
 
     const all = PA.namModels;
-    const step = Math.max(1, Math.floor(all.length / SUGGEST_MAX_CANDIDATES));
-    const candidates = [];
-    for (let i = 0; i < all.length && candidates.length < SUGGEST_MAX_CANDIDATES; i += step) candidates.push(all[i]);
-
     const sampleRate = Audio.ctx.sampleRate;
     const testSignal = paSuggestTestSignal(sampleRate);
     const cache = paLoadSuggestCache();
-    // How much real work this run faces, known up front so the very first
-    // progress line can already carry an honest ETA.
-    const todo = candidates.filter((m) => !cache[paSuggestCacheKey(m, sampleRate)]).length;
+
+    // Coverage grows across runs rather than resampling the same slice.
+    //
+    // The budget is a limit on NEW measurements, not on candidates: anything
+    // already scored is free, so every known capture is compared every time.
+    // The budget then goes entirely to captures never measured before, taken
+    // by striding through the unmeasured ones so each run still spans the
+    // whole library instead of grinding through it alphabetically.
+    //
+    // On a 4600-capture library that means run 1 compares 500, run 2 compares
+    // 1000, and so on, until eventually every capture is in the cache and
+    // runs are instant. Previously every run re-sampled the same strided 500
+    // and the other 4100 were never reachable at all.
+    const known = [], fresh = [];
+    for (const m of all) (cache[paSuggestCacheKey(m, sampleRate)] ? known : fresh).push(m);
+
+    const budget = paSuggestSampleSize();
+    const step = Math.max(1, Math.floor(fresh.length / budget));
+    const picked = [];
+    for (let i = 0; i < fresh.length && picked.length < budget; i += step) picked.push(fresh[i]);
+
+    const candidates = known.concat(picked);
+    // Known up front, so the very first progress line carries an honest ETA.
+    const todo = picked.length;
 
     const scored = [];
-    let tooHeavy = 0, measured = 0, reused = 0;
+    let tooHeavy = 0, measured = 0, reused = 0, unusable = 0;
     for (let ci = 0; ci < candidates.length; ci++) {
       const m = candidates[ci];
       const key = paSuggestCacheKey(m, sampleRate);
@@ -2314,26 +2345,41 @@ async function paSuggestNamModel() {
         resultEl.textContent = progress;
         // The panel is behind the overlay, so the overlay has to carry it too.
         busy.setLabel(`Comparing capture ${measured + 1} of ${todo}${eta}`);
+        let namJson = null;
         try {
-          const namJson = await (await fetch(`/api/nam_model_file?filename=${encodeURIComponent(m.filename)}`)).json();
-          // V3-E6: was its own from-scratch OfflineAudioContext/node/wasm-
-          // module/load dance, duplicating paProbeNamModel's — reuse it with
-          // this loop's own noise test signal (paProbeNamModel's default is a
-          // sine, no good for a zero-crossing-rate brightness proxy) and ask
-          // for the rendered audio back to score.
-          const probe = await paProbeNamModel(namJson, { testSignal, returnAudio: true });
-          if (probe.rtFactor === null) continue; // failed to build/load/render
+          namJson = await (await fetch(`/api/nam_model_file?filename=${encodeURIComponent(m.filename)}`)).json();
+        } catch (e) {
+          // A fetch or JSON error can be transient, so it is deliberately NOT
+          // remembered — this capture simply gets another go next run.
+          continue;
+        }
+        // V3-E6: was its own from-scratch OfflineAudioContext/node/wasm-
+        // module/load dance, duplicating paProbeNamModel's — reuse it with
+        // this loop's own noise test signal (paProbeNamModel's default is a
+        // sine, no good for a zero-crossing-rate brightness proxy) and ask
+        // for the rendered audio back to score.
+        const probe = await paProbeNamModel(namJson, { testSignal, returnAudio: true });
+        measured++;  // the attempt cost the time either way, so it spends budget
+        if (probe.rtFactor === null) {
+          // Failed to build/load/render. Unlike a fetch error this is a
+          // property of the file, so remember it: otherwise a corrupt or
+          // unsupported capture is retried on EVERY run, permanently eating a
+          // slot in the budget and stopping coverage from ever advancing past
+          // it. The cache key includes file size, so replacing the file with a
+          // good one gets it retried automatically.
+          entry = { bad: true };
+        } else {
           entry = { zcr: zeroCrossingRate(probe.audio), rt: probe.rtFactor };
-          cache[key] = entry;
-          measured++;
-          // Checkpoint, so a run abandoned partway (tab closed, browser
-          // killed) keeps everything measured up to that point instead of
-          // starting the next run from nothing.
-          if (measured % SUGGEST_CACHE_FLUSH_EVERY === 0) paSaveSuggestCache(cache);
-        } catch (e) { continue; /* skip a model that fails to load/render offline */ }
+        }
+        cache[key] = entry;
+        // Checkpoint, so a run abandoned partway (tab closed, browser
+        // killed) keeps everything measured up to that point instead of
+        // starting the next run from nothing.
+        if (measured % SUGGEST_CACHE_FLUSH_EVERY === 0) paSaveSuggestCache(cache);
       } else {
         reused++;
       }
+      if (entry.bad) { unusable++; continue; }
       // Same speed guardrail as paLoadNamModel: never suggest a capture that
       // can't run live — it would be refused at load anyway. Applied to
       // cached entries too, since rt is a property of this machine and the
@@ -2352,20 +2398,28 @@ async function paSuggestNamModel() {
     }
 
     const best = scored[0];
-    const heavyNote = tooHeavy ? ` ${tooHeavy} sampled capture${tooHeavy === 1 ? " was" : "s were"} skipped as too heavy to run live.` : "";
-    const sampledNote = all.length > candidates.length
-      ? ` (sampled ${candidates.length} of ${all.length} models across the library)` : "";
+    const heavyNote = tooHeavy ? ` ${tooHeavy} capture${tooHeavy === 1 ? " was" : "s were"} skipped as too heavy to run live.` : "";
+    const badNote = unusable ? ` ${unusable} could not be loaded at all and won't be retried.` : "";
+    // Coverage is the number that matters now, not "sampled N": it tells you
+    // whether running again would widen the search or is already exhaustive.
+    const remaining = all.length - candidates.length;
+    const coverageNote = ` Compared ${candidates.length} of ${all.length} captures` +
+      (remaining > 0
+        ? `; run this again to measure ${Math.min(remaining, paSuggestSampleSize())} more.`
+        : " — the whole library.");
     // Say when scores were reused: a run that finishes instantly after one
-    // that took half a minute otherwise looks like it silently did nothing.
+    // that took minutes otherwise looks like it silently did nothing.
     const cacheNote = reused
       ? ` ${reused} score${reused === 1 ? " was" : "s were"} reused from a previous run${measured ? `, ${measured} newly measured` : ""}.`
       : "";
-    // Ranking only lists the leaders now — 100 names is a wall of text, and
-    // everything past the first handful is noise against a proxy this rough.
+    // Ranking only lists the leaders — hundreds of names is a wall of text,
+    // and everything past the first handful is noise against a proxy this
+    // rough.
     const TOP_N = 8;
     const top = scored.slice(0, TOP_N);
     resultEl.innerHTML = `Closest match: <b>${escapeHtml(best.name)}</b>, now loaded and live ` +
-      `(brightness-proxy match, not a guaranteed tone match — audition and pick by ear)${sampledNote}.${heavyNote}${cacheNote}<br>` +
+      `(brightness-proxy match, not a guaranteed tone match — audition and pick by ear).` +
+      `${coverageNote}${heavyNote}${badNote}${cacheNote}<br>` +
       `Top ${top.length}: ${top.map((s) => escapeHtml(s.name)).join(" → ")}` +
       (scored.length > top.length ? ` … and ${scored.length - top.length} more compared.` : "");
     await paLoadNamModel(best.filename);
@@ -2410,6 +2464,43 @@ function paUpdateSuggestVisibility() {
   // with a 4-stem model. An always-visible reason beats a mystery gap.
   document.getElementById("pa-suggest-btn").style.display = hasGuitar ? "block" : "none";
   document.getElementById("pa-suggest-unavailable-hint").style.display = hasGuitar ? "none" : "block";
+  // The budget only means anything next to the button it governs.
+  document.getElementById("pa-suggest-budget-row").style.display = hasGuitar ? "flex" : "none";
+  document.getElementById("pa-suggest-sample-hint").style.display = hasGuitar ? "block" : "none";
+  paRenderSuggestSampleHint();
+}
+
+// Spell out what the current budget costs and how far it reaches, since
+// "500" on its own says nothing about a four-minute wait.
+function paRenderSuggestSampleHint() {
+  const el = document.getElementById("pa-suggest-sample-hint");
+  if (!el) return;
+  const n = paSuggestSampleSize();
+  const total = (PA.namModels || []).length;
+  const mins = (n * SUGGEST_MS_PER_MODEL) / 60000;
+  const cost = mins < 1 ? `${Math.round((n * SUGGEST_MS_PER_MODEL) / 1000)}s` :
+    (mins < 1.5 ? "about a minute" : `about ${Math.round(mins)} minutes`);
+  el.textContent = `Captures already scored are compared for free every run, so this is the budget for NEW ones ` +
+    `— roughly ${cost} of measuring at ~${SUGGEST_MS_PER_MODEL}ms each` +
+    (total ? `, out of ${total} in your library. Run it again to reach further in.` : ".");
+}
+
+async function paSaveSuggestSampleSize(n) {
+  PA.suggestSampleSize = n;
+  paRenderSuggestSampleHint();
+  try {
+    await Api.post("/api/settings/nam_suggest_sample", { size: n });
+  } catch (e) { /* the run still honours it this session; it just won't persist */ }
+}
+
+function wireSuggestSampleSize() {
+  const input = document.getElementById("pa-suggest-sample");
+  if (!input) return;
+  input.addEventListener("change", () => {
+    const n = Math.min(SUGGEST_SAMPLE_MAX, Math.max(1, Math.round(Number(input.value) || SUGGEST_SAMPLE_DEFAULT)));
+    input.value = String(n);
+    paSaveSuggestSampleSize(n);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -4470,6 +4561,16 @@ paOpenChainCard("gate"); // panel is never empty on first load — Gate's bypass
 document.getElementById("pa-pedalboard").addEventListener("change", (e) => {
   if (e.target.matches('input[type="checkbox"][id$="-bypass"]')) paRefreshChainIconStates();
 });
+wireSuggestSampleSize();
+// Best-effort: a settings fetch that fails just leaves the default in place.
+Api.get("/api/settings").then((s) => {
+  if (s && Number.isFinite(Number(s.nam_suggest_sample_size))) {
+    PA.suggestSampleSize = Number(s.nam_suggest_sample_size);
+    const input = document.getElementById("pa-suggest-sample");
+    if (input) input.value = String(PA.suggestSampleSize);
+    paRenderSuggestSampleHint();
+  }
+}).catch(() => { /* default stands */ });
 wireRigPresets();
 wireRiffCapture();
 wireMetronome();

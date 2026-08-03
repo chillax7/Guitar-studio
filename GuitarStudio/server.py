@@ -2054,11 +2054,40 @@ def _read_settings_raw() -> dict:
 TONE3000_KEY_FIELD = "tone3000_publishable_key"
 
 
+# How many NEW captures one "Suggest from this track's guitar stem" run is
+# allowed to measure. Not a total: already-scored captures are free and are
+# always included, so this is purely a time budget for fresh work. Measured
+# cost is ~480ms per capture, so the default 500 is about four minutes on a
+# library that has never been scanned, and each later run walks the same
+# budget further into the library.
+NAM_SUGGEST_SAMPLE_FIELD = "nam_suggest_sample_size"
+NAM_SUGGEST_SAMPLE_DEFAULT = 500
+NAM_SUGGEST_SAMPLE_MAX = 5000
+
+
 def svc_load_settings() -> dict:
     raw = _read_settings_raw()
     out = {f"has_{provider}_key": bool(raw.get(info["key_field"])) for provider, info in LICK_PROVIDERS.items()}
     out["tone3000_publishable_key"] = raw.get(TONE3000_KEY_FIELD, "")
+    out["nam_suggest_sample_size"] = raw.get(NAM_SUGGEST_SAMPLE_FIELD, NAM_SUGGEST_SAMPLE_DEFAULT)
     return out
+
+
+def svc_save_nam_suggest_sample(size) -> dict:
+    try:
+        n = int(size)
+    except (TypeError, ValueError):
+        raise ApiError(400, "Sample size must be a whole number.")
+    # Clamped rather than rejected at the top end: someone typing a big
+    # number wants "as much as possible", and the cap is there to stop a
+    # typo turning into an hours-long run, not to argue with them.
+    if n < 1:
+        raise ApiError(400, "Sample size must be at least 1.")
+    n = min(n, NAM_SUGGEST_SAMPLE_MAX)
+    raw = _read_settings_raw()
+    raw[NAM_SUGGEST_SAMPLE_FIELD] = n
+    SETTINGS_FILE.write_text(json.dumps(raw, indent=2))
+    return {"ok": True, "nam_suggest_sample_size": n}
 
 
 def svc_save_tone3000_key(publishable_key: str) -> dict:
@@ -3776,6 +3805,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/settings/tone3000_key":
                 body = self._read_json_body()
                 result = svc_save_tone3000_key(body.get("publishable_key", ""))
+                return self._send_json(200, result)
+
+            if path == "/api/settings/nam_suggest_sample":
+                body = self._read_json_body()
+                result = svc_save_nam_suggest_sample(body.get("size"))
                 return self._send_json(200, result)
 
             if path == "/api/lick/suggest":
