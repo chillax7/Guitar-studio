@@ -271,12 +271,23 @@ function gsBusy(label) {
   let ended = false;
   // Idempotent: a caller that ends in both a then and a catch, or that
   // retries, must not pop somebody else's job off the stack.
-  return () => {
+  const end = () => {
     if (ended) return;
     ended = true;
     GsBusy.jobs = GsBusy.jobs.filter((j) => j.id !== id);
     gsBusyRender();
   };
+  // A long job (the NAM tone search can run to minutes) needs to say where
+  // it has got to on the overlay itself, not only in its own panel — that
+  // panel is behind the overlay. Re-labelling in place rather than ending
+  // and restarting the job keeps the ref count honest.
+  end.setLabel = (next) => {
+    const job = GsBusy.jobs.find((j) => j.id === id);
+    if (!job) return;
+    job.label = next;
+    gsBusyRender();
+  };
+  return end;
 }
 
 // The shape almost every call site wants: the overlay lifts on the way out

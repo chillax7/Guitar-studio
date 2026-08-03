@@ -2193,21 +2193,31 @@ async function paSuggestClosestModel() {
 //   - Probing 4 or 8 at a time: 467ms and 497ms per model — actively WORSE.
 //     The builds contend rather than overlap.
 //
-// 100 candidates at 348ms is ~35 seconds, which is too long to sit through
-// every time. What makes it viable is that a model's brightness score does
-// not depend on the track: it is the model's response to a fixed test
-// signal, so it can be measured once and reused forever. The cache below
-// makes the first wide run cost ~35s and every later one effectively free,
-// with only newly-added captures needing work.
+// At 348ms each, the cap is essentially a time budget: 100 candidates is
+// ~35s, 500 is ~3 minutes. What makes any of it viable is that a model's
+// brightness score does not depend on the track — it is the model's
+// response to a fixed test signal — so it can be measured once and reused
+// forever. The cache below makes the first wide run cost that budget and
+// every later one effectively free, with only newly-added captures needing
+// work. Measured on a 42-capture library: 13.8s cold, 386ms warm.
 //
 // That only holds if the test signal is identical between runs, so the
 // noise is generated from a FIXED SEED rather than Math.random(). That also
 // makes the ranking reproducible, which it previously wasn't — two runs
 // over the same library could disagree.
-const SUGGEST_MAX_CANDIDATES = 100;
+const SUGGEST_MAX_CANDIDATES = 500;
 const SUGGEST_TEST_SECONDS = 0.15; // enough samples for a stable ZCR reading
 const SUGGEST_NOISE_SEED = 0x9e3779b9;
 const SUGGEST_CACHE_KEY = "gs_nam_brightness_v1";
+// Measured per-model probe cost, used only to show an ETA. A three-minute
+// run with a bare spinner is indistinguishable from a hung one.
+const SUGGEST_MS_PER_MODEL = 350;
+// Flush the cache to storage every this many newly-measured captures. At a
+// 500 cap the run is minutes long, and saving only at the end means closing
+// the tab (or a crash) three minutes in throws away every measurement. The
+// write is a few tens of KB and happens once per ~9s of work, so the cost
+// is irrelevant next to what it protects.
+const SUGGEST_CACHE_FLUSH_EVERY = 25;
 
 // mulberry32 — small, fast, and deterministic across browsers, which
 // Math.random() explicitly is not.
@@ -2235,6 +2245,13 @@ function paSuggestTestSignal(sampleRate) {
 // renders at the context's rate and a NAM model's response is rate-dependent.
 function paSuggestCacheKey(model, sampleRate) {
   return `${model.filename}|${model.size || 0}|${sampleRate}`;
+}
+
+function paSuggestEta(ms) {
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.round(sec / 60);
+  return min === 1 ? "a minute" : `${min} minutes`;
 }
 
 function paLoadSuggestCache() {
@@ -2268,6 +2285,9 @@ async function paSuggestNamModel() {
     const sampleRate = Audio.ctx.sampleRate;
     const testSignal = paSuggestTestSignal(sampleRate);
     const cache = paLoadSuggestCache();
+    // How much real work this run faces, known up front so the very first
+    // progress line can already carry an honest ETA.
+    const todo = candidates.filter((m) => !cache[paSuggestCacheKey(m, sampleRate)]).length;
 
     const scored = [];
     let tooHeavy = 0, measured = 0, reused = 0;
@@ -2276,9 +2296,15 @@ async function paSuggestNamModel() {
       const key = paSuggestCacheKey(m, sampleRate);
       let entry = cache[key];
       if (!entry) {
-        // Only uncached captures cost anything, so the progress text counts
-        // the work actually left rather than the whole candidate list.
-        resultEl.textContent = `Analyzing… (${ci + 1}/${candidates.length}, ${measured} measured)`;
+        // Only uncached captures cost anything, so both the progress text
+        // and the ETA count the work actually left rather than the whole
+        // candidate list — with a warm cache most of the list is free.
+        const left = todo - measured;
+        const eta = left > 1 ? ` — about ${paSuggestEta(left * SUGGEST_MS_PER_MODEL)} left` : "";
+        const progress = `Analyzing… (${ci + 1}/${candidates.length}, measuring ${measured + 1} of ${todo} new)${eta}`;
+        resultEl.textContent = progress;
+        // The panel is behind the overlay, so the overlay has to carry it too.
+        busy.setLabel(`Comparing capture ${measured + 1} of ${todo}${eta}`);
         try {
           const namJson = await (await fetch(`/api/nam_model_file?filename=${encodeURIComponent(m.filename)}`)).json();
           // V3-E6: was its own from-scratch OfflineAudioContext/node/wasm-
@@ -2291,6 +2317,10 @@ async function paSuggestNamModel() {
           entry = { zcr: zeroCrossingRate(probe.audio), rt: probe.rtFactor };
           cache[key] = entry;
           measured++;
+          // Checkpoint, so a run abandoned partway (tab closed, browser
+          // killed) keeps everything measured up to that point instead of
+          // starting the next run from nothing.
+          if (measured % SUGGEST_CACHE_FLUSH_EVERY === 0) paSaveSuggestCache(cache);
         } catch (e) { continue; /* skip a model that fails to load/render offline */ }
       } else {
         reused++;
