@@ -19,6 +19,12 @@ changes needed. Ships 4 one-shots (kick, snare, closed hi-hat, crash), not
 unshipped rather than included unused; add it back if a future pattern
 needs it.
 
+**Retuned once already:** the first snare render was reported "too
+fizzy" — its noise band was 1800–9500Hz decaying over 90ms, too wide/
+high and too slow to read as a tight rock crack. Retuned to a
+2500–6000Hz band decaying over 45ms, plus a 2ms broadband click at the
+onset and a harder drive stage, confirmed as an improvement by ear.
+
 ## 1. What this is
 
 A practice companion that sits next to the existing Metronome in Play
