@@ -4234,6 +4234,18 @@ function wireKeyboardShortcuts() {
       toggleShortcutsLegend();
       return;
     }
+
+    // Tab View's playback runs on alphaTab's own player against a
+    // soundfont — a transport entirely separate from the rest of the app's
+    // State/Audio-driven one. Space here needs to control ITS play/pause,
+    // not the Mixer's, and that has to work even with no backing track
+    // loaded (Tab View works from a tab alone), so this has to be checked
+    // before the "needs a loaded track" guard below.
+    if (e.key === " " && document.getElementById("tabview-overlay").classList.contains("show")) {
+      e.preventDefault();
+      document.getElementById("tabview-play-btn").click();
+      return;
+    }
     if (!State.stems.length) return; // everything else needs a loaded track
 
     switch (e.key) {
