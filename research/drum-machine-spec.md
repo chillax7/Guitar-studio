@@ -1,5 +1,24 @@
 # Basic Rock Drum Machine — Specification
 
+**Status: v1 shipped.** Built per this spec with the two decisions made
+directly: excluded from Riff Capture (§6, hardcoded via routing — no
+checkbox in v1), and sampled one-shots for the kit (§4, option B) — with
+one deviation worth flagging: the samples are offline-synthesized
+one-shots baked to WAV files, not downloaded acoustic recordings. Real
+licensed acoustic samples would need sourcing + the same license-audit
+diligence already done once for this project; offline synthesis (real
+kick/snare/hihat/crash DSP recipes — pitched sine sweep + transient for
+the kick, tone+filtered noise for the snare, the classic 6-oscillator
+metallic-ring technique for hihat/crash) gets a genuinely usable kit with
+zero licensing exposure, at the architecture level this doc's option B
+described (pre-rendered one-shots, fetched and `decodeAudioData`-decoded,
+no live oscillator scripting per hit). Swapping in real acoustic samples
+later is a drop-in replacement of the files in `static/drums/` — no code
+changes needed. Ships 4 one-shots (kick, snare, closed hi-hat, crash), not
+5 — none of the 6 v1 patterns use an open hi-hat, so that file was left
+unshipped rather than included unused; add it back if a future pattern
+needs it.
+
 ## 1. What this is
 
 A practice companion that sits next to the existing Metronome in Play

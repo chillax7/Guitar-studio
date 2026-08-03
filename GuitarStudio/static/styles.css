@@ -2995,6 +2995,18 @@ svg.ailab-fretboard { display: block; }
   border-top: 1px solid var(--border);
   margin: 14px 0 10px;
 }
+/* drum-machine-spec.md §6: Click vs. Drum kit mode switch, same visual
+   idiom as #split-methods' method buttons (flex row, selected one lit in
+   accent with an inset ring). Click carries .active by default in
+   index.html so a mode always reads as chosen. */
+#metro-mode-row { display: flex; gap: 6px; margin: 6px 0 10px; }
+#metro-mode-row button { flex: 1; }
+#metro-mode-row button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4);
+}
 #metro-bpm-readout {
   font-family: "Share Tech Mono", monospace;
   font-size: 20px; color: var(--text);

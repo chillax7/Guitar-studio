@@ -590,9 +590,18 @@
             <!-- Metronome shares this card's lower half. It's deliberately
                  independent of the backing track's tempo: the point is
                  practising to a click at whatever speed you choose, not
-                 following the song. -->
+                 following the song. drum-machine-spec.md: the drum machine
+                 is a second "mode" of this same section rather than a
+                 separate card — it shares BPM/Start-Stop/Volume with the
+                 click instead of duplicating them, so metro-mode-row is the
+                 only new top-level control; everything below it swaps
+                 between #metro-click-controls and #metro-drum-controls. -->
             <div class="pa-card-split"></div>
             <h3>Metronome</h3>
+            <div class="row" id="metro-mode-row">
+              <button id="metro-mode-click-btn" class="active">Click</button>
+              <button id="metro-mode-drums-btn" title="Loop a standard rock beat instead of a click">Drum kit</button>
+            </div>
             <div class="row">
               <button id="metro-toggle-btn" class="primary">Start</button>
               <!-- Centre detent = the click's built-in level, so the slider
@@ -600,38 +609,54 @@
                    absolute scale you have to re-find by ear. -->
               <span id="metro-volume-icon" aria-hidden="true">🔊</span>
               <input type="range" id="metro-volume" min="0" max="200" step="1" value="100"
-                     title="Click volume — centre is the default level"
-                     aria-label="Metronome click volume">
+                     title="Volume — centre is the default level"
+                     aria-label="Metronome/drum kit volume">
               <div id="metro-bpm-readout"><span id="metro-bpm-value">100</span> <span class="metro-unit">BPM</span></div>
             </div>
             <input type="range" id="metro-bpm" min="1" max="300" step="1" value="100"
-                   aria-label="Metronome tempo in beats per minute">
+                   aria-label="Metronome/drum kit tempo in beats per minute">
             <div class="row" id="metro-nudge-row">
               <button id="metro-minus-btn" title="Slower">−</button>
               <button id="metro-tap-btn" title="Tap four times to set the tempo">Tap</button>
               <button id="metro-plus-btn" title="Faster">+</button>
             </div>
-            <label for="metro-subdiv">Click on</label>
-            <select id="metro-subdiv">
-              <option value="1">Whole notes</option>
-              <option value="2">Half notes</option>
-              <option value="4" selected>Quarter notes</option>
-              <option value="8">8th notes</option>
-              <option value="16">16th notes</option>
-              <option value="8t">8th triplets</option>
-              <option value="16t">16th triplets</option>
-            </select>
-            <label for="metro-accent">Accent every</label>
-            <select id="metro-accent">
-              <option value="0">No accent</option>
-              <option value="2">2 beats</option>
-              <option value="3">3 beats</option>
-              <option value="4" selected>4 beats</option>
-              <option value="6">6 beats</option>
-            </select>
+            <div id="metro-click-controls">
+              <label for="metro-subdiv">Click on</label>
+              <select id="metro-subdiv">
+                <option value="1">Whole notes</option>
+                <option value="2">Half notes</option>
+                <option value="4" selected>Quarter notes</option>
+                <option value="8">8th notes</option>
+                <option value="16">16th notes</option>
+                <option value="8t">8th triplets</option>
+                <option value="16t">16th triplets</option>
+              </select>
+              <label for="metro-accent">Accent every</label>
+              <select id="metro-accent">
+                <option value="0">No accent</option>
+                <option value="2">2 beats</option>
+                <option value="3">3 beats</option>
+                <option value="4" selected>4 beats</option>
+                <option value="6">6 beats</option>
+              </select>
+            </div>
+            <div id="metro-drum-controls" style="display:none">
+              <label for="metro-drum-pattern">Beat</label>
+              <select id="metro-drum-pattern">
+                <option value="basicRock" selected>Basic Rock</option>
+                <option value="driving">Basic Rock (driving)</option>
+                <option value="fourOnFloor">Four-on-the-floor</option>
+                <option value="ballad">Rock Ballad (half-time)</option>
+                <option value="punk">Punk / Fast Rock</option>
+                <option value="shuffle">Rock Shuffle</option>
+              </select>
+            </div>
             <div id="metro-beacon" aria-hidden="true"></div>
             <p class="hint" id="metro-hint">The BPM slider sets the pulse; "Click on" only changes how the beat is
               subdivided, so switching to 16ths doesn't make the tempo four times faster.</p>
+            <p class="hint" id="metro-drum-hint" style="display:none">Loops the selected beat at the BPM above until
+              you hit Stop. Like the click, it plays straight to your speakers — it won't end up inside a Riff
+              Capture "Save that!" or a recorded take.</p>
           </section>
         </div>
 

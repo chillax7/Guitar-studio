@@ -4190,7 +4190,10 @@ function metroScheduleClick(time, isAccent) {
 
 function metroFlash(isAccent) {
   const el = document.getElementById("metro-beacon");
-  if (!el || !Metro.on) return;
+  // Shared beacon between Click and Drum kit modes (drumScheduleHit reuses
+  // this same function for kick/snare hits) — checked against whichever
+  // pulse is actually running, not just the Metronome's own state.
+  if (!el || !(Metro.on || Drums.on)) return;
   el.classList.remove("beat", "accent");
   void el.offsetWidth;  // restart the transition even on back-to-back clicks
   el.classList.add(isAccent ? "accent" : "beat");
@@ -4240,27 +4243,38 @@ function metroSetBpm(bpm) {
   const slider = document.getElementById("metro-bpm");
   if (slider) slider.value = String(Metro.bpm);
   // Re-anchor so a tempo change takes effect on the NEXT click instead of
-  // waiting out an already-scheduled interval at the old tempo.
+  // waiting out an already-scheduled interval at the old tempo. Drums reads
+  // Metro.bpm directly (drum-machine-spec.md §6 — one shared BPM, not a
+  // second copy that could drift out of sync with the slider), so a running
+  // drum loop needs the exact same re-anchor the click gets.
   if (Metro.on) Metro.nextTime = Math.min(Metro.nextTime, Audio.ctx.currentTime + metroInterval());
+  if (Drums.on) Drums.nextTime = Math.min(Drums.nextTime, Audio.ctx.currentTime + drumStepInterval());
   metroRender();
 }
 
 function metroSetVolume(v) {
   Metro.volume = Math.min(2, Math.max(0, v));
   // Ramp rather than jump: a step change on a gain node that already has
-  // scheduled clicks running through it is an audible tick of its own.
+  // scheduled clicks running through it is an audible tick of its own. One
+  // shared volume slider drives both Metro.gain and Drums.gain — whichever
+  // mode isn't currently running just gets a silent value update for when
+  // it's next started.
   if (Metro.gain) {
     Metro.gain.gain.setTargetAtTime(Metro.volume, Audio.ctx.currentTime, 0.01);
+  }
+  if (Drums.gain) {
+    Drums.gain.gain.setTargetAtTime(Metro.volume, Audio.ctx.currentTime, 0.01);
   }
 }
 
 function metroRender() {
   const v = document.getElementById("metro-bpm-value");
   if (v) v.textContent = String(Metro.bpm);
+  const isOn = MetroMode === "drums" ? Drums.on : Metro.on;
   const btn = document.getElementById("metro-toggle-btn");
   if (btn) {
-    btn.textContent = Metro.on ? "Stop" : "Start";
-    btn.classList.toggle("primary", !Metro.on);
+    btn.textContent = isOn ? "Stop" : "Start";
+    btn.classList.toggle("primary", !isOn);
   }
 }
 
@@ -4290,7 +4304,11 @@ function wireMetronome() {
   // faders use for their reset.
   vol.addEventListener("dblclick", () => { vol.value = "100"; metroSetVolume(1); });
   document.getElementById("metro-toggle-btn").addEventListener("click", () => {
-    if (Metro.on) metroStop(); else metroStart();
+    if (MetroMode === "drums") {
+      if (Drums.on) drumStop(); else drumStart();
+    } else {
+      if (Metro.on) metroStop(); else metroStart();
+    }
   });
   document.getElementById("metro-subdiv").addEventListener("change", (e) => {
     Metro.subdiv = e.target.value;
@@ -4304,6 +4322,178 @@ function wireMetronome() {
     Metro.click = 0;
   });
   metroRender();
+}
+
+// ---------------------------------------------------------------------------
+// drum-machine-spec.md: a second "mode" of this same practice-pulse section
+// — loops a standard rock beat instead of a plain click. Shares the
+// Metronome's BPM/Start-Stop/Volume controls rather than duplicating them
+// (metroSetMode below swaps which control row is visible), and reuses its
+// look-ahead scheduling idiom verbatim, generalized from "one evenly-spaced
+// click" to "walk a pattern grid of steps, each step firing zero or more
+// sampled drum hits."
+// ---------------------------------------------------------------------------
+
+let MetroMode = "click"; // "click" | "drums"
+
+// Steps are 16th notes except "shuffle", which is a 12-steps-per-bar triplet
+// feel — stepsPerBar has to be data per pattern, not assumed universally, or
+// the shuffle's swing would collapse into straight 16ths.
+const DRUM_PATTERNS = {
+  basicRock:   { stepsPerBar: 16, kick: [0,6,8],    snare: [4,12], hihatClosed: [0,2,4,6,8,10,12,14] },
+  driving:     { stepsPerBar: 16, kick: [0,6,8,14], snare: [4,12], hihatClosed: [0,2,4,6,8,10,12,14] },
+  fourOnFloor: { stepsPerBar: 16, kick: [0,4,8,12], snare: [4,12], hihatClosed: [0,2,4,6,8,10,12,14] },
+  ballad:      { stepsPerBar: 16, kick: [0,6],       snare: [8],    hihatClosed: [0,2,4,6,8,10,12,14] },
+  punk:        { stepsPerBar: 16, kick: [0,6,8],    snare: [4,12], hihatClosed: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15] },
+  shuffle:     { stepsPerBar: 12, kick: [0,6],       snare: [3,9],  hihatClosed: [0,2,3,5,6,8,9,11] },
+};
+
+const DRUM_SAMPLE_FILES = {
+  kick: "drums/kick.wav",
+  snare: "drums/snare.wav",
+  hihatClosed: "drums/hihat_closed.wav",
+  crash: "drums/crash.wav",
+};
+
+const Drums = {
+  on: false, patternId: "basicRock",
+  gain: null, timer: null, nextTime: 0, stepIndex: 0, barCount: 0,
+  buffers: null, buffersPromise: null,
+};
+
+// Same in-flight-build-race guard idiom as ensurePAGraph/ensureLooper/
+// ensureRiffCapture — decodeAudioData is async, so a second call landing
+// before the first's fetch+decode resolves has to reuse the SAME in-flight
+// promise, not kick off a second fetch of every sample.
+async function ensureDrumBuffers() {
+  if (Drums.buffers) return Drums.buffers;
+  if (!Drums.buffersPromise) {
+    Drums.buffersPromise = (async () => {
+      const entries = await Promise.all(
+        Object.entries(DRUM_SAMPLE_FILES).map(async ([name, url]) => {
+          const arr = await (await fetch(url)).arrayBuffer();
+          const buf = await Audio.ctx.decodeAudioData(arr);
+          return [name, buf];
+        })
+      );
+      return Object.fromEntries(entries);
+    })();
+  }
+  Drums.buffers = await Drums.buffersPromise;
+  return Drums.buffers;
+}
+
+function drumStepInterval() {
+  const pattern = DRUM_PATTERNS[Drums.patternId];
+  // The same BPM the Metronome slider drives, read directly rather than
+  // kept as a second copy — the two are never meaningfully different
+  // tempos in practice (see §6 of the spec).
+  return (60 / Metro.bpm) * (4 / pattern.stepsPerBar);
+}
+
+function drumScheduleHit(name, time) {
+  const buf = Drums.buffers && Drums.buffers[name];
+  if (!buf) return; // buffers still loading — this hit is silently skipped, not queued late
+  const src = Audio.ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(Drums.gain);
+  src.start(time);
+  // Reuse the Metronome's beacon for kick/snare only — hihat fires on
+  // nearly every step in most of these patterns, so flashing on it too
+  // would read as flicker rather than a useful downbeat cue.
+  if (name === "kick" || name === "snare") {
+    const delayMs = Math.max(0, (time - Audio.ctx.currentTime) * 1000);
+    setTimeout(() => metroFlash(name === "kick"), delayMs);
+  }
+}
+
+function drumTick() {
+  if (!Drums.on) return;
+  const pattern = DRUM_PATTERNS[Drums.patternId];
+  while (Drums.nextTime < Audio.ctx.currentTime + METRO_LOOKAHEAD_SEC) {
+    if (pattern.kick.includes(Drums.stepIndex)) drumScheduleHit("kick", Drums.nextTime);
+    if (pattern.snare.includes(Drums.stepIndex)) drumScheduleHit("snare", Drums.nextTime);
+    if (pattern.hihatClosed.includes(Drums.stepIndex)) drumScheduleHit("hihatClosed", Drums.nextTime);
+    // One crash, on the very first step of the very first bar only — a real
+    // drummer doesn't crash on every single loop repeat, and this pattern is
+    // meant to loop indefinitely.
+    if (Drums.stepIndex === 0 && Drums.barCount === 0) drumScheduleHit("crash", Drums.nextTime);
+    Drums.nextTime += drumStepInterval();
+    Drums.stepIndex = (Drums.stepIndex + 1) % pattern.stepsPerBar;
+    if (Drums.stepIndex === 0) Drums.barCount++;
+  }
+}
+
+async function drumStart() {
+  if (Drums.on) return;
+  // Flip this immediately (before the await below) rather than after
+  // buffers finish loading — otherwise a Stop click landing while the
+  // first fetch+decode is still in flight would see Drums.on still false
+  // and call drumStart() again instead of actually stopping it.
+  Drums.on = true;
+  metroRender();
+  ensureCtx();
+  if (Audio.ctx.state === "suspended") Audio.ctx.resume();
+  if (!Drums.gain) {
+    Drums.gain = Audio.ctx.createGain();
+    Drums.gain.gain.value = Metro.volume;
+    // Straight to the speakers, NOT through the rig and NOT into
+    // Recorder.recordBus — same reasoning as the plain click: this is a
+    // practice aid, not part of the take, so it stays out of Riff Capture
+    // and any recorded take (drum-machine-spec.md §6).
+    Drums.gain.connect(Audio.ctx.destination);
+  }
+  await ensureDrumBuffers();
+  if (!Drums.on) return; // stopped again while buffers were still loading
+  Drums.stepIndex = 0;
+  Drums.barCount = 0;
+  Drums.nextTime = Audio.ctx.currentTime + 0.06;
+  Drums.timer = setInterval(drumTick, METRO_TIMER_MS);
+  drumTick();
+}
+
+function drumStop() {
+  Drums.on = false;
+  if (Drums.timer) { clearInterval(Drums.timer); Drums.timer = null; }
+  const el = document.getElementById("metro-beacon");
+  if (el) el.classList.remove("beat", "accent");
+  metroRender();
+}
+
+function drumSetPattern(id) {
+  if (!DRUM_PATTERNS[id]) return;
+  Drums.patternId = id;
+  // Restart from the top of the bar rather than partway through the old
+  // pattern's grid at whatever stepIndex happened to be current — the same
+  // "restart the counter on a settings change" idiom metro-subdiv already
+  // uses.
+  Drums.stepIndex = 0;
+  Drums.barCount = 0;
+}
+
+function metroSetMode(mode) {
+  if (mode === MetroMode) return;
+  const wasOn = MetroMode === "drums" ? Drums.on : Metro.on;
+  if (MetroMode === "drums") drumStop(); else metroStop();
+  MetroMode = mode;
+  document.getElementById("metro-mode-click-btn").classList.toggle("active", mode === "click");
+  document.getElementById("metro-mode-drums-btn").classList.toggle("active", mode === "drums");
+  document.getElementById("metro-click-controls").style.display = mode === "click" ? "" : "none";
+  document.getElementById("metro-drum-controls").style.display = mode === "drums" ? "" : "none";
+  document.getElementById("metro-hint").style.display = mode === "click" ? "" : "none";
+  document.getElementById("metro-drum-hint").style.display = mode === "drums" ? "" : "none";
+  // Carry the transport state across the mode switch instead of forcing a
+  // manual Start again — the shared Start/Stop button already reads as "is
+  // the pulse running," and silently stopping it on what's meant to be a
+  // cosmetic switch would be a surprising side effect.
+  if (wasOn) { if (mode === "drums") drumStart(); else metroStart(); }
+  metroRender();
+}
+
+function wireDrumMachine() {
+  document.getElementById("metro-mode-click-btn").addEventListener("click", () => metroSetMode("click"));
+  document.getElementById("metro-mode-drums-btn").addEventListener("click", () => metroSetMode("drums"));
+  document.getElementById("metro-drum-pattern").addEventListener("change", (e) => drumSetPattern(e.target.value));
 }
 
 // ---------------------------------------------------------------------------
@@ -4567,6 +4757,7 @@ Api.get("/api/settings").then((s) => {
 wireRigPresets();
 wireRiffCapture();
 wireMetronome();
+wireDrumMachine();
 wireLooper();
 // #pa-latency-hint lives on the Output card, which moved into Tone Lab
 // along with the rest of #pa-pedalboard — this listener moved with it.

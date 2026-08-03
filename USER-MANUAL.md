@@ -1245,6 +1245,32 @@ much longer than a few bars, very long practice sessions, etc.) hasn't
 been extensively exercised yet. If something behaves oddly, that's
 genuinely useful to report.
 
+### 5.3b Metronome & Drum Machine
+
+The **Metronome** card (Play Along's Riff Capture card, lower half) is
+deliberately independent of the loaded song's tempo — it's for practising
+to a click (or a beat) at whatever speed you choose, not for following a
+backing track. A **Click / Drum kit** switch at the top picks between two
+modes that share the same BPM slider, tap-tempo, Start/Stop button, and
+volume control:
+
+- **Click** — a plain metronome click. "Click on" sets the subdivision
+  (quarter notes, 8th notes, triplets, …), and "Accent every" puts a
+  higher-pitched click on the first of every N beats so the bar is
+  audible without watching the screen.
+- **Drum kit** — loops one of six standard rock beats (Basic Rock, a
+  driving variant, Four-on-the-floor, a half-time Rock Ballad feel, Punk /
+  Fast Rock, and a triplet-feel Shuffle) at the BPM slider's tempo, using a
+  small sampled kit (kick, snare, hi-hat, crash). A crash cymbal marks the
+  very first bar only, not every loop repeat.
+
+Switching modes while the pulse is running carries the tempo and
+play/stop state across rather than requiring a fresh Start — only the
+control row below the shared BPM/volume changes. Like the plain click,
+the drum kit plays straight to your speakers: it's a practice aid, not
+part of the performance, so neither one ends up inside a Riff Capture
+"Save that!" or a recorded Take.
+
 ### 5.4 A/V sync calibration
 
 Consumer webcams have a real pipeline delay (commonly 50–200ms) — video
