@@ -2209,9 +2209,18 @@ const SUGGEST_MAX_CANDIDATES = 500;
 const SUGGEST_TEST_SECONDS = 0.15; // enough samples for a stable ZCR reading
 const SUGGEST_NOISE_SEED = 0x9e3779b9;
 const SUGGEST_CACHE_KEY = "gs_nam_brightness_v1";
-// Measured per-model probe cost, used only to show an ETA. A three-minute
+// Measured per-model probe cost, used only to show an ETA. A multi-minute
 // run with a bare spinner is indistinguishable from a hung one.
-const SUGGEST_MS_PER_MODEL = 350;
+//
+// This is deliberately NOT the 350ms measured over a short run. Timed across
+// a full 500-capture sweep the cost starts near 300ms and settles around
+// 520-545ms — per 50-model block: 352, 279, 294, 462, 530, 516, 545ms, for
+// ~240s over 500. The JS heap grows only 14MB to 53MB across the whole
+// sweep, so this is not a leak; it is the accumulated per-probe
+// OfflineAudioContext and worklet state the browser has not reclaimed yet.
+// The rise flattens out rather than compounding, so the honest number to
+// predict with is the whole-sweep average, not the fast opening blocks.
+const SUGGEST_MS_PER_MODEL = 480;
 // Flush the cache to storage every this many newly-measured captures. At a
 // 500 cap the run is minutes long, and saving only at the end means closing
 // the tab (or a crash) three minutes in throws away every measurement. The
