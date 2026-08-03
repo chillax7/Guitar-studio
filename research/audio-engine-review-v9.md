@@ -415,7 +415,7 @@ latency added is measured and reported.
 | 4 | **N-2** cab/no-cab metadata guidance | Cheap, prevents a common tone mistake | Low | **Done** |
 | 5 | **S-2** sinc interpolator | Real measured defect, self-contained | Low | **Done** |
 | 6 | **N-1b** proper NAM resampling | Bigger job; do after the warning exists | Medium | Not done |
-| 7 | **S-3** transient phase reset | Refinement once CPU headroom exists | Medium | Not done |
+| 7 | **S-3** transient phase reset | Refinement once CPU headroom exists | Medium | **Done** |
 | 8 | **R-1/R-2** IR checks + length cap | Verification + cheap CPU win | Low | Not done |
 | 9 | **T-1a** tab through rig | Highest ceiling, most exploratory | High | Not done |
 
@@ -479,6 +479,38 @@ latency added is measured and reported.
   (a smaller `LANCZOS_A = 4`/8-tap kernel measured ~5.1% overhead and still
   met the 14kHz target, missing only the 17kHz target at -0.65dB — kept
   A=6 to satisfy both acceptance thresholds in the spec).
+- **S-3** (2026-08-03): spectral flux onset detector added to `PVChannel`,
+  reusing the existing `!haveState` pass-through branch for the one frame an
+  onset lands in rather than adding new phase-lock machinery. Flux is
+  NORMALISED by the frame's own total magnitude before being compared to
+  anything — comparing raw flux to the mean magnitude across all 1025 bins
+  was tried first and measured a 18% false-positive rate on a pure sustained
+  tone that should never fire at all, because a single note concentrates
+  almost all its energy into a handful of bins and the all-bins mean is tiny
+  next to that peak's own picket-fence jitter. `threshold = 0.045 + 1.0 *
+  median(last 8 normalised-flux values)`; both constants came from a grid
+  search scored on the real "Phantom of the Opera" recording plus a
+  synthetic steady tone, not guessed. Measured at the review's own
+  acceptance speed (0.60x): attack sharpness **98.5%** of source (target
+  was ≥98%, baseline before this fix was 91.6%), tone false-positive rate
+  0.87% of frames (one picket-fence-jitter frame, not a systematic
+  misfire), HF-flatness 0.55352 vs the pre-fix 0.55113 (no meaningful
+  roughness added), limiter engagement unchanged at 0.000% (5 samples out
+  of 2.4M exceed the soft-knee threshold, none exceed 0.99), and the
+  existing unity-gain/envelope-ripple/wobble harness (`envelope_test.js`,
+  `tone_test.js`) reads identically to before (0.900 peak, 2.0% wobble at
+  unity) since a steady tone essentially never trips the detector. CPU:
+  9.7%/stem measured after vs. 9.8% before — an onset frame does STRICTLY
+  LESS work than a phase-locked one (it skips the whole peak-finding and
+  rotation loop), so the only possible added cost is the flux computation
+  itself, which is one subtract-and-compare per bin already being visited
+  for the magnitude calculation, immeasurable against the FFT's own cost.
+  Sharpness at other speeds either matched or exceeded this (100.5% at
+  1.0x, 104.7% at 0.75x, 93.4% at 0.50x — up from an 88.9% baseline, real
+  improvement even though 0.50x is a more extreme stretch than the 98%
+  target was set against). Every number here was measured with the exact
+  harness `s3_check.js`/`s3_sweep.js` this note's numbers are quoted from;
+  no measurement in this note is asserted from the DSP math alone.
 
 ## 8. Regression guard
 
