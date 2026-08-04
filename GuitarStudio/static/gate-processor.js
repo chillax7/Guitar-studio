@@ -8,7 +8,9 @@
 class GateProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
-      { name: "thresholdDb", defaultValue: -50, minValue: -80, maxValue: 0 },
+      // Real user report: -50dB gated too aggressively for normal playing
+      // dynamics — softer picking/palm-muted passages were getting cut off.
+      { name: "thresholdDb", defaultValue: -75, minValue: -80, maxValue: 0 },
       { name: "attackMs", defaultValue: 2, minValue: 0.1, maxValue: 100 },
       { name: "releaseMs", defaultValue: 150, minValue: 1, maxValue: 2000 },
       { name: "bypass", defaultValue: 0, minValue: 0, maxValue: 1 },
