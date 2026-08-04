@@ -1039,11 +1039,17 @@ async function aiLabScoreTake() {
   hintEl.textContent = "Scoring…";
   resultCard.style.display = "none";
   try {
-    const r = await Api.post("/api/rate/score", {
+    // Real user request: the global spinning-guitar overlay (gsBusy/
+    // withBusy, app.js) should show while a take is being rated, same as
+    // every other long-running job in the app — scoring a full take
+    // against the reference beat-by-beat isn't instant, and the inline
+    // "Scoring…" hint alone is easy to miss since it's below the fold on
+    // a long take list.
+    const r = await withBusy("Rating your take…", () => Api.post("/api/rate/score", {
       source_path: State.track, take_path: takePath,
       model: State.model, stem: guitarStem,
       offset, offset_search: offsetSearch,
-    });
+    }));
     if (typeof questMarkDone === "function") questMarkDone("judge");
     let msg = `Scored ${r.scored_count}/${r.total_count} beats.`;
     if (r.refine) {
