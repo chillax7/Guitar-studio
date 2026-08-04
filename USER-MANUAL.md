@@ -758,18 +758,23 @@ the app name and current-screen label:
   input is enabled; pulses gently while live (this pulse respects your OS's
   reduce-motion setting); switches to a clipped state matching Tone Lab's
   own clip light. Click it to jump straight to Tone Lab.
-- **Theme toggle** — cycles through three looks: **Molten Obsidian** 🔥
-  (the default dark-ember palette), **Bright Spark** ☀️ (its light-mode
-  counterpart — a white/paper background with dark text, same spark-gold
-  accent identity), and **Studio** 🌙 (the original quieter blue-grey
+- **Theme toggle** — cycles through five looks: **Molten Obsidian** 🔥
+  (the default dark-ember palette), **Bright Spark** ☀️ (a bright,
+  light-mode-style palette, same spark-gold accent identity), **Studio**
+  🌙 (the original quieter neutral palette), **Future Metal** ⚙️ (a cool
+  steel/industrial palette), and **Castle Rock** 🏰 (a warm stone
   palette). The button's icon always shows the *current* theme; click it
   to advance to the next one. Purely cosmetic — nothing about how any
-  feature behaves changes, only the color scheme. Your choice is
-  remembered across reloads with no flash of the wrong theme while the
-  page loads. Every themed surface reskins together, including the chord
-  ribbon (Mixer and AI Lab's Scales tab both use the same color as that
-  song's stem waveforms, so chord analysis reads as belonging to the
-  audio it describes) and the stem waveforms themselves.
+  feature behaves changes, only the color scheme (and, in one place,
+  which guitar body shows on the global busy overlay while something's
+  processing: a Les Paul for Studio, a Strat for Bright Spark, an SG for
+  Molten Obsidian, a Flying V for Future Metal, and a lute-style acoustic
+  for Castle Rock). Your choice is remembered across reloads with no
+  flash of the wrong theme while the page loads. Every themed surface
+  reskins together, including the chord ribbon (Mixer and AI Lab's Scales
+  tab both use the same color as that song's stem waveforms, so chord
+  analysis reads as belonging to the audio it describes) and the stem
+  waveforms themselves.
 - **Quest Log** — before you've loaded any track, the right-hand inspector
   panel (where the mixer's usual per-track panels normally live) shows a
   first-use checklist instead: separate a song, mix it, dial in a tone,
@@ -1844,7 +1849,7 @@ For reference:
 
 | Key | Action |
 |---|---|
-| `Space` | Play / Pause |
+| `Space` | Play / Pause — controls Tab View's own playback while Tab View is open, the Mixer's transport otherwise |
 | `L` | Toggle loop |
 | `[` / `]` | Set loop start / end to the current playhead |
 | `M` / `S` | Mute / solo the lane under the mouse |
