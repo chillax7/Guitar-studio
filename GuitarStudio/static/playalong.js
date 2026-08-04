@@ -943,7 +943,12 @@ function paAutoCorrelate(buf, sampleRate) {
   let rms = 0;
   for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
   rms = Math.sqrt(rms / SIZE);
-  if (rms < 0.01) return -1; // too quiet to trust
+  // Real user report: the tuner dropped a plucked string's reading well
+  // before it had actually decayed into silence. 0.01 (~-40dBFS) was
+  // cutting off usable pitch signal early in a normal string's decay tail
+  // — lowered to 0.003 (~-50dBFS) for another ~10dB of decay tracked
+  // before giving up, well clear of a typical room/interface noise floor.
+  if (rms < 0.003) return -1; // too quiet to trust
 
   let r1 = 0, r2 = SIZE - 1;
   const thres = 0.2;

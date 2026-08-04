@@ -2313,12 +2313,23 @@ h3:first-child { margin-top: 0; }
 .pa-tuner-mic-btn:hover { filter: brightness(1.1); }
 .pa-tuner-mic-btn.active { background: var(--success); }
 .pa-tuner-mic-icon { font-size: 42%; line-height: 1; }
+/* Real user report: the arc gauge above this (.pa-tuner-gauge, flex: 1)
+   visibly shifted position every time the status text switched between
+   "Listening…" and a note name, because .reading's bigger font-size
+   changed this element's own height, which changed how much of the
+   fixed-height card the flex:1 gauge got to keep. A fixed height/
+   line-height here (sized for the LARGER .reading state) keeps this row's
+   box constant regardless of which font-size is active, so the gauge
+   above never has to resize to compensate. */
 .pa-tuner-status {
   text-align: center;
   font-size: 15px;
   font-weight: 600;
   color: var(--text-dim);
   margin: 2px 0 8px;
+  height: 34px;
+  line-height: 34px;
+  overflow: hidden;
 }
 .pa-tuner-status.reading { color: var(--text); font-size: 28px; }
 .pa-tuner-readout-row {
