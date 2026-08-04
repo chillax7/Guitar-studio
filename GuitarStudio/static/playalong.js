@@ -251,8 +251,23 @@ async function _buildPAGraph() {
   PA.inAnal = Audio.ctx.createAnalyser();
   PA.inAnal.fftSize = 8192; // GP-01 needs several full cycles of a low guitar E (~82Hz) for accurate autocorrelation
 
+  // Real user report: a multi-channel USB interface (e.g. a 2-in audio
+  // interface where the guitar is plugged into input 2, not input 1) fed
+  // silence through the whole rig despite the input meter correctly
+  // showing signal. Cause: without an explicit channelCountMode, this
+  // node's channelCount:1 is ignored (the WebAudio default mode is "max",
+  // which does NOT downmix), so gate-processor.js's `inputs[0][0]` read
+  // only ever saw channel 0 — silence whenever the live signal arrived on
+  // channel 1. PA.inAnal (the meter) never showed this bug because
+  // AnalyserNode always analyzes a proper mono downmix internally,
+  // regardless of its own channelCount settings — a different node type
+  // with different rules, not evidence the whole graph was already mixing
+  // correctly. "explicit" here makes the browser actually perform the
+  // standard stereo/multi-channel-to-mono downmix (0.5*(L+R) for stereo)
+  // before this worklet ever runs, so it works regardless of which
+  // physical input the interface's live channel is.
   PA.gateNode = new AudioWorkletNode(Audio.ctx, "gate-processor", {
-    numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1,
+    numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: "explicit",
   });
 
   PA.cleanGain = Audio.ctx.createGain();
