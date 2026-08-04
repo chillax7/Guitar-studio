@@ -2984,9 +2984,26 @@ svg.ailab-fretboard { display: block; }
 #gs-busy.show { display: flex; }
 #gs-busy-inner { text-align: center; }
 #gs-busy-guitar {
-  font-size: 64px; line-height: 1;
+  width: 64px; height: 90px; margin: 0 auto;
   animation: gs-busy-rock 1.1s ease-in-out infinite;
 }
+/* Real user request: a distinct guitar body per theme (Les Paul/Strat/SG/
+   Flying V/lute) instead of one fixed emoji — see index.html's comment on
+   #gs-busy-guitar for the full rationale. Every .gs-busy-guitar-svg is
+   present in the DOM at all times; only the one matching the current
+   data-theme is shown, same "hide all but the active one" idiom as the
+   rest of this app's per-theme rules. currentColor ties each body's tint
+   to that theme's own --accent instead of a hardcoded color per icon. */
+.gs-busy-guitar-svg { display: none; width: 100%; height: 100%; color: var(--accent); }
+#gs-busy-guitar-studio { display: block; } /* default/no data-theme */
+:root[data-theme="molten"] #gs-busy-guitar-studio,
+:root[data-theme="brightspark"] #gs-busy-guitar-studio,
+:root[data-theme="futuremetal"] #gs-busy-guitar-studio,
+:root[data-theme="castlerock"] #gs-busy-guitar-studio { display: none; }
+:root[data-theme="molten"] #gs-busy-guitar-molten,
+:root[data-theme="brightspark"] #gs-busy-guitar-brightspark,
+:root[data-theme="futuremetal"] #gs-busy-guitar-futuremetal,
+:root[data-theme="castlerock"] #gs-busy-guitar-castlerock { display: block; }
 #gs-busy-label {
   margin: 14px 0 0; color: var(--text); font-size: 14px;
   text-shadow: 0 1px 4px rgba(0,0,0,0.8);
