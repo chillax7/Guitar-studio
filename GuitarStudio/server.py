@@ -1426,6 +1426,56 @@ def svc_recording_discard_token(token: str) -> dict:
     return {"ok": True}
 
 
+# Neither of .tmp_takes' two file kinds is self-cleaning, so the directory
+# only ever grew:
+#
+#   *.part            a take's streamed bytes. Deliberately NOT deleted when
+#                     a commit fails — finalizeAndUpload's Retry button
+#                     (recorder.js) recovers the take from exactly this file,
+#                     so discarding it on failure would destroy the take the
+#                     retry exists to save. But a tab closed instead of
+#                     retried (or crashed mid-take) orphans it forever, and
+#                     these are full takes — a long video one is GBs.
+#   *.committed.json  the idempotency marker svc_recording_commit writes so a
+#                     retried commit whose first response was lost returns the
+#                     original result instead of a false "No recorded data".
+#                     Written on EVERY successful commit and never removed, so
+#                     this accumulated one small file per recording forever.
+#                     (Found in review with real evidence: two markers from
+#                     weeks earlier still sitting in this repo's own output/.)
+#
+# Swept by age at startup rather than on a timer or at commit time: both
+# files exist precisely to survive a failure that spans requests, so anything
+# shorter-lived than "an app session or several" could delete a file a retry
+# still needs. A week is far longer than any plausible retry gap and still
+# bounds growth.
+TMP_TAKE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
+
+
+def sweep_stale_tmp_takes(max_age_seconds: int = TMP_TAKE_MAX_AGE_SECONDS) -> int:
+    """Delete .tmp_takes entries older than max_age_seconds. Returns the
+    number removed. Never raises — a sweep failure must not stop the server
+    from starting."""
+    swept = 0
+    try:
+        tmp_dir = engine.OUTPUT_DIR / ".tmp_takes"
+        if not tmp_dir.is_dir():
+            return 0
+        cutoff = time.time() - max_age_seconds
+        for entry in tmp_dir.iterdir():
+            if not entry.is_file() or entry.suffix not in (".part", ".json"):
+                continue
+            try:
+                if entry.stat().st_mtime < cutoff:
+                    entry.unlink()
+                    swept += 1
+            except OSError:
+                continue  # in use / permissions — leave it for the next sweep
+    except OSError:
+        return swept
+    return swept
+
+
 STARRED_FILE = ".starred.json"
 
 
@@ -3965,6 +4015,10 @@ def main() -> None:
                               "(default: it shuts itself down a few seconds after the last one does).")
     args = parser.parse_args()
     AUTO_SHUTDOWN_ENABLED = not args.no_auto_shutdown
+
+    swept = sweep_stale_tmp_takes()
+    if swept:
+        print(f"Cleaned up {swept} stale recording temp file(s) from output/.tmp_takes.")
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Guitar Studio server running at http://127.0.0.1:{args.port}/ (Ctrl+C to stop)")

@@ -762,7 +762,7 @@ async function aiLabRmtRefreshTakes() {
     const r = await Api.get(`/api/recordings?track=${encodeURIComponent(State.track)}`);
     takes = (r.takes || []).filter((t) => t.dry);
   } catch (e) {
-    listEl.innerHTML = `<p class="hint">Couldn't load takes: ${e.message}</p>`;
+    listEl.innerHTML = `<p class="hint">Couldn't load takes: ${escapeHtml(e.message)}</p>`;
     aiLabRmtResetResultDisplay();
     return;
   }
