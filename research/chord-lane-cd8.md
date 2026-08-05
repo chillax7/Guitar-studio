@@ -127,20 +127,48 @@ energy. Measuring both populations it has to separate:
 
 | | third / (root+fifth) |
 |---|---|
-| genuine triads and dominant 7ths (synthetic, per chord) | 0.45 – 0.51 |
-| distorted power chords (synthetic, per chord) | 0.06 – 0.07 |
-| distorted power chords (real song, per decoded run) | 0.04 – 0.27 |
+| genuine triads and dominant 7ths (**synthetic**, per chord) | 0.45 – 0.51 |
+| distorted power chords (**synthetic**, per chord) | 0.06 – 0.07 |
+| distorted power chords (**real**, Airbourne, per decoded run) | median 0.15, 75th 0.24, 90th 0.30 |
+| triads and 7ths (**real**, Gary Moore "Empty Rooms", per run) | median 0.32, 25th 0.17, 75th 0.66 |
 
-**0.2 sat inside the real power-chord population.** Seven of that song's 34
+**0.2 sat inside the real power-chord population** — seven of Airbourne's 34
 chord runs measured above it and were wrongly promoted to triads or 7ths.
-0.3 is the midpoint of the empty band between the two populations
-(0.27 → 0.45), leaving genuine thirds a 0.15 margin.
+0.3 sits between the two real medians (0.15 and 0.32).
 
-Note the two populations differ by more than the threshold does: real power
-chords carry far more third-bin energy than synthesised ones, because bleed
-from vocals, lead lines and adjacent chords survives separation. That is
-exactly why a constant tuned against synthetic audio was too tight for real
-audio — and it is the general lesson of this pass.
+> **Correction to this document's first version.** It originally justified
+> 0.3 as "the midpoint of the empty band between the populations
+> (0.27 → 0.45)", where 0.45 came from the *synthetic* triads. That was the
+> same mistake this whole pass exists to warn about, made in the same
+> commit. Real triads are nothing like synthetic ones: Empty Rooms' triad
+> runs have a median third ratio of **0.32**, not 0.45–0.51, and its 25th
+> percentile is 0.17 — well inside where Airbourne's power chords live.
+> **The two real populations overlap.** There is no empty band.
+
+Given that overlap, 0.3 is a trade-off rather than a clean separation, and
+the trade was measured rather than assumed. Power-chord share of beats:
+
+| third ratio | Empty Rooms (triads) | Airbourne (chart says 100% power) |
+|---|---|---|
+| 0.15 | 18% | 51% |
+| 0.20 (old) | 42% | 74% |
+| 0.25 | 43% | 87% |
+| **0.30** | **47%** | **90%** |
+| 0.35 | 55% | 96% |
+
+Moving 0.2 → 0.3 costs Empty Rooms 5 points and gains Airbourne 16, against
+the only chart available. Only 0.15 substantially spares Empty Rooms, and it
+would wreck Airbourne. So 0.3 stands on present evidence — but it is a
+*balance point between two overlapping distributions*, not a safe margin,
+and it is the single least-supported decision in this pass. **A triad-based
+song with a real chord chart settles it; nothing else will.**
+
+The deeper problem this exposes: a fixed global ratio is being asked to
+absorb how distorted and how dense a given recording is, which varies far
+more between songs than between chord types within a song. A per-song
+adaptive threshold (or judging a root's third against that song's own
+third-energy distribution) is the likely direction, but that needs more
+than two songs of evidence before it is worth building.
 
 ## Why four previous passes missed it
 
@@ -192,10 +220,51 @@ minimum-stretch rule fixed it.
   synthetic case returns 2 chips where 4 were played; both labels are
   correct, but the second alternation is merged away. A direct consequence
   of the two-bar minimum, and the price of the flicker fix.
-- **One song.** Every number above comes from one chart. The threshold move
-  is justified by the measured gap between populations rather than by that
-  song's score, but a second and third chart would make it much stronger.
+- **One chart.** Accuracy numbers come from a single annotated song. The
+  threshold discussion above says how far that goes and where it stops.
   `chord_bench.py` takes any song plus a truth file; adding one is cheap.
+
+## Generalization check, without charts
+
+`scripts/chord_ab.py` runs both decodes over identical cached chroma and
+reports the chart-free signal: the share of chord changes where the root did
+not change and only the label did. Real music changes chord by changing
+chord, so that share is a defect rate whatever the song.
+
+| song | version | chips | mean run | quality-only changes |
+|---|---|---|---|---|
+| Airbourne — Too Much, Too Young, Too Fast | v14 | 89 | 4.7 | 29 (**33%**) |
+| | CD-8 | 35 | 11.9 | 1 (**3%**) |
+| Gary Moore — Empty Rooms | v14 | 111 | 5.2 | 21 (**19%**) |
+| | CD-8 | 67 | 8.5 | 1 (**1.5%**) |
+
+Two different songs, two very different styles, same result: the flicker is
+gone and the ribbon roughly halves. Importantly this part is
+**threshold-independent** — Empty Rooms draws 67 chips at *every* value of
+CHORD_POWER_THIRD_ABSENCE_RATIO from 0.15 to 0.35, because the threshold
+only renames chords, it does not segment them. So the segmentation and
+flicker wins belong entirely to the architecture change and carry no part of
+the threshold's uncertainty.
+
+Empty Rooms' distinct-name count went UP (15 → 18) while its chip count
+halved. That is consistent with real chord variety surfacing once runs stop
+fragmenting, but with no chart it cannot be confirmed either way.
+
+Two further songs (Avenged Sevenfold "Afterlife", Iron Maiden "Phantom of
+the Opera") were queued and did **not** complete — the front-end cache build
+on the longer of them ran past an hour and the job hit its timeout. Both are
+power-chord metal, i.e. the same direction as Airbourne and the least
+informative of the four, so this was not pursued further. If they are ever
+run, note that building a cache for a ~7-minute track is very slow and wants
+its own generous timeout.
+
+> Methodology note, recorded because it bit twice in one session: waiting on
+> that job with `pgrep -f chord_ab.py` was useless, because the waiting
+> shell's OWN command line contains that string, so the pattern always
+> matched itself and the wait could never end. The same self-match wasted a
+> measurement earlier in this project (`pgrep -f "/opt/pw-browsers/chromium"`
+> matching the agent's own command line during the tone-search leak hunt).
+> Match on `ps -eo args` with an explicit exclusion, or on a pidfile.
 
 ## Tools left behind
 
