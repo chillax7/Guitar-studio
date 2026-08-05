@@ -1,4 +1,12 @@
-# CD-8 — the chord ribbon is too detailed and doesn't follow the chords
+# CD-8 / CD-9 — the chord ribbon is too detailed and doesn't follow the chords
+
+> **Read CD-9 first (bottom of this file).** CD-8 was tuned against a single
+> chord chart, for a song that is 100% power chords. The moment a chart for a
+> song with *zero* power chords arrived, CD-8 turned out to have nearly
+> doubled an error in the one direction its benchmark could not see. CD-9 is
+> the correction. The CD-8 sections below are kept as written because the
+> mistake is the most useful thing in this document.
+
 
 Real-user report, third time on this feature: *"it's still too detailed and
 doesn't follow the chords properly."* Previous passes (CD-1 Viterbi
@@ -274,3 +282,127 @@ its own generous timeout.
 | `scripts/chord_sweep.py` | caches the expensive chroma front end once, then re-runs the decode for many parameter combinations in seconds |
 | `scripts/chord_regression.py` | five synthetic cases; must stay green |
 | `research/chord-truth/*.json` | ground-truth charts |
+
+---
+
+# CD-9 — the correction, from a chart with no power chords in it
+
+CD-8 shipped on one chart. That chart (Airbourne) is **100% power chords**,
+so it could measure one error — calling a power chord a triad — and was
+structurally blind to the opposite one. Predictably, that is where the
+damage was.
+
+## The second chart
+
+Gary Moore, *Empty Rooms*. Key Dm, 99 bpm, thirteen chord shapes:
+Dm, C/D, Bb, C/Bb, C, F, Gm, Am, G, Em, E, Bb/D, D. **Not one power chord.**
+Slash chords are scored as their upper triad (C/D → C), since the ribbon has
+no slash vocabulary and naming the upper structure is the right answer for it.
+
+Stored as `research/chord-truth/gary-moore-empty-rooms.json`.
+
+Scored against it (power-chord share of beats; the chart says 0%):
+
+| | Airbourne "5" share (chart 100%) | Empty Rooms "5" share (chart 0%) |
+|---|---|---|
+| v14 (before any of this) | 52% | 27% |
+| **CD-8** | 90% | **47%** |
+| **CD-9** | **94%** | **32%** |
+
+CD-8 nearly doubled the false-power-chord rate on triad material. It looked
+like an unqualified win only because the one song being measured had no
+triads in it to get wrong.
+
+## What was actually wrong with CD-8
+
+CD-8's own fix — decide quality once per root run — was right. Its mistake
+was *how* it decided: it ran the gates per beat and then let the min-run rule
+majority-vote the result across the run. That takes the weakest evidence in
+the whole pipeline (one quiet chroma bin, over 0.5 s) and turns a near-tie
+into a confident, whole-run answer.
+
+CD-9 separates two questions that want answering at different timescales:
+
+| question | kind | decided |
+|---|---|---|
+| is a third / a b7 present at all? | **detection** of a weak signal | **once per run**, on the run's aggregated (median) chroma |
+| major or minor? | **choice** between two strong alternatives | per beat, held to a two-bar minimum |
+
+Integration is what a weak-signal detection needs and a majority vote is a
+poor substitute for it. With that split, the per-beat gates disappear
+entirely, and with them CD-8's `CHORD_GATE_PENALTY` — the finite-penalty
+mechanism only existed to soften a per-beat veto that no longer happens.
+
+Also measured and **rejected**: a background-relative third test (third
+energy vs the median of that root's non-chord-tone bins), which self-
+calibrates to how dense a mix is. It scored 80.4 against the simple ratio's
+81.2 — no better, and more machinery. Recorded so nobody re-derives it.
+
+## The threshold, set honestly this time
+
+`CHORD_POWER_THIRD_ABSENCE_RATIO` has now been set three times, twice badly:
+
+- **0.2** — from synthetic audio.
+- **0.3** (CD-8) — justified as the midpoint of an "empty band" between
+  synthetic triads (0.45–0.51) and real power chords (0.04–0.27). The 0.45
+  came from a synthesizer. Real triads sit at a median of **0.32** with a
+  25th percentile of **0.17** — on top of where real power chords live.
+  **The two real populations overlap; there is no empty band.**
+- **0.25** (CD-9) — not a separation point but a *balance* point, measured
+  against both charts at once:
+
+| ratio | Airbourne "5" (want 100%) | Empty Rooms "5" (want 0%) |
+|---|---|---|
+| 0.15 | 69% | 16% |
+| 0.20 | 83% | 23% |
+| **0.25** | **94%** | **32%** |
+| 0.30 | 97% | 43% |
+| 0.40 | 97% | 64% |
+
+Tuned on the power-chord song alone this drifts up; on the triad song alone
+it would drift down just as wrongly. **Do not move it against one song.**
+
+`CHORD_SEVENTH_ABSENCE_RATIO` was deliberately **left at 0.2**, even though
+raising it visibly cleaned up both benchmark songs — because both charts
+contain zero dominant sevenths, so that evidence can only push it one way.
+That is the same overfit one constant up. Hotel California uses F# and F#7 in
+the same song and is the case that settles it; its chart is already in
+`research/chord-truth/`, its audio is not.
+
+## Where CD-9 leaves the feature
+
+| | Airbourne | Empty Rooms |
+|---|---|---|
+| chips | 89 → **34** (chart ~30 changes) | 111 → **67** |
+| distinct names | 19 → **7** (chart has 5) | 15 → 19 (chart has 10) |
+| quality-only flicker | 29 → **0** | 21 → **1** |
+| power-chord share | 52% → **94%** (chart 100%) | 27% → **32%** (chart 0%) |
+| roots | all correct, no phantoms | all correct, no phantoms |
+
+**The root layer is solid on both songs and always has been.** Every
+remaining error is quality. On Airbourne the ribbon is now nearly right. On
+Empty Rooms it is much more readable than v14 and much less flickery, but a
+third of its chips still claim a power chord that is not there — worse than
+v14's 27% on that one metric, better than CD-8's 47%.
+
+That is the honest state: CD-9 is a large net improvement and an incomplete
+fix, and the incompleteness is concentrated in exactly one place.
+
+## Known confound in the Empty Rooms numbers
+
+They come from **surrogate stems**, not Demucs (weights are blocked by this
+environment's egress policy). `chord_bench.fabricate_stems` splits the mix
+with HPSS plus a **200 Hz crossover**, calling everything below it "bass".
+
+An open Dm voicing has its root at D3 = **147 Hz**. So the surrogate is
+feeding the low half of the rhythm guitar into the bass stem — which chord
+identity deliberately excludes — while real separation would keep the whole
+guitar in `other`. That should hurt a low-voiced ballad far more than
+high-voiced power chords, i.e. it biases the Empty Rooms numbers in exactly
+the direction of the remaining error.
+
+The false power chords are spread through the song (38% / 39% / 18% across
+thirds) rather than clustered in the solos, so lead-guitar bleed is not the
+main cause; the crossover is the better suspect. **Real stems for Empty
+Rooms would settle how much of the residual 32% is the algorithm and how
+much is my test rig.**

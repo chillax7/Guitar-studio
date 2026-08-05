@@ -661,12 +661,20 @@ reason the lane used to look busier than the music. A chord you hold for
 eight bars is now one chip that says one thing, and its name can only
 change part-way through if a good two bars of the audio genuinely disagree.
 Measured against a published chord chart for a song whose verses hold a
-single A5 throughout, this took the ribbon from 89 chips to 35 (the chart
+single A5 throughout, this took the ribbon from 89 chips to 34 (the chart
 has about 30 chord changes), cut the chord changes that were really just a
-label flipping on an unchanging chord from a third of all of them to 3%,
-and drew each verse as one 35-second chip instead of eleven. Chord *names*
-are still the weaker half — the ribbon may write A where the chart says A5
-— but the roots and the change points are now reliable.
+label flipping on an unchanging chord from a third of all of them to none
+at all, and drew each verse as one 35-second chip instead of eleven.
+
+**Roots are the reliable half; names are not.** Checked against two
+published chord charts — one song built entirely from power chords, one
+built entirely from triads — the ribbon got every chord *root* right on
+both, with no invented roots. But telling a power chord from a full chord
+means hearing the third, which is one quiet note that distortion, other
+instruments and the singer all land on top of. On the all-triad song about
+a third of the chips still read as power chords (A5 where the chart says
+A). So: trust the ribbon for where the chords change and what the root is,
+and treat the 5 / m / 7 suffix as a suggestion to confirm by ear.
 
 **Known rough edges:** a song built over
 a **constant droning note** (a sitar or bagpipe holding the tonic under

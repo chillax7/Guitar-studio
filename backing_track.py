@@ -188,7 +188,27 @@ ANALYSIS_FILE = "analysis.json"
 # distinct chords to 6 against a chart of 5, and the two verses came back as
 # single 35-second A5 chips, which is what the chart says they are. Also
 # raises CHORD_POWER_THIRD_ABSENCE_RATIO 0.2 to 0.3 — see that constant.
-ANALYSIS_VERSION = 16
+# v16 ("Empty Rooms" pass — CD-9): the correction to CD-8, from the first
+# chord chart of a song with NO power chords in it (Gary Moore, "Empty
+# Rooms" — 13 shapes, all triads and slash chords). CD-8 labelled 47% of its
+# beats as power chords; the pre-CD-8 code labelled 27%. So CD-8, tuned only
+# against an all-power-chord song, had nearly doubled an error in the one
+# direction its single benchmark could not see. Two fixes, both structural:
+# (a) "is a third (or a b7) present at all" is now decided ONCE per root run
+# from the run's aggregated chroma, instead of per beat and then effectively
+# majority-voted — that question is detection of a weak signal and wants
+# integration, whereas major-vs-minor is a choice between two strong
+# alternatives and stays per-beat (see _name_root_runs); (b) with the
+# per-beat gates gone, the CD-8 gate-penalty mechanism is gone with them.
+# CHORD_POWER_THIRD_ABSENCE_RATIO moves 0.3 -> 0.25, now chosen as a balance
+# point measured against BOTH charts (one song 100% power chords, one 0%)
+# rather than a separation point derived from synthetic audio — the two real
+# populations overlap and no threshold separates them. Measured: Airbourne
+# 89 chips/19 names -> 34/7 (chart has 5) with power-chord share 52% -> 94%
+# (chart 100%); Empty Rooms 111 chips -> 67 with quality-only flicker 21 -> 1,
+# though its power-chord share is still 32% against a chart of 0%, which is
+# the largest known remaining error in this feature.
+ANALYSIS_VERSION = 17
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -556,24 +576,35 @@ CHORD_CONFIDENCE_FLOOR = 0.5  # below this, report "no chord" rather than a gues
 # are genuinely near-silent does "5" get to compete at all (see
 # detect_chords). One constant, tuned against real riffs during CD-5.
 #
-# CD-8 raised this from 0.2 to 0.3 on a measurement, not a preference. With
-# a real all-power-chord song (Airbourne, "Too Much, Too Young, Too Fast")
-# and its published chord chart as ground truth, the ratio was measured on
-# both populations the threshold has to separate:
+# This constant has now been set three times, and the history is worth
+# keeping because two of those three were set badly.
 #
-#   genuine triads and dominant 7ths   0.45 – 0.51   (synthetic, per chord)
-#   distorted power chords, synthetic  0.06 – 0.07
-#   distorted power chords, real song  0.04 – 0.27   (per decoded chord run)
+# 0.2 originally, from synthetic audio. CD-8 raised it to 0.3, justified as
+# "the midpoint of the empty band" between synthetic triads (0.45-0.51) and
+# real power chords (0.04-0.27). That reasoning was wrong: the 0.45 came from
+# a SYNTHESIZER, and real triads look nothing like one. CD-9 measured a real
+# all-triad song (Gary Moore, "Empty Rooms", chart says zero power chords)
+# and found its triad runs at a median of 0.32 with a 25th percentile of
+# 0.17 — squarely on top of where real power chords live. The two real
+# populations OVERLAP. There is no empty band, and no value of this constant
+# separates them cleanly.
 #
-# 0.2 sat INSIDE the real power-chord population — 7 of that song's 34 chord
-# runs measured above it and were wrongly promoted to triads/7ths. 0.3 is the
-# midpoint of the empty band between the two populations (0.27 to 0.45), so it
-# still leaves genuine thirds a 0.15 margin. Note the two populations are
-# measured differently on purpose: real power chords carry far more third-bin
-# energy than a synthesizer's do (bleed from vocals, lead lines and adjacent
-# chords survives separation), which is exactly why a threshold set against
-# synthetic audio was too tight for real audio.
-CHORD_POWER_THIRD_ABSENCE_RATIO = 0.3
+# So 0.25 is not a separation point, it is a balance point, chosen by
+# measuring both errors against two charts that bracket the problem — one
+# song that is 100% power chords, one that is 0%:
+#
+#   ratio   Airbourne "5" share      Empty Rooms "5" share
+#           (chart: 100%)            (chart: 0%)
+#   0.15         69%                      16%
+#   0.20         83%                      23%
+#   0.25         94%                      32%     <- best balanced error
+#   0.30         97%                      43%
+#   0.40         97%                      64%
+#
+# Both charts matter here: tuned on the power-chord song alone this drifts
+# up (CD-8's mistake), and on the triad song alone it would drift down just
+# as wrongly. Do not move it against one song.
+CHORD_POWER_THIRD_ABSENCE_RATIO = 0.25
 
 # CD-5 real-song fix ("Mull of Kintyre" pass): the "7" (dominant seventh) template is a
 # strict superset of "maj" — the same 0,4,7 plus a b7 — so, exactly like the
@@ -590,25 +621,16 @@ CHORD_POWER_THIRD_ABSENCE_RATIO = 0.3
 # weak and HPSS/CQT suppress it further), while a real dominant-7 voicing
 # puts the played b7 well above this — clean separation. Tunable against real
 # 7-heavy blues/rock material.
-CHORD_SEVENTH_ABSENCE_RATIO = 0.2
-
-# CD-8: how much a gated-out template loses, instead of being vetoed
-# outright. Both gates above used to set a suppressed score to -1.0 — below
-# the whole possible range of a cosine similarity between non-negative
-# vectors — which made them absolute: no amount of accumulated evidence
-# either side of a beat could overrule one beat's threshold crossing. That
-# turned out to be a bug rather than a safety margin. A held, unchanging
-# power chord whose third-bin ratio sits near the threshold crosses it back
-# and forth on ordinary distortion harmonics, and each crossing FORCED a
-# different chord name; measured against a real chord chart, a third of
-# every chord change the ribbon drew was this and nothing else.
 #
-# 0.35 keeps a gate decisive where the evidence is local — cosine scores
-# between competing templates on the same root typically differ by 0.05 to
-# 0.15, so the gate still comfortably wins a single beat — while leaving it
-# finite, so the sticky quality decode in _name_root_runs can overrule an
-# isolated crossing surrounded by beats that disagree with it.
-CHORD_GATE_PENALTY = 0.35
+# CD-9 deliberately did NOT retune this, even though raising it visibly
+# cleaned up both benchmark songs. Both of those charts contain zero
+# dominant sevenths, so that evidence can only ever push this constant
+# upward — a sample that can express one of the two errors is not a
+# calibration, it is the same overfit CD-8 made with the third ratio one
+# constant up. Eagles' "Hotel California" is the case that settles it: it
+# uses F# and F#7 in the same song, so it can push this in both directions.
+# Chart is already in research/chord-truth/; the audio is not.
+CHORD_SEVENTH_ABSENCE_RATIO = 0.2
 
 # CD-8: how much sustained disagreement it takes to change QUALITY part-way
 # through a single decoded root run — expressed as beats, because that is
@@ -712,81 +734,51 @@ def _apply_bass_root_bonus(scores: "np.ndarray", bass_window_chroma: "np.ndarray
     scores[CHORD_TEMPLATE_ROOT_PC == bass_root_pc] += CHORD_BASS_ROOT_BONUS
 
 
-def _gate_power_chord_scores(scores: "np.ndarray", window_chroma: "np.ndarray") -> None:
-    """CD-2 (real-song fix): a third-present/absent gate has to cut both
-    ways, not just one. The original version of this only ever suppressed
-    "5" when a third WAS present — it never stopped maj/min/7 from
-    winning anyway when a third was genuinely ABSENT. That looked fine on
-    synthetic tests (a bare root+fifth vector has nothing else to match),
-    but on real distorted-guitar audio a bare power chord still carries
-    incidental harmonic/distortion energy near a flat 7th (an
-    intermodulation artifact of playing a root and its fifth through
-    distortion, not a played note) — so the "7" template (root, 3rd, 5th,
-    b7), being a superset of "5"'s two bins plus that one, kept
-    out-scoring "5" even with zero actual third. Real user report: power
-    chords showing up as "7" almost everywhere instead of "5". Fixed by
-    making the gate symmetric: when a root's third is genuinely absent,
-    every OTHER template that root could compete under (maj/min/7, all of
-    which require a 3rd) gets suppressed too, so "5" wins outright instead
-    of merely being allowed to compete.
+def _third_is_present(window_chroma: "np.ndarray", root_pc: int) -> bool:
+    """CD-2, re-aimed by CD-9: does this root actually have a third being
+    played, or is it a bare root+fifth power chord?
 
-    window_chroma MUST be the pre-log-compression (raw, linear) chroma
-    window, not the compressed one template matching uses — this is a
-    ratio test, and log compression (CD-3) inflates a small bin's
-    apparent share of a large bin's energy well past its real physical
-    proportion (measured: ~15% real harmonic bleed at the 3rd reads as
-    ~19% after log1p(10x), nearly tripping this gate's 20% threshold —
-    see _compute_chord_chroma's docstring). Normalization doesn't matter
-    (ratios are scale-invariant), only the log compression does.
+    A bare root+fifth is a strict subset of both the maj and min templates,
+    so as a candidate it cosine-matches almost anything they do. Real power
+    chords are common on distorted guitar specifically because there IS no
+    third at all, not because it is merely quiet — so this is not a
+    relative-confidence question but a presence check: at this root, does
+    either third bin hold at least CHORD_POWER_THIRD_ABSENCE_RATIO of the
+    root+fifth energy?
 
-    CD-8 changed the suppression from a -1.0 sentinel (below every real
-    template's possible range, so a gated candidate could never win at all)
-    to subtracting CHORD_GATE_PENALTY — see that constant for why an
-    absolute veto was itself a bug. The sentinel's other job, keeping a
-    gated candidate from beating the N/no-chord state, is no longer this
-    function's problem: N is decided in the ungated root stage, and by the
-    time these gates run the root is already settled and only its quality is
-    in question."""
-    for root_pc in range(12):
-        root_fifth_energy = window_chroma[root_pc] + window_chroma[(root_pc + 7) % 12]
-        idx5 = CHORD_POWER_TEMPLATE_INDEX[root_pc]
-        if root_fifth_energy <= 0:
-            scores[idx5] -= CHORD_GATE_PENALTY
-            continue
-        minor3 = window_chroma[(root_pc + 3) % 12]
-        major3 = window_chroma[(root_pc + 4) % 12]
-        threshold = CHORD_POWER_THIRD_ABSENCE_RATIO * root_fifth_energy
-        third_present = minor3 >= threshold or major3 >= threshold
-        if third_present:
-            scores[idx5] -= CHORD_GATE_PENALTY
-        else:
-            for quality in CHORD_QUALITY_INTERVALS:
-                if quality == "5":
-                    continue
-                scores[CHORD_TEMPLATE_INDEX[(KEY_NOTE_NAMES[root_pc], quality)]] -= CHORD_GATE_PENALTY
+    window_chroma MUST be the pre-log-compression (raw, linear) chroma, not
+    the compressed one template matching uses — this is a ratio test, and
+    log compression (CD-3) inflates a small bin's apparent share of a large
+    bin's energy well past its real physical proportion (measured: ~15%
+    real harmonic bleed at the 3rd reads as ~19% after log1p(10x)). It also
+    MUST be the non-bass chroma: a bass note is near-pure root energy and
+    inflates root+fifth until a genuinely-played third falls below any
+    threshold, which is what used to turn honest triads into power chords on
+    every song with a bass.
+
+    CD-9 additionally requires it to be a whole RUN's aggregated chroma, not
+    one beat's — see _name_root_runs for why that matters so much."""
+    root_fifth_energy = window_chroma[root_pc] + window_chroma[(root_pc + 7) % 12]
+    if root_fifth_energy <= 0:
+        return False
+    third = max(window_chroma[(root_pc + 3) % 12], window_chroma[(root_pc + 4) % 12])
+    return third >= CHORD_POWER_THIRD_ABSENCE_RATIO * root_fifth_energy
 
 
-def _gate_seventh_chord_scores(scores: "np.ndarray", window_chroma: "np.ndarray") -> None:
-    """CD-5 real-song fix (see CHORD_SEVENTH_ABSENCE_RATIO): the same superset problem the
-    power-chord gate solves, one template up. "7" (0,4,7,10) is "maj" (0,4,7)
-    plus a b7, so it out-scores plain "maj" on any incidental b7 energy — and
-    the bass supplies exactly that (its root's 7th partial lands near the b7),
-    turning honest major triads into dominant 7ths across a whole song. A
-    genuinely-played seventh shows up in the chord instruments, so this — like
-    the third-presence gate above — takes the NON-bass chroma: "7" is
-    suppressed for a root (so maj/min win) unless that root's b7 bin holds at
-    least CHORD_SEVENTH_ABSENCE_RATIO of its root+fifth energy. Same
-    CHORD_GATE_PENALTY the power gate applies, for the same reasons.
-    Must run on the same non-bass raw chroma the power gate uses."""
-    for root_pc in range(12):
-        root_fifth_energy = window_chroma[root_pc] + window_chroma[(root_pc + 7) % 12]
-        idx7 = CHORD_TEMPLATE_INDEX[(KEY_NOTE_NAMES[root_pc], "7")]
-        if root_fifth_energy <= 0:
-            scores[idx7] -= CHORD_GATE_PENALTY
-            continue
-        b7 = window_chroma[(root_pc + 10) % 12]
-        if b7 < CHORD_SEVENTH_ABSENCE_RATIO * root_fifth_energy:
-            scores[idx7] -= CHORD_GATE_PENALTY
+def _seventh_is_present(window_chroma: "np.ndarray", root_pc: int) -> bool:
+    """CD-5, re-aimed by CD-9: the same presence question one template up.
+
+    "7" (0,4,7,10) is "maj" (0,4,7) plus a b7, so it out-scores plain "maj"
+    on any incidental b7 energy even when nobody played a seventh. The usual
+    source of that phantom b7 is the BASS — a bass root's 7th partial lands
+    near the b7 — which is why this, like the third check, runs on the
+    non-bass raw chroma: a played seventh shows up in the chord instruments.
+
+    Same raw/non-bass/whole-run requirements as _third_is_present."""
+    root_fifth_energy = window_chroma[root_pc] + window_chroma[(root_pc + 7) % 12]
+    if root_fifth_energy <= 0:
+        return False
+    return window_chroma[(root_pc + 10) % 12] >= CHORD_SEVENTH_ABSENCE_RATIO * root_fifth_energy
 
 
 def _decode_root_sequence(root_scores: "np.ndarray") -> "np.ndarray":
@@ -880,29 +872,32 @@ def _name_root_runs(states: "np.ndarray", main_windows: list, gate_windows_raw: 
     a run's worth of audio is simply much better evidence about a quiet third
     than 0.5 seconds of it is.
 
-    The run's chroma is reduced by MEDIAN across its beats, not sum. A sum
-    lets a handful of atypical beats (a vocal phrase landing on the third, a
-    passing tone, a cymbal wash that survived HPSS) drag the whole run's
-    ratio test across a gate threshold; a median asks what the chord looks
-    like on a TYPICAL beat of the run, which is the question the gates were
-    designed around.
+    CD-9 then split that into two questions that want answering at different
+    timescales, because answering both per beat is what made CD-8 turn a
+    third of a no-power-chord song into power chords:
 
-    A whole-run median alone is not enough, though, because it is not robust
-    to a run that genuinely contains two qualities: on a held A that really
-    alternates A major and A minor, the median of the major-third bin and
-    the median of the minor-third bin are BOTH low (each is near zero for
-    half the beats), so the run reads as a thirdless power chord — a wrong
-    answer neither half of the run supports.
+      "is a third (or a b7) present at all?"  — DETECTION of a weak signal.
+          The third is one quiet bin that distortion, bleed, a passing vocal
+          and the next chord ringing over all land on. A single 0.5s beat is
+          simply not enough evidence, so this is decided ONCE per run from
+          the run's aggregated chroma, where averaging pulls the third up
+          out of the noise. Median rather than sum across the run's beats: a
+          sum lets a handful of atypical beats drag the ratio across the
+          threshold, a median asks what the chord looks like on a TYPICAL
+          beat, which is the question the ratio was calibrated against.
 
-    So quality is decided per beat and then held to a minimum stretch: each
-    beat picks its best-fitting quality for the already-settled root, and
-    any contiguous stretch shorter than CHORD_MIN_QUALITY_RUN_BEATS is
-    absorbed into whichever neighbouring quality fits it better. In practice
-    that returns a single quality for the whole run — the flicker fix — while
-    still letting a sustained, decisive change part-way through split it,
-    which is the real musical event a plain median throws away. This only
-    works because CD-8 also made the gates a finite penalty rather than an
-    absolute veto — see CHORD_GATE_PENALTY."""
+      "major or minor?"  — CHOICE between two strong, mutually exclusive
+          alternatives, each with a whole bin of its own. Decided per beat
+          and then held to CHORD_MIN_QUALITY_RUN_BEATS, so a sustained
+          major-to-minor move on a held root still splits the run while a
+          few stray beats cannot flip its name.
+
+    CD-8 answered the detection question per beat too, and then effectively
+    majority-voted it across the run. That turns a near-tie on the weakest
+    available evidence into a confident, whole-run answer — and measured
+    against a chart with no power chords in it at all, it labelled 47% of
+    beats as power chords where the per-beat/run split above gives 32%.
+    (Both numbers are still too high; see research/chord-lane-cd8.md.)"""
     labels = [None] * len(states)
     for start, end, state in _root_runs(states):
         if state == 12:  # the N (no confident chord) state
@@ -910,20 +905,30 @@ def _name_root_runs(states: "np.ndarray", main_windows: list, gate_windows_raw: 
                 labels[i] = (None, "N")
             continue
 
-        cols = np.where(CHORD_TEMPLATE_ROOT_PC == state)[0]
+        root = KEY_NOTE_NAMES[state]
+        run_raw = np.median(np.array(gate_windows_raw[start:end]), axis=0)
+
+        if not _third_is_present(run_raw, state):  # CD-2 — power chord
+            for i in range(start, end):
+                labels[i] = (root, "5")
+            continue
+
+        qualities = ["maj", "min"]
+        if _seventh_is_present(run_raw, state):  # CD-5
+            qualities.append("7")
+        cols = [CHORD_TEMPLATE_INDEX[(root, q)] for q in qualities]
+
         run_scores = np.zeros((end - start, len(cols)))
         for k, i in enumerate(range(start, end)):
             window = main_windows[i]
             norm = np.linalg.norm(window)
             scores = CHORD_TEMPLATE_MATRIX @ (window / norm if norm > 0 else window)
-            _gate_power_chord_scores(scores, gate_windows_raw[i])   # CD-2
-            _gate_seventh_chord_scores(scores, gate_windows_raw[i])  # CD-5
             run_scores[k] = scores[cols]
 
         picks = _enforce_min_run(list(np.argmax(run_scores, axis=1)), run_scores,
                                  CHORD_MIN_QUALITY_RUN_BEATS)
         for k, i in enumerate(range(start, end)):
-            labels[i] = CHORD_TEMPLATE_LABELS[int(cols[int(picks[k])])]
+            labels[i] = CHORD_TEMPLATE_LABELS[cols[int(picks[k])]]
     return labels
 
 

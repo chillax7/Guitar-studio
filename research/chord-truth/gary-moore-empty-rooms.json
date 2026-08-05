@@ -1,0 +1,16 @@
+{
+  "title": "Gary Moore - Empty Rooms",
+  "source": "Ultimate Guitar official chord chart (user-supplied PDF)",
+  "key": "Dm",
+  "bpm": 99,
+  "chords": ["Dm", "C", "A#", "F", "Gm", "Am", "G", "Em", "E", "D"],
+  "notes": [
+    "ZERO power chords in the entire chart. Every chord is a triad or a slash chord over a triad. This is the counterpart to the Airbourne song (which is all power chords) and the direct test of CHORD_POWER_THIRD_ABSENCE_RATIO: any '5' the pipeline emits here is wrong.",
+    "The chart's 13 shapes are Dm, C/D, Bb, C/Bb, C, F, Gm, Am, G, Em, E, Bb/D, D. Slash chords are reduced to their upper triad for scoring, because the chord ribbon has no slash vocabulary and naming the upper structure is the right answer for it: C/D -> C, C/Bb -> C, Bb/D -> Bb.",
+    "Bb is written A# here because the app names pitch classes with sharps (KEY_NOTE_NAMES).",
+    "Distinct roots: D, C, A#, F, G, A, E - seven.",
+    "Body of the song is a Dm - C/D vamp; pre-chorus F C Gm Bb C Dm; chorus C Gm Bb C Dm; solos move through Am F G Em / Am F G C / G F Dm E.",
+    "Contains no dominant sevenths, so it does not exercise the CD-5 seventh gate - Hotel California's F#7 does."
+  ],
+  "sections": []
+}

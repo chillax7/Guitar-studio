@@ -1,0 +1,16 @@
+{
+  "title": "Eagles - Hotel California",
+  "source": "Ultimate Guitar official chord chart (user-supplied PDF)",
+  "key": "Bm",
+  "bpm": 74,
+  "chords": ["Bm", "F#", "A", "E", "G", "D", "Em", "F#7"],
+  "notes": [
+    "AUDIO NOT YET SUPPLIED - this truth file is ready, the mp3 is not. Nothing has been scored against it.",
+    "Zero power chords, so like Empty Rooms any '5' emitted is wrong.",
+    "Contains a genuine dominant seventh (F#7) that recurs throughout - the only real-song test of the CD-5 seventh gate we have. F# also appears as a plain major triad in the same song, so this song tests BOTH directions of that gate: F# must not become F#7, and F#7 must not become F#.",
+    "Progression is Bm F# A E / G D Em F#7 - eight distinct chords, richer than either other chart.",
+    "Also the reference case for BT-03b key detection: the song is B minor but Bm is the RAREST chord in the loop, so 'most frequent root' fails and profile correlation is required. Detected key should read B minor.",
+    "Distinct roots: B, F#, A, E, G, D - six."
+  ],
+  "sections": []
+}
