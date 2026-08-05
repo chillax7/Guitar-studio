@@ -647,3 +647,16 @@ captures. This section guards that fix.
 - [ ] **No stray iframes:** after a run finishes, is cancelled, or errors, there is no leftover hidden iframe on the page (DevTools → Elements, search for `probe-blank`). Check the error path too, e.g. by running Suggest with no track loaded.
 - [ ] **The live rig is unaffected:** switching NAM captures normally in Tone Lab still loads instantly and doesn't accumulate memory across many switches (this path uses one long-lived node and was measured clean — it must stay that way).
 - [ ] **A single probe still works:** loading one NAM capture normally still reports its speed/refusal correctly (paLoadNamModel's own probe deliberately stays in the main realm).
+
+## 20. TONE3000 connect — round-trip state
+
+Connecting leaves the app entirely (`window.location` → TONE3000 → back),
+so the return is a FULL PAGE LOAD and everything not deliberately stashed
+in sessionStorage is gone. The screen was fixed for this once; the track
+selection had the same bug and was missed.
+
+- [ ] Select a track on the Mixer, open Tone Lab, hit **Connect to TONE3000**, complete the sign-in: on return you should land back on **Tone Lab** with the **same track still selected** (name in the Track Play Bar, row highlighted in the Library) — not the Mixer with nothing selected.
+- [ ] Same check for the **Browse on TONE3000** ("select") flow.
+- [ ] Connecting with **no track selected** returns cleanly to the right screen and simply leaves nothing selected — no error, no phantom selection.
+- [ ] Connecting from a screen other than Tone Lab (e.g. Play Along) returns to that screen with the track intact.
+- [ ] A track that was deleted while the flow was away doesn't break the return — the screen still restores, just without a selection.

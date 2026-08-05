@@ -44,6 +44,7 @@ const T3K_VERIFIER_KEY = "gs_t3k_code_verifier";
 const T3K_STATE_KEY = "gs_t3k_state";
 const T3K_PENDING_KEY = "gs_t3k_pending_flow";
 const T3K_RETURN_SCREEN_KEY = "gs_t3k_return_screen";
+const T3K_RETURN_TRACK_KEY = "gs_t3k_return_track";
 
 const T3K = {
   publishableKey: "",
@@ -137,15 +138,36 @@ function t3kIsConnected() {
 function t3kRememberScreen() {
   const open = ["tonelab-overlay", "playalong-overlay", "ailab-overlay", "tabview-overlay"]
     .find((id) => { const el = document.getElementById(id); return el && el.classList.contains("show"); });
-  try { sessionStorage.setItem(T3K_RETURN_SCREEN_KEY, open || ""); } catch (e) { /* private mode */ }
+  try {
+    sessionStorage.setItem(T3K_RETURN_SCREEN_KEY, open || "");
+    // The selected track is lost across the same full page load, for the
+    // same reason — reported separately ("the track I picked is deselected
+    // so that no track is now selected"). Nothing else in the app persists
+    // a selection: it normally boots track-less, which is correct on a cold
+    // start but wrong when the reload is really the middle of a round trip
+    // the user didn't ask for.
+    sessionStorage.setItem(T3K_RETURN_TRACK_KEY,
+      (typeof State !== "undefined" && State.track) || "");
+  } catch (e) { /* private mode */ }
 }
 
 async function t3kRestoreScreen() {
-  let want = "";
+  let want = "", track = "";
   try {
     want = sessionStorage.getItem(T3K_RETURN_SCREEN_KEY) || "";
+    track = sessionStorage.getItem(T3K_RETURN_TRACK_KEY) || "";
     sessionStorage.removeItem(T3K_RETURN_SCREEN_KEY);
+    sessionStorage.removeItem(T3K_RETURN_TRACK_KEY);
   } catch (e) { return; }
+
+  // Track BEFORE screen, not the other way round: selectTrack() calls
+  // closeAllScreens() (picking a song from the Library is meant to drop you
+  // back to the Mixer), so restoring the screen first would just have it
+  // shut again by the track restore a moment later.
+  if (track && typeof selectTrack === "function") {
+    try { await selectTrack(track); } catch (e) { /* track since deleted — carry on and restore the screen */ }
+  }
+
   if (!want) return;
   const openers = {
     "tonelab-overlay": "openToneLab",
