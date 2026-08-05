@@ -1,0 +1,15 @@
+{
+  "title": "Airbourne - Too Much, Too Young, Too Fast",
+  "source": "Ultimate Guitar chord chart (user-supplied PDF, 2007 album RUNNIN' WILD)",
+  "key": "A",
+  "chords": ["A5", "D5", "G5", "E5", "C5"],
+  "notes": [
+    "Every chord in the chart is a power chord (root + fifth, no third).",
+    "Both verses are a single held A5 for their whole length - eight lyric lines each with A5 over every one. This is the sharpest test of the 'ribbon is too detailed' complaint: a verse should be ONE chip, not a stream of them.",
+    "Pre-chorus is G5 -> E5 -> G5.",
+    "Chorus is D5 A5 / G5 D5 A5 / A5 / G5 D5 G5 A5 (with E5 G5 tagged on the last one).",
+    "Guitar solo cycles A5 G5 D5.",
+    "Outro brings in the only C5 in the song."
+  ],
+  "sections": []
+}

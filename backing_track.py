@@ -170,7 +170,25 @@ ANALYSIS_FILE = "analysis.json"
 # major) instead of a confident wrong answer, rather than pretending a
 # thirdless progression pins one key. Chord recognition itself unchanged;
 # power chords still read "5", fast tempo still tracks.
-ANALYSIS_VERSION = 15
+# v15 ("Too Much, Too Young, Too Fast" pass — CD-8): detect_chords now decodes
+# the ROOT sequence first (13 states: 12 roots + N) and names each decoded root
+# RUN once from that whole run's chroma, instead of one 49-state Viterbi over
+# every (root, quality) template at once. Two real-song failures, both measured
+# against a chord chart as ground truth (see research/chord-lane-cd8.md and
+# scripts/chord_bench.py): (a) a third of every chord change the ribbon drew
+# was a QUALITY flip on a held root — A5 to A to Am to A7 across one sustained
+# A5 — because the CD-2/CD-5 gates are hard thresholds that veto losing
+# templates to -1.0, an emission gap no transition prior can overrule, so the
+# ribbon flipped every time distortion nudged the third-bin ratio across the
+# line; naming a whole run at once makes that flicker structurally impossible.
+# (b) spreading the switch-away probability over 48 competing states instead of
+# 12 let harmonically-overlapping phantoms (F, F#m, Bm over a held A5) win
+# beats outright; the 13-state decode removed every one of them. Measured on
+# the motivating song: 89 chips to 34 (its chart has ~30 chord changes), 19
+# distinct chords to 6 against a chart of 5, and the two verses came back as
+# single 35-second A5 chips, which is what the chart says they are. Also
+# raises CHORD_POWER_THIRD_ABSENCE_RATIO 0.2 to 0.3 — see that constant.
+ANALYSIS_VERSION = 16
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -537,7 +555,25 @@ CHORD_CONFIDENCE_FLOOR = 0.5  # below this, report "no chord" rather than a gues
 # templates get to compete for that root as before. Only when both thirds
 # are genuinely near-silent does "5" get to compete at all (see
 # detect_chords). One constant, tuned against real riffs during CD-5.
-CHORD_POWER_THIRD_ABSENCE_RATIO = 0.2
+#
+# CD-8 raised this from 0.2 to 0.3 on a measurement, not a preference. With
+# a real all-power-chord song (Airbourne, "Too Much, Too Young, Too Fast")
+# and its published chord chart as ground truth, the ratio was measured on
+# both populations the threshold has to separate:
+#
+#   genuine triads and dominant 7ths   0.45 – 0.51   (synthetic, per chord)
+#   distorted power chords, synthetic  0.06 – 0.07
+#   distorted power chords, real song  0.04 – 0.27   (per decoded chord run)
+#
+# 0.2 sat INSIDE the real power-chord population — 7 of that song's 34 chord
+# runs measured above it and were wrongly promoted to triads/7ths. 0.3 is the
+# midpoint of the empty band between the two populations (0.27 to 0.45), so it
+# still leaves genuine thirds a 0.15 margin. Note the two populations are
+# measured differently on purpose: real power chords carry far more third-bin
+# energy than a synthesizer's do (bleed from vocals, lead lines and adjacent
+# chords survives separation), which is exactly why a threshold set against
+# synthetic audio was too tight for real audio.
+CHORD_POWER_THIRD_ABSENCE_RATIO = 0.3
 
 # CD-5 real-song fix ("Mull of Kintyre" pass): the "7" (dominant seventh) template is a
 # strict superset of "maj" — the same 0,4,7 plus a b7 — so, exactly like the
@@ -556,6 +592,39 @@ CHORD_POWER_THIRD_ABSENCE_RATIO = 0.2
 # 7-heavy blues/rock material.
 CHORD_SEVENTH_ABSENCE_RATIO = 0.2
 
+# CD-8: how much a gated-out template loses, instead of being vetoed
+# outright. Both gates above used to set a suppressed score to -1.0 — below
+# the whole possible range of a cosine similarity between non-negative
+# vectors — which made them absolute: no amount of accumulated evidence
+# either side of a beat could overrule one beat's threshold crossing. That
+# turned out to be a bug rather than a safety margin. A held, unchanging
+# power chord whose third-bin ratio sits near the threshold crosses it back
+# and forth on ordinary distortion harmonics, and each crossing FORCED a
+# different chord name; measured against a real chord chart, a third of
+# every chord change the ribbon drew was this and nothing else.
+#
+# 0.35 keeps a gate decisive where the evidence is local — cosine scores
+# between competing templates on the same root typically differ by 0.05 to
+# 0.15, so the gate still comfortably wins a single beat — while leaving it
+# finite, so the sticky quality decode in _name_root_runs can overrule an
+# isolated crossing surrounded by beats that disagree with it.
+CHORD_GATE_PENALTY = 0.35
+
+# CD-8: how much sustained disagreement it takes to change QUALITY part-way
+# through a single decoded root run — expressed as beats, because that is
+# the thing actually being decided, rather than as a transition probability
+# a hair under 1 whose meaning nobody can read off the page.
+#
+# Two bars. A quality change on a held root (a major that turns minor under
+# a sustained bass) is a real but uncommon device, and the third is the
+# noisiest bin in the whole vector — distortion harmonics, vocal bleed and
+# passing tones all land on it. So a mid-run change is only believed when a
+# contiguous stretch at least this long consistently prefers the other
+# quality; anything shorter is absorbed into its neighbours as the noise it
+# almost always is. Set to 1 to let any single beat change the name, which
+# is the flickering behaviour CD-8 exists to remove.
+CHORD_MIN_QUALITY_RUN_BEATS = 8
+
 # chord-detection-v2-spec.md CD-1: per-beat argmax had no memory of the
 # previous beat, so ordinary chroma noise (a passing note, a bend, a fill)
 # flips single beats to a different template and every flip breaks a run
@@ -565,9 +634,26 @@ CHORD_SEVENTH_ABSENCE_RATIO = 0.2
 # since Sheh & Ellis 2003: decode the *sequence* with Viterbi instead of
 # picking each frame independently, using a transition matrix that's cheap
 # to stay on the current chord and costly to leave it.
-CHORD_SELF_TRANSITION_P = 0.88  # probability mass kept on staying put per beat; rest spreads uniformly over every other state
+#
+# CD-8 changed WHAT is decoded, not whether: the Viterbi now runs over 13
+# root states (12 roots + N) rather than 49 (root, quality) states. Two
+# reasons, both measured (see ANALYSIS_VERSION v15 and
+# research/chord-lane-cd8.md):
+#
+#   - A root is far better evidenced than a quality. Root+fifth is most of a
+#     chord's energy; the third is one quiet bin that distortion, bleed and
+#     a passing vocal all land on. Deciding both at once let the weak half of
+#     the evidence break runs the strong half agreed about.
+#   - With 49 states the "switch away" mass spreads over 48 competitors, so
+#     any one harmonically-overlapping phantom (F, F#m and Bm all contain the
+#     A of a held A5) is individually cheap to jump to. Over 12 it is four
+#     times as expensive, and on the motivating song every such phantom
+#     disappeared.
+#
+# Quality is then decided once per decoded root run — see _name_root_runs.
+CHORD_ROOT_SELF_TRANSITION_P = 0.94  # probability mass kept on staying on the same ROOT per beat; rest spreads uniformly over the other 12 states
 CHORD_EMISSION_TEMPERATURE = 12.0  # softmax sharpness turning raw cosine scores into a per-beat state distribution; higher trusts the raw scores more
-CHORD_MIN_RUN_BEATS = 2  # a decoded run shorter than this still reaches the UI as a 1-beat island unless merged into a neighbor (see _merge_short_chord_runs)
+CHORD_MIN_RUN_BEATS = 2  # a decoded root run shorter than this still reaches the UI as a 1-beat island unless merged into a neighbor (see _merge_short_root_runs)
 
 # CD-3 (chord-detection-v2-spec.md §5.2): standard chroma preprocessing that
 # every published pipeline since NNLS Chroma (2010) uses and we didn't —
@@ -652,26 +738,32 @@ def _gate_power_chord_scores(scores: "np.ndarray", window_chroma: "np.ndarray") 
     ~19% after log1p(10x), nearly tripping this gate's 20% threshold —
     see _compute_chord_chroma's docstring). Normalization doesn't matter
     (ratios are scale-invariant), only the log compression does.
-    Suppressed scores are set below every real template's possible range
-    (cosine similarity of non-negative vectors is >= 0) so a gated
-    candidate can never win, including against the N/no-chord state."""
+
+    CD-8 changed the suppression from a -1.0 sentinel (below every real
+    template's possible range, so a gated candidate could never win at all)
+    to subtracting CHORD_GATE_PENALTY — see that constant for why an
+    absolute veto was itself a bug. The sentinel's other job, keeping a
+    gated candidate from beating the N/no-chord state, is no longer this
+    function's problem: N is decided in the ungated root stage, and by the
+    time these gates run the root is already settled and only its quality is
+    in question."""
     for root_pc in range(12):
         root_fifth_energy = window_chroma[root_pc] + window_chroma[(root_pc + 7) % 12]
         idx5 = CHORD_POWER_TEMPLATE_INDEX[root_pc]
         if root_fifth_energy <= 0:
-            scores[idx5] = -1.0
+            scores[idx5] -= CHORD_GATE_PENALTY
             continue
         minor3 = window_chroma[(root_pc + 3) % 12]
         major3 = window_chroma[(root_pc + 4) % 12]
         threshold = CHORD_POWER_THIRD_ABSENCE_RATIO * root_fifth_energy
         third_present = minor3 >= threshold or major3 >= threshold
         if third_present:
-            scores[idx5] = -1.0
+            scores[idx5] -= CHORD_GATE_PENALTY
         else:
             for quality in CHORD_QUALITY_INTERVALS:
                 if quality == "5":
                     continue
-                scores[CHORD_TEMPLATE_INDEX[(KEY_NOTE_NAMES[root_pc], quality)]] = -1.0
+                scores[CHORD_TEMPLATE_INDEX[(KEY_NOTE_NAMES[root_pc], quality)]] -= CHORD_GATE_PENALTY
 
 
 def _gate_seventh_chord_scores(scores: "np.ndarray", window_chroma: "np.ndarray") -> None:
@@ -684,110 +776,186 @@ def _gate_seventh_chord_scores(scores: "np.ndarray", window_chroma: "np.ndarray"
     the third-presence gate above — takes the NON-bass chroma: "7" is
     suppressed for a root (so maj/min win) unless that root's b7 bin holds at
     least CHORD_SEVENTH_ABSENCE_RATIO of its root+fifth energy. Same
-    out-of-range sentinel (-1.0) so a suppressed candidate can never win.
+    CHORD_GATE_PENALTY the power gate applies, for the same reasons.
     Must run on the same non-bass raw chroma the power gate uses."""
     for root_pc in range(12):
         root_fifth_energy = window_chroma[root_pc] + window_chroma[(root_pc + 7) % 12]
         idx7 = CHORD_TEMPLATE_INDEX[(KEY_NOTE_NAMES[root_pc], "7")]
         if root_fifth_energy <= 0:
-            scores[idx7] = -1.0
+            scores[idx7] -= CHORD_GATE_PENALTY
             continue
         b7 = window_chroma[(root_pc + 10) % 12]
         if b7 < CHORD_SEVENTH_ABSENCE_RATIO * root_fifth_energy:
-            scores[idx7] = -1.0
+            scores[idx7] -= CHORD_GATE_PENALTY
 
 
-def _decode_chord_sequence(raw_scores: "np.ndarray") -> list[tuple]:
-    """CD-1 (chord-detection-v2-spec.md §5.4): Viterbi-decode a whole song's
-    per-beat template scores at once, instead of picking each beat's argmax
-    independently. An explicit N (no confident chord) state is threaded in
-    at a fixed emission level (CHORD_CONFIDENCE_FLOOR) so a beat only reads
-    as N when every real template scores worse than that baseline — same
-    reasoning the old per-beat floor check used, just decided alongside
-    every chord state instead of as a special case in front of them.
+def _decode_root_sequence(root_scores: "np.ndarray") -> "np.ndarray":
+    """CD-1, re-aimed by CD-8: Viterbi-decode a whole song's ROOT sequence at
+    once, instead of picking each beat independently.
 
-    The transition matrix is what actually fixes the flicker: staying on
-    the previous beat's state is cheap (CHORD_SELF_TRANSITION_P), switching
-    to anything else is expensive. A moving riff or palm-muted chug that
-    nudges the chroma around beat-to-beat no longer flips the winning
-    template unless the underlying harmony has genuinely moved on long
-    enough to outweigh that cost.
+    `root_scores` is (n_beats, 13) — one column per pitch class, plus an
+    explicit N (no confident chord) state held at CHORD_CONFIDENCE_FLOOR, so
+    a beat reads as N only when every real root scores worse than that
+    baseline. Same reasoning the original per-beat floor check used, just
+    decided alongside every root state instead of as a special case in front
+    of them.
 
-    Returns one (root, quality) per beat — same shape/order as raw_scores'
-    rows — for the caller to zip back up with beat times and per-beat
-    confidence."""
+    The transition matrix is what fixes the flicker: staying on the previous
+    beat's root is cheap (CHORD_ROOT_SELF_TRANSITION_P), moving is
+    expensive. A moving riff, a fill, or a vocal line that nudges the chroma
+    beat-to-beat no longer flips the decode unless the harmony has genuinely
+    moved on for long enough to outweigh that cost.
+
+    Returns one state index per beat; 12 is the N state."""
     import librosa
 
-    n_beats, n_templates = raw_scores.shape
-    n_idx = n_templates  # the N state's column/row index, appended after every chord template
-
-    aug = np.concatenate([raw_scores, np.full((n_beats, 1), CHORD_CONFIDENCE_FLOOR)], axis=1)
-    n_states = n_templates + 1
-
-    # Turn raw cosine scores into a per-beat probability distribution over
-    # states. Temperature controls how sharply the decode trusts a single
-    # beat's raw evidence vs. leaning on the transition prior instead.
-    scaled = aug * CHORD_EMISSION_TEMPERATURE
+    scaled = root_scores * CHORD_EMISSION_TEMPERATURE
     scaled -= scaled.max(axis=1, keepdims=True)  # numerically stable softmax
     probs = np.exp(scaled)
     probs /= probs.sum(axis=1, keepdims=True)
-    prob_matrix = probs.T  # librosa.sequence.viterbi wants (n_states, n_steps)
 
-    off_diag = (1.0 - CHORD_SELF_TRANSITION_P) / (n_states - 1)
+    n_states = root_scores.shape[1]
+    off_diag = (1.0 - CHORD_ROOT_SELF_TRANSITION_P) / (n_states - 1)
     transition = np.full((n_states, n_states), off_diag)
-    np.fill_diagonal(transition, CHORD_SELF_TRANSITION_P)
+    np.fill_diagonal(transition, CHORD_ROOT_SELF_TRANSITION_P)
     p_init = np.full(n_states, 1.0 / n_states)
+    return librosa.sequence.viterbi(probs.T, transition, p_init=p_init)
 
-    states = librosa.sequence.viterbi(prob_matrix, transition, p_init=p_init)
 
-    labels = []
-    for s in states:
-        if int(s) == n_idx:
-            labels.append((None, "N"))
+def _root_runs(states) -> list:
+    """[start, end, state] with end exclusive, one entry per maximal run."""
+    runs = []
+    for i, s in enumerate(states):
+        s = int(s)
+        if runs and runs[-1][2] == s:
+            runs[-1][1] = i + 1
         else:
-            labels.append(CHORD_TEMPLATE_LABELS[int(s)])
+            runs.append([i, i + 1, s])
+    return runs
+
+
+def _merge_short_root_runs(states: "np.ndarray", root_scores: "np.ndarray") -> "np.ndarray":
+    """CD-1 §5.5, re-aimed by CD-8: belt-and-braces beneath Viterbi. The
+    transition cost makes 1-beat islands unlikely, not impossible — a
+    genuinely anomalous beat (or one landing right on a real chord boundary)
+    can still decode as its own run. Any run shorter than
+    CHORD_MIN_RUN_BEATS is reassigned to whichever neighbouring root fits
+    that run's own beats better, rather than surviving to the UI as an extra
+    chip.
+
+    Runs at root level now rather than at (root, quality) level, because
+    quality is no longer decided per beat — see _name_root_runs."""
+    runs = _root_runs(states)
+    out = np.array(states, dtype=int)
+    for ri, (start, end, state) in enumerate(runs):
+        if end - start >= CHORD_MIN_RUN_BEATS:
+            continue
+        candidates = ([runs[ri - 1][2]] if ri > 0 else []) + \
+                     ([runs[ri + 1][2]] if ri + 1 < len(runs) else [])
+        if not candidates:
+            continue
+        best = max(candidates, key=lambda s: float(root_scores[start:end, s].mean()))
+        out[start:end] = best
+    return out
+
+
+def _name_root_runs(states: "np.ndarray", main_windows: list, gate_windows_raw: list) -> list:
+    """CD-8: give each decoded root RUN one chord name, from that whole run's
+    chroma rather than from a single beat's.
+
+    This is the half of CD-8 that fixes "the chord ribbon is too detailed".
+    Measured on a real all-power-chord song against its published chart, a
+    third of every chord change the old ribbon drew was not a chord change
+    at all — it was the quality flipping on a held root (A5 -> A -> Am -> A7
+    across one sustained A5). The cause is structural, not a bad threshold:
+    the CD-2/CD-5 gates are hard ratio tests that veto losing templates by
+    setting them to -1.0, and at CHORD_EMISSION_TEMPERATURE that is an
+    absolute veto no transition prior can overrule. So every time distortion
+    harmonics nudged a third-bin ratio across the gate's line, the ribbon had
+    to change chord, however sticky the decode was.
+
+    Deciding quality once per run removes that failure by construction — a
+    held chord cannot change name mid-hold — and it is also the more honest
+    question to ask: a chord chart names a chord per chord, not per beat, and
+    a run's worth of audio is simply much better evidence about a quiet third
+    than 0.5 seconds of it is.
+
+    The run's chroma is reduced by MEDIAN across its beats, not sum. A sum
+    lets a handful of atypical beats (a vocal phrase landing on the third, a
+    passing tone, a cymbal wash that survived HPSS) drag the whole run's
+    ratio test across a gate threshold; a median asks what the chord looks
+    like on a TYPICAL beat of the run, which is the question the gates were
+    designed around.
+
+    A whole-run median alone is not enough, though, because it is not robust
+    to a run that genuinely contains two qualities: on a held A that really
+    alternates A major and A minor, the median of the major-third bin and
+    the median of the minor-third bin are BOTH low (each is near zero for
+    half the beats), so the run reads as a thirdless power chord — a wrong
+    answer neither half of the run supports.
+
+    So quality is decided per beat and then held to a minimum stretch: each
+    beat picks its best-fitting quality for the already-settled root, and
+    any contiguous stretch shorter than CHORD_MIN_QUALITY_RUN_BEATS is
+    absorbed into whichever neighbouring quality fits it better. In practice
+    that returns a single quality for the whole run — the flicker fix — while
+    still letting a sustained, decisive change part-way through split it,
+    which is the real musical event a plain median throws away. This only
+    works because CD-8 also made the gates a finite penalty rather than an
+    absolute veto — see CHORD_GATE_PENALTY."""
+    labels = [None] * len(states)
+    for start, end, state in _root_runs(states):
+        if state == 12:  # the N (no confident chord) state
+            for i in range(start, end):
+                labels[i] = (None, "N")
+            continue
+
+        cols = np.where(CHORD_TEMPLATE_ROOT_PC == state)[0]
+        run_scores = np.zeros((end - start, len(cols)))
+        for k, i in enumerate(range(start, end)):
+            window = main_windows[i]
+            norm = np.linalg.norm(window)
+            scores = CHORD_TEMPLATE_MATRIX @ (window / norm if norm > 0 else window)
+            _gate_power_chord_scores(scores, gate_windows_raw[i])   # CD-2
+            _gate_seventh_chord_scores(scores, gate_windows_raw[i])  # CD-5
+            run_scores[k] = scores[cols]
+
+        picks = _enforce_min_run(list(np.argmax(run_scores, axis=1)), run_scores,
+                                 CHORD_MIN_QUALITY_RUN_BEATS)
+        for k, i in enumerate(range(start, end)):
+            labels[i] = CHORD_TEMPLATE_LABELS[int(cols[int(picks[k])])]
     return labels
 
 
-def _merge_short_chord_runs(labels: list, raw_scores: "np.ndarray") -> list:
-    """CD-1 (chord-detection-v2-spec.md §5.5): belt-and-braces beneath
-    Viterbi. The transition cost makes 1-beat islands unlikely, not
-    impossible — a genuinely anomalous beat (or one right at a real chord
-    boundary) can still decode as its own run. Any run shorter than
-    CHORD_MIN_RUN_BEATS is reassigned to whichever neighbor's raw template
-    score fits that run's own chroma better, rather than surviving to the
-    UI as an extra chip. Only touches the labels list — the caller's
-    per-beat dict list still gets one entry per beat, so this relies on the
-    UI's existing run-collapsing (renderChordLane/aiLabChordRuns) to fold
-    a corrected run into its neighbor's chip."""
-    runs = []  # [start, end, label] with end exclusive
-    for i, label in enumerate(labels):
-        if runs and runs[-1][2] == label:
-            runs[-1][1] = i + 1
-        else:
-            runs.append([i, i + 1, label])
+def _enforce_min_run(picks: list, scores: "np.ndarray", min_len: int) -> list:
+    """Absorb every stretch shorter than min_len into its better-fitting
+    neighbour, repeatedly, until nothing short is left (or one stretch spans
+    everything).
 
-    def score_for(start, end, label):
-        if label[1] == "N":
-            return CHORD_CONFIDENCE_FLOOR
-        idx = CHORD_TEMPLATE_INDEX[label]
-        return float(raw_scores[start:end, idx].mean())
-
-    for ri, (start, end, label) in enumerate(runs):
-        if end - start >= CHORD_MIN_RUN_BEATS:
-            continue
-        candidates = [runs[ri - 1][2]] if ri > 0 else []
-        if ri + 1 < len(runs):
-            candidates.append(runs[ri + 1][2])
-        if not candidates:
-            continue
-        runs[ri][2] = max(candidates, key=lambda l: score_for(start, end, l))
-
-    out = list(labels)
-    for start, end, label in runs:
+    Repeatedly rather than in one pass because absorbing a short stretch
+    joins its neighbours, which can leave a different stretch newly
+    absorbable; a single pass would leave those behind. Each round takes the
+    SHORTEST remaining stretch first, so the weakest evidence is the first
+    to give way."""
+    picks = list(picks)
+    while True:
+        runs = []
+        for i, p in enumerate(picks):
+            if runs and runs[-1][2] == p:
+                runs[-1][1] = i + 1
+            else:
+                runs.append([i, i + 1, p])
+        if len(runs) < 2:
+            return picks
+        shortest = min(range(len(runs)), key=lambda r: runs[r][1] - runs[r][0])
+        start, end, _ = runs[shortest]
+        if end - start >= min_len:
+            return picks
+        neighbours = ([runs[shortest - 1][2]] if shortest > 0 else []) + \
+                     ([runs[shortest + 1][2]] if shortest + 1 < len(runs) else [])
+        best = max(neighbours, key=lambda p: float(scores[start:end, p].mean()))
         for i in range(start, end):
-            out[i] = label
-    return out
+            picks[i] = best
 
 
 def _find_stems_fuzzy(out_dir: Path, exact_names: tuple, hint_words: tuple,
@@ -948,27 +1116,46 @@ def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"]
         except Exception:
             bass_windows = None
 
-    raw_scores = np.zeros((len(beats) - 1, len(CHORD_TEMPLATE_LABELS)))
+    # CD-8: the per-beat template scores that feed the ROOT decode are
+    # deliberately UNGATED. The CD-2/CD-5 gates answer "which quality", which
+    # is not the question this stage asks, and their -1.0 veto would knock a
+    # root's best-fitting template out of contention on a threshold that has
+    # nothing to do with whether that root is being played. CD-4's bass root
+    # bonus, by contrast, is exactly a root-level piece of evidence, so it
+    # still applies here.
+    n_beats = len(beats) - 1
+    template_scores = np.zeros((n_beats, len(CHORD_TEMPLATE_LABELS)))
     for i, window_chroma in enumerate(main_windows):
         norm = np.linalg.norm(window_chroma)
         normed_chroma = window_chroma / norm if norm > 0 else window_chroma
         scores = CHORD_TEMPLATE_MATRIX @ normed_chroma
-        _gate_power_chord_scores(scores, gate_windows_raw[i])  # CD-2 — non-bass raw ratios (see above)
-        _gate_seventh_chord_scores(scores, gate_windows_raw[i])  # CD-5 real-song fix — phantom-b7 (bass overtone) guard
         if bass_windows is not None:
             _apply_bass_root_bonus(scores, bass_windows[i])  # CD-4
-        raw_scores[i] = scores
+        template_scores[i] = scores
 
-    # CD-1: decode the whole beat sequence at once (Viterbi, not per-beat
-    # argmax) so ordinary chroma noise no longer flips single beats to a
-    # different chord — see _decode_chord_sequence's docstring.
-    labels = _decode_chord_sequence(raw_scores)
-    labels = _merge_short_chord_runs(labels, raw_scores)
+    # Each root's evidence for a beat is its best-fitting quality's score;
+    # the 13th state is N (no confident chord), held at the same floor the
+    # old per-beat check used.
+    root_scores = np.zeros((n_beats, 13))
+    for root_pc in range(12):
+        root_scores[:, root_pc] = template_scores[:, CHORD_TEMPLATE_ROOT_PC == root_pc].max(axis=1)
+    root_scores[:, 12] = CHORD_CONFIDENCE_FLOOR
+
+    root_states = _decode_root_sequence(root_scores)
+    root_states = _merge_short_root_runs(root_states, root_scores)
+    labels = _name_root_runs(root_states, main_windows, gate_windows_raw)
 
     chords = []
     for i, start in enumerate(beats[:-1]):
         root, quality = labels[i]
-        confidence = float(raw_scores[i].max())
+        # Confidence is the chosen label's OWN fit at this beat, not the best
+        # fit of any template — with quality decided per run, the two are no
+        # longer the same number, and the one the UI shows next to a chord
+        # name should be about that chord.
+        if root is None:
+            confidence = float(root_scores[i, 12])
+        else:
+            confidence = float(template_scores[i, CHORD_TEMPLATE_INDEX[(root, quality)]])
         chords.append({"time": round(float(start), 3), "root": root, "quality": quality,
                         "confidence": round(confidence, 3)})
     return chords, chroma_mean

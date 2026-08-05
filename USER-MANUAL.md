@@ -649,12 +649,26 @@ dimmed **?**
 chip means no confident read for that beat rather than a guess; zoom in
 (above) to actually read the chord names, since a whole song's worth of
 chips at full width just reads as a solid bar. Chord roots transpose live
-with the Tune slider, same as the Detected Key hint. **Known rough edges:**
-on riff-heavy songs, the ribbon can read as busier than the underlying
-harmony actually is (individual moving notes flipping the per-beat
-read rather than the rhythm part changing chord) — judge by ear, and
-treat a wall of rapidly-alternating chips as "this section is
-riff-based," not as literal chord-by-chord accuracy. And a song built over
+with the Tune slider, same as the Detected Key hint.
+
+The ribbon decides a chord's **root** first, across the whole song, and
+then names each stretch of that root once — rather than deciding root and
+quality together, beat by beat. That matters because the root (root+fifth)
+is most of a chord's energy while the third is one quiet note that
+distortion, bleed and a passing vocal all land on; letting the noisy half
+of the reading break up runs the reliable half agreed about was the main
+reason the lane used to look busier than the music. A chord you hold for
+eight bars is now one chip that says one thing, and its name can only
+change part-way through if a good two bars of the audio genuinely disagree.
+Measured against a published chord chart for a song whose verses hold a
+single A5 throughout, this took the ribbon from 89 chips to 35 (the chart
+has about 30 chord changes), cut the chord changes that were really just a
+label flipping on an unchanging chord from a third of all of them to 3%,
+and drew each verse as one 35-second chip instead of eleven. Chord *names*
+are still the weaker half — the ribbon may write A where the chart says A5
+— but the roots and the change points are now reliable.
+
+**Known rough edges:** a song built over
 a **constant droning note** (a sitar or bagpipe holding the tonic under
 everything) can read as one held power chord — the drone floods every beat
 with the same root+fifth and drowns out the chords moving over it; this is
