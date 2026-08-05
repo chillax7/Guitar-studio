@@ -112,9 +112,11 @@ exhaustive top-to-bottom playthrough of the entire app in one sitting
 
 ## 5. Guitar Split (experimental)
 
-- [ ] Split panel only appears once a `guitar` stem exists; Spectral, Mid-side, and Hybrid methods all run and report a correlation figure; all three candidates are audibly plausible pans/variants of the same take.
+- [ ] Split panel only appears once a `guitar` stem exists; Spectral, Mid-side, Hybrid, and Coherent methods all run and report a correlation figure; every candidate is an audibly plausible pan/variant of the same take.
 - [ ] The currently-selected method button is visibly highlighted (brighter/ringed, not just the same blue every button already is) — clicking a different method moves the highlight.
 - [ ] Hybrid falls back gracefully (no error) on a track with no beat grid.
+- [ ] **Coherent method (real user report — lead bleed in the rhythm candidate):** on a song where the lead is mixed dead-centre and Spectral's Candidate A is already a fairly clean lead, Coherent's Candidate B should have noticeably *less* lead bleed in it than Spectral's own Candidate B. Judge by ear on a passage where the lead is clearly playing over the rhythm part. Two things to check specifically, since both were real failure modes during development: Candidate B must not collapse into near-silence or intermittent "squeaks" anywhere in the track, and it must not sound obviously "warbly"/underwater compared with the other methods' output.
+- [ ] Coherent's Candidate B is genuine stereo (each channel cancelled independently), not a synthesized L/-R pair — panning it hard left vs. hard right should not sound like the same signal phase-flipped.
 - [ ] **Split loudness leveller (real user report — "Blackbird," Alter Bridge):** on a song where the source guitar is only lightly/partially panned (not hard stereo-spread), both Candidate A and Candidate B should sound like usable, comparable loudness at 100% gain — neither should need pushing anywhere near the mixer's 300% split-stem gain cap just to be audible. Confirm by ear on at least one real song where you know the split candidates used to come out lopsided.
 
 ## 6. Screen nav (Mixer / Tone Lab / Play Along / AI Lab / Tab View / Help)
@@ -612,3 +614,21 @@ not that an error stopped appearing.
   A1 again in the same session works with no clicks, no stuck audio, and
   correct levels each time (each engine applies the same loudness
   normalization).
+
+## 18. Metronome & Drum Machine (Play Along, Riff Capture card)
+
+The click and the drum kit are two modes of one section sharing BPM,
+tap-tempo, Start/Stop and volume — most of what can break here is the
+sharing, not either mode on its own.
+
+- [ ] The **Click / Drum kit** switch shows exactly one mode lit at a time; switching swaps only the controls below the shared BPM/volume row (subdivision + accent for Click; the beat picker for Drum kit).
+- [ ] Only one of the two ever sounds at once — switching modes while running never leaves both playing together.
+- [ ] **Transport state carries across a mode switch:** switch modes while the pulse is running and it keeps running at the same BPM, without needing Start pressed again; switch while stopped and it stays stopped.
+- [ ] The BPM slider, ± buttons and Tap all drive whichever mode is active; a tempo change while the drums are looping takes effect on the next step rather than after the current bar finishes.
+- [ ] All six beats play and are distinguishable: Basic Rock, Basic Rock (driving), Four-on-the-floor, Rock Ballad (half-time), Punk / Fast Rock, Rock Shuffle. The Shuffle is a triplet feel, audibly not straight 16ths.
+- [ ] Changing the beat mid-loop restarts cleanly from the top of the bar rather than continuing partway through the old pattern's grid.
+- [ ] A crash cymbal sounds on the first bar only — it must NOT crash on every loop repeat.
+- [ ] The kit holds together at both extremes of the BPM range (very slow and very fast) — no overlapping/stuttering hits, no drift away from the beat over a few minutes of looping.
+- [ ] **Stays out of the recording (deliberate):** with the drums looping, a Riff Capture "Save that!" and a normal Play Along take must both contain your guitar and the backing track but NOT the drum loop — same as the plain click. Check this for both modes.
+- [ ] The volume slider affects both modes; double-clicking it resets to the default level.
+- [ ] The beacon flashes in time in both modes (on kick/snare for the drum kit, not on every hi-hat).

@@ -97,6 +97,17 @@ repeating.
 A quick tour — see [USER-MANUAL.md](USER-MANUAL.md) for the full version
 of every feature below, plus keyboard shortcuts and troubleshooting.
 
+The app is five screens, switched from the icon rail down the left edge,
+with your song Library always alongside them:
+
+| | Screen | What it's for |
+|---|---|---|
+| **M** | Mixer | Import, separate, mix, loop, export |
+| **T** | Tone Lab | Build and save a guitar rig |
+| **P** | Play Along | Practise and record with that rig |
+| **A** | AI Lab | Scales, take scoring, song structure, lick ideas |
+| **G** | Tab View | Guitar Pro tabs, including ones generated from the audio |
+
 **Import a song.** Drag an MP3 or WAV onto the sidebar (or click it to
 pick a file). Click the song to select it. Already have a song split
 into parts (a purchased backing-track pack, a pre-split multitrack)?
@@ -111,7 +122,9 @@ runs entirely on your Mac and typically takes a fraction of the song's
 length. The first time you use a given model it also downloads its
 weights (up to ~700MB, one-time, needs internet), so your very first
 separation is slower than every one after it. `bs_roformer_sw` (the
-default) gives the cleanest guitar isolation.
+default) gives the cleanest guitar isolation. A stereo guitar stem can
+optionally be split again into lead/rhythm candidates — a panning-based
+guess, so judge it by listening.
 
 **Mix.** Each stem gets its own lane: Mute/Solo, a volume fader, Pan, and
 a 3-band EQ. Paint over a waveform to mute just a section (e.g. a guitar
@@ -120,18 +133,30 @@ practice a hard passage slow and step it up to full tempo, and turn on
 the **Click** for a metronome synced to the song's actual beat. Whatever
 you set up is saved automatically per song.
 
-**Play Along.** Click **🎸 Play Along** to plug in a guitar (or use your
-Mac's built-in mic) and play over what you built — sharing the exact
-same audio engine as the mixer, so there's no extra latency. The rig
-runs Gate → Amp (Clean/Analog/Neural amp-modeling) → Cab IR → EQ →
-Compressor → Delay/Reverb → Output, with a tuner and input meter always
-visible. Save a whole rig setup as a named preset and recall it instantly,
-or attach one to a song so it loads automatically. A rolling ~20-second
-buffer is always capturing, so **Save that!** rescues a take you didn't
-plan to record.
+**Build a tone (Tone Lab).** Plug in a guitar (or use your Mac's built-in
+mic) — the rig shares the mixer's audio engine, so there's no extra
+latency. The chain runs Gate → Amp (Clean/Analog/Neural amp-modeling) →
+Cab IR → EQ → Compressor → Delay/Reverb → Output, all reorderable, with a
+tuner and input meter always visible. Load your own NAM captures and cab
+IRs, or search and download them from TONE3000 without leaving the app.
+Save a whole rig as a named preset and recall it instantly, or attach one
+to a song so it loads automatically.
+
+**Play Along.** Practise over what you built. A rolling ~20-second buffer
+is always capturing, so **Save that!** rescues a take you didn't plan to
+record. There's a looper for building up a part over itself, and a
+metronome that also plays standard rock drum beats instead of a click.
 
 **Record yourself.** With or without a camera — audio-only takes need no
 setup at all. Every take is saved and browsable, with lossless trimming.
+
+**AI Lab.** Scales that follow the song's detected chords, **Rate My
+Take** (scores a dry recording against the song's own guitar stem, beat
+by beat), a song-structure map, and — if you supply your own API key —
+practice tips and lick ideas.
+
+**Tab View.** Import Guitar Pro files and play them back, or generate a
+tab straight from the song's separated guitar stem.
 
 **Export.** Bounces exactly your mute/gain choices (not Solo/Pan/EQ,
 which are for monitoring while you play) to WAV or MP3, with loudness

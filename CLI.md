@@ -73,7 +73,7 @@ derived stems become usable in `mix` immediately, alongside the original
 `guitar` stem (don't mix all three together, or you'll triple up the
 guitar content).
 
-Three split algorithms are available via `--method`:
+Four split algorithms are available via `--method`:
 
 - `spectral` (default) — estimates how centered vs. panned each
   time/frequency bin is, and weights the center/sides split per-bin. Can
@@ -90,6 +90,16 @@ Three split algorithms are available via `--method`:
   the panning read already favors during rhythmically-regular
   (strummed/chordal) passages. Falls back to plain `spectral` when there's
   no beat grid to work with (no drums stem, or beat tracking failed).
+- `coherent` — for the case where `spectral`'s center output is already a
+  clean lead but its sides output still has strong lead bleed in it.
+  Instead of guessing from panning alone, it takes `spectral`'s own center
+  estimate and cancels it out of the ORIGINAL left/right channels using a
+  local phase-coherent (complex-valued) gain, so content is only removed
+  where it's genuinely explained by the center signal rather than merely
+  as loud as it. Unlike the other three, its "sides" output is real
+  independent stereo — each channel is cancelled separately — not a
+  synthesized L/-R pair. Worth trying whenever another method's sides
+  output still sounds like the lead is mixed in under the rhythm part.
 
 It prints an inter-channel correlation figure, but in testing across 5
 real songs this **did not reliably predict** which tracks would split
@@ -151,19 +161,60 @@ python3 backing_track.py mix path/to/song.mp3 --model htdemucs_6s --mute-range "
 
 Each cut gets a short (~30ms) fade in/out so it doesn't click.
 
+### 5. Score a take against the song's guitar
+
+The CLI side of the app's Rate My Take feature — compares a dry (unamped,
+un-effected) recording of you playing against the song's own separated
+guitar stem, beat by beat, and reports how close you got on pitch and
+timing.
+
+```bash
+python3 backing_track.py rate path/to/my-take.wav path/to/song.mp3
+```
+
+The song needs to have been separated first (the guitar stem is what it
+scores against). `take` is your recording; `song` is the original file,
+used only to find that stem.
+
+The one flag that matters most is `--offset`: the song-time, in seconds,
+that your take's very first sample lines up with. If you started
+recording 30 seconds into the song, that's `--offset 30`. Get this wrong
+and every beat is compared against the wrong part of the song, which
+reads as a uniformly terrible score rather than an obvious error:
+
+```bash
+python3 backing_track.py rate my-take.wav song.mp3 --offset 30
+```
+
+`--offset-search N` searches ±N seconds around your stated offset for a
+better alignment and uses it when the match is confident enough,
+reporting what it picked. Useful when you know roughly but not exactly
+where you came in:
+
+```bash
+python3 backing_track.py rate my-take.wav song.mp3 --offset 30 --offset-search 2
+```
+
+Other flags: `--stem` (reference stem, default `guitar`), `--model` (which
+separation's stems to score against), and `--out` (where to write the
+per-beat heatmap PNG).
+
 ## Flags reference
 
 | Flag | Commands | Meaning |
 |---|---|---|
-| `--model` | separate, list, mix | Demucs model (`htdemucs`, `htdemucs_ft`, `htdemucs_6s`, `mdx`, `mdx_extra`) or the `audio-separator` model `bs_roformer_sw` (better guitar-stem quality). Default `htdemucs`. |
+| `--model` | separate, list, mix, split-guitar, rate | Demucs model (`htdemucs`, `htdemucs_ft`, `htdemucs_6s`, `mdx`, `mdx_extra`) or the `audio-separator` model `bs_roformer_sw` (better guitar-stem quality). Default `bs_roformer_sw`, except `split-guitar`, which defaults to `htdemucs_6s`. |
 | `--force` | separate | Re-run separation even if stems already exist |
 | `--mute` | mix | Comma-separated stems to silence, e.g. `vocals,drums` |
 | `--gain` | mix | Comma-separated `stem=value` linear gain overrides, e.g. `drums=0.4,other=1.2` |
 | `--mute-range` | mix | Comma-separated `stem=start-end` time ranges to mute within, e.g. `guitar=1:15-1:45`. Repeat the stem for multiple ranges. |
 | `--target-lufs` | mix | Target integrated loudness for the export (default `-14`) |
 | `-o, --output` | mix | Output path, `.wav` or `.mp3` |
-| `--stem` | split-guitar | Name of the stereo stem to split (default `guitar`) |
-| `--method` | split-guitar | Split algorithm: `spectral` (default, per-frequency-bin), `midside` (whole-track, blunt), or `hybrid` (`spectral` sharpened by beat-grid onset alignment) |
+| `--stem` | split-guitar, rate | Stem to split, or to score against (default `guitar`) |
+| `--method` | split-guitar | Split algorithm: `spectral` (default, per-frequency-bin), `midside` (whole-track, blunt), `hybrid` (`spectral` sharpened by beat-grid onset alignment), or `coherent` (cancels `spectral`'s center estimate out of the original channels — best when another method's sides output still has lead bleed) |
+| `--offset` | rate | Song-time in seconds that the take's first sample lines up with (default `0`) |
+| `--offset-search` | rate | Search ±N seconds around `--offset` for a better alignment, and use it if the match is confident (default `0` = off) |
+| `--out` | rate | Where to write the per-beat heatmap PNG |
 
 ## Notes
 
