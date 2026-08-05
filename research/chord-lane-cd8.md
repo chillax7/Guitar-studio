@@ -1,4 +1,4 @@
-# CD-8 / CD-9 / CD-10 — the chord ribbon is too detailed and doesn't follow the chords
+# CD-8 / CD-9 / CD-10 / CD-11 — the chord ribbon is too detailed and doesn't follow the chords
 
 > **Read the later passes first (bottom of this file).** CD-8 was tuned
 > against a single chord chart, for a song that is 100% power chords. The
@@ -518,3 +518,64 @@ be.
 This joins "quality-only flips" (CD-8) as a chart-free defect signal, and it
 is the better of the two: it caught something a chord chart had not, on a
 song whose chart we already had. Charts are scarce; repeats are free.
+
+---
+
+# CD-11 investigation — uneven chip spacing early in a song (NOT FIXED)
+
+> *"hotel california from 1:21 on looks spot on but the first part is screwy
+> wrt to the spacing of the chords over the bars, they should (I think) be
+> all equal length"*
+
+Correct instinct: that song puts one chord per bar throughout, so the chips
+should be equal. The symptom reproduces on the 62-second solo excerpt we
+have, in chip lengths measured in beats:
+
+```
+early:  13, 8, 24, 8, 8       <- 2 to 6 bars each, uneven
+late:    4, 4, 4, 4, 4, 4, 5  <- one bar each
+```
+
+**When the evidence is good the pipeline already lands on bar lines** — the
+late chips are exactly 4 beats, and the beat grid is 99.4 bpm, which is right
+for this arrangement (chord changes measured every 2.40 s = 4 beats; the
+chart's 74 bpm belongs to the studio version, which is in a different key
+too — see the truth file).
+
+## What was ruled out
+
+| suspect | test | result |
+|---|---|---|
+| beat grid unsteady | interval coefficient of variation | 0.009 — rock steady (a bad grid is >0.05) |
+| drums-free intro | silenced the drums stem for the first 15 s and 30 s | grid stays steady; beats simply start later (91 → 77 → 51). A drumless intro produces **missing** chords, not unevenly spaced ones |
+| root prior too sticky | swept `CHORD_ROOT_SELF_TRANSITION_P` 0.88 → 0.96 | **zero effect** on this song — identical 12 chips and identical lengths at every value |
+| lead swamping the mix | ran identity from `other` alone (no lead) | early merging got *worse* (one 61-beat run), late part identical |
+
+So it is not the grid, not the drums, not a tuning constant, and not stem
+choice. In that passage the chroma genuinely holds one root for 24 beats —
+the evidence itself is flat, and no decode parameter can invent a chord
+change that the audio does not show.
+
+## Where this points
+
+Chip lengths being multiples of a bar when evidence is strong suggests the
+real improvement is **bar/downbeat awareness**: score chord evidence per bar
+rather than per beat, and prefer run boundaries on bar lines. That would make
+"equal length where the music is equal length" structural rather than
+incidental.
+
+Deliberately not built yet. It needs downbeat estimation the pipeline does
+not currently do, and it must be measured across all three charted songs
+before shipping — Empty Rooms changes chord twice per bar in places, so a
+naive snap-to-bar would damage it. Given this pass's history of tuning
+against too narrow a sample, that is not a change to make on one 62-second
+excerpt.
+
+## Honest limit on this investigation
+
+The excerpt available here is 62 s of the guitar solo, in D minor, from a
+different arrangement than the chart. The user's observation is about the
+**full song**, whose first part is a sparse arpeggiated intro rather than a
+solo. The symptom is the same shape and the ruled-out list above is general,
+but the specific cause at their 1:21 boundary is **not confirmed**. Full-song
+stems (drums + bass + other, 22.05 kHz mono is fine) would settle it.
