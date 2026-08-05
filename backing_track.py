@@ -964,25 +964,45 @@ def _find_stems_fuzzy(out_dir: Path, exact_names: tuple, hint_words: tuple,
     (drums.wav, guitar.wav, ...) — the fast, exact path every reading in
     analyze_track originally used. An imported stem pack
     (multi-stem-import-spec.md §5) has arbitrary names instead (e.g.
-    "Lead_Electric_Guitar_1"), so if none of the exact names exist, fall
-    back to substring-matching hint_words against whatever stems do exist
-    (skipping anything matching exclude_words) — same cheap,
-    good-enough-not-guaranteed spirit as every other heuristic in this
-    file. Returns every match (a caller wanting just one picks the
-    first); an empty list is the normal "nothing to analyze" case every
-    caller already treats as a missing reading, not an error."""
+    "Lead_Electric_Guitar_1"), so if none of the exact names exist, two
+    fallbacks run in turn — both skipping anything matching exclude_words,
+    in the same cheap, good-enough-not-guaranteed spirit as every other
+    heuristic in this file. Returns every match (a caller wanting just one
+    picks the first); an empty list is the normal "nothing to analyze" case
+    every caller already treats as a missing reading, not an error.
+
+    Fallback 1, TOKEN match against exact_names: split a filename on
+    non-alphanumeric separators and match when any whole token equals one
+    of the exact names. This catches the standard stem vocabulary wearing a
+    prefix — which is exactly what this app's own export writes, since
+    export_stem_files prefixes the model name and produces
+    `htdemucs_6s_other.wav`. Without this step "other" was listed in every
+    caller's exact_names but in nobody's hint_words, so it matched neither
+    path: an exported or renamed stem pack silently lost the one stem
+    carrying most of the harmony, and the chord lane analysed less audio
+    than it should have while looking like it had worked. Token equality
+    rather than a substring test on purpose — "other" is a substring of
+    "brother" and "mother", both perfectly plausible in a hand-named pack.
+
+    Fallback 2, SUBSTRING match against hint_words: for the genuinely
+    arbitrary names an imported pack might use."""
     exact = [out_dir / f"{name}.wav" for name in exact_names]
     exact = [p for p in exact if p.exists()]
     if exact:
         return exact
-    matches = []
+
+    candidates = []
     for wav_path in sorted(out_dir.glob("*.wav")):
         lname = wav_path.stem.lower()
-        if any(w in lname for w in exclude_words):
-            continue
-        if any(w in lname for w in hint_words):
-            matches.append(wav_path)
-    return matches
+        if not any(w in lname for w in exclude_words):
+            candidates.append((wav_path, lname))
+
+    token_matches = [p for p, lname in candidates
+                     if set(re.split(r"[^a-z0-9]+", lname)) & set(exact_names)]
+    if token_matches:
+        return token_matches
+
+    return [p for p, lname in candidates if any(w in lname for w in hint_words)]
 
 
 def _compute_chord_chroma(y: "np.ndarray", sr: int) -> tuple:
