@@ -666,6 +666,12 @@ has about 30 chord changes), cut the chord changes that were really just a
 label flipping on an unchanging chord from a third of all of them to none
 at all, and drew each verse as one 35-second chip instead of eleven.
 
+Because a song repeats, the ribbon does too: the chord names in a verse are
+worked out from **every** repeat of that verse at once, not from each pass
+separately, so the same passage cannot be labelled two different ways on its
+two times round. (This uses the same repeat detection the Song Structure
+panel shows.)
+
 **Roots are the reliable half; names are not.** Checked against two
 published chord charts — one song built entirely from power chords, one
 built entirely from triads — the ribbon got every chord *root* right on

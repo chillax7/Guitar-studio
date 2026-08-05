@@ -208,7 +208,25 @@ ANALYSIS_FILE = "analysis.json"
 # (chart 100%); Empty Rooms 111 chips -> 67 with quality-only flicker 21 -> 1,
 # though its power-chord share is still 32% against a chart of 0%, which is
 # the largest known remaining error in this feature.
-ANALYSIS_VERSION = 17
+# v17 ("same verse, different chords" pass — CD-10): a real user report that
+# is the clearest statement yet of what is left wrong — on Empty Rooms the
+# passage at 0:15 and the identical passage at 1:08 were annotated D5 and Dm.
+# Same music, two different answers. detect_sections had ALREADY labelled
+# both stretches "B"; the chord lane simply never asked. So the two
+# presence tests ("is a third / a b7 there at all") now pool their evidence
+# per (section label, root) instead of per run — repeats become consistent by
+# construction, and the weakest signal in the pipeline gets several times more
+# audio to judge from. detect_sections consequently runs BEFORE detect_chords
+# in analyze_track; it was already computed for every track, so this costs
+# nothing. maj-vs-min stays per beat, since a song is allowed to move between
+# them. Measured on both charted songs, improving on every metric at once:
+# repeat self-contradictions 15 -> 6 and 1 -> 0; distinct chord names 19 -> 15
+# (chart 10) and 7 -> 6 (chart 5); power-chord share 32% -> 28% (chart 0%) and
+# 94% -> 96% (chart 100%); chip counts unchanged at 67 and 34. Also adds
+# repeat-consistency as a metric that needs no chord chart at all — a song
+# repeats, so the ribbon should too, and disagreeing with itself is a defect
+# whatever the right answer is.
+ANALYSIS_VERSION = 18
 PITCH_OFFSET_NOTE_THRESHOLD_CENTS = 8.0  # below this, don't bother the user (BT-16)
 DEFAULT_TARGET_LUFS = -14.0
 DEFAULT_MAX_BOOST_DB = 10.0  # cap on corrective gain — see normalize_loudness()
@@ -851,7 +869,25 @@ def _merge_short_root_runs(states: "np.ndarray", root_scores: "np.ndarray") -> "
     return out
 
 
-def _name_root_runs(states: "np.ndarray", main_windows: list, gate_windows_raw: list) -> list:
+def _beat_section_labels(beats: list, sections: list) -> list:
+    """One section letter per beat interval (None where unknown) — the bridge
+    between detect_sections' repeat labels and the chord decode. See
+    _name_root_runs for what it is for."""
+    if not sections:
+        return [None] * max(len(beats) - 1, 0)
+    out = []
+    for t in beats[:-1]:
+        label = None
+        for sec in sections:
+            if sec["start"] <= t < sec["end"]:
+                label = sec["label"]
+                break
+        out.append(label)
+    return out
+
+
+def _name_root_runs(states: "np.ndarray", main_windows: list, gate_windows_raw: list,
+                     section_labels: list = None) -> list:
     """CD-8: give each decoded root RUN one chord name, from that whole run's
     chroma rather than from a single beat's.
 
@@ -879,9 +915,10 @@ def _name_root_runs(states: "np.ndarray", main_windows: list, gate_windows_raw: 
       "is a third (or a b7) present at all?"  — DETECTION of a weak signal.
           The third is one quiet bin that distortion, bleed, a passing vocal
           and the next chord ringing over all land on. A single 0.5s beat is
-          simply not enough evidence, so this is decided ONCE per run from
-          the run's aggregated chroma, where averaging pulls the third up
-          out of the noise. Median rather than sum across the run's beats: a
+          simply not enough evidence, so this is decided once from
+          aggregated chroma (CD-8 pooled a run, CD-10 pools a whole repeated
+          section — see below), where averaging pulls the third up
+          out of the noise. Median rather than sum across the pooled beats: a
           sum lets a handful of atypical beats drag the ratio across the
           threshold, a median asks what the chord looks like on a TYPICAL
           beat, which is the question the ratio was calibrated against.
@@ -897,24 +934,62 @@ def _name_root_runs(states: "np.ndarray", main_windows: list, gate_windows_raw: 
     available evidence into a confident, whole-run answer — and measured
     against a chart with no power chords in it at all, it labelled 47% of
     beats as power chords where the per-beat/run split above gives 32%.
-    (Both numbers are still too high; see research/chord-lane-cd8.md.)"""
+    (Both numbers are still too high; see research/chord-lane-cd8.md.)
+
+    CD-10 widens the evidence for those presence tests one more step, from a
+    single run to every run of the same root inside the same REPEATED
+    SECTION. Real user report, on a song whose verse comes round twice: the
+    passage at 0:15 and the identical passage at 1:08 were labelled D5 and
+    Dm. detect_sections had already labelled both stretches "B" — the app
+    knew they were the same music, the chord lane just never asked. Pooling
+    makes repeats consistent by construction, and it is also simply more
+    evidence about the weakest signal in the pipeline: one run of a chord is
+    very little to judge a quiet third by, every occurrence of it in that
+    section is several times more. Falls back to pooling per root across the
+    whole song when there is no section reading, which is still wider than
+    per-run. Measured: repeat self-contradictions 15 -> 6 on that song and
+    1 -> 0 on the other benchmark, with both songs also improving on chord
+    names and power-chord share, and chip counts unchanged.
+
+    maj-vs-min is deliberately NOT pooled — a song is allowed to move
+    between them, and that is a choice between two strong alternatives
+    rather than the detection of a weak one.
+    """
+    runs = _root_runs(states)
+    if section_labels is None:
+        section_labels = [None] * len(states)
+
+    # Pool each (section label, root) group's raw chroma and answer the two
+    # presence questions once for the whole group.
+    pooled_frames = {}
+    for start, end, state in runs:
+        if state == 12:
+            continue
+        for i in range(start, end):
+            pooled_frames.setdefault((section_labels[i], state), []).append(gate_windows_raw[i])
+    presence = {}
+    for key, frames in pooled_frames.items():
+        agg = np.median(np.array(frames), axis=0)
+        presence[key] = (_third_is_present(agg, key[1]),      # CD-2
+                          _seventh_is_present(agg, key[1]))    # CD-5
+
     labels = [None] * len(states)
-    for start, end, state in _root_runs(states):
+    for start, end, state in runs:
         if state == 12:  # the N (no confident chord) state
             for i in range(start, end):
                 labels[i] = (None, "N")
             continue
 
         root = KEY_NOTE_NAMES[state]
-        run_raw = np.median(np.array(gate_windows_raw[start:end]), axis=0)
+        has_third, has_seventh = presence[(section_labels[start], state)]
 
-        if not _third_is_present(run_raw, state):  # CD-2 — power chord
+        if not has_third:  # power chord
             for i in range(start, end):
                 labels[i] = (root, "5")
             continue
 
         qualities = ["maj", "min"]
-        if _seventh_is_present(run_raw, state):  # CD-5
+        if has_seventh:
             qualities.append("7")
         cols = [CHORD_TEMPLATE_INDEX[(root, q)] for q in qualities]
 
@@ -1054,7 +1129,7 @@ def _beat_windowed_chroma(chroma: "np.ndarray", frame_times: "np.ndarray", beats
     return windows
 
 
-def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"] | None:
+def detect_chords(out_dir: Path, beats: list, sections: list = None) -> tuple[list[dict], "np.ndarray"] | None:
     """One chord guess per beat-grid interval [beats[i], beats[i+1]).
     Chroma source is the sum of every pitched, non-percussive, non-vocal
     stem available (bass/other/guitar/piano) — deliberately excludes vocals
@@ -1168,7 +1243,8 @@ def detect_chords(out_dir: Path, beats: list) -> tuple[list[dict], "np.ndarray"]
 
     root_states = _decode_root_sequence(root_scores)
     root_states = _merge_short_root_runs(root_states, root_scores)
-    labels = _name_root_runs(root_states, main_windows, gate_windows_raw)
+    labels = _name_root_runs(root_states, main_windows, gate_windows_raw,
+                              _beat_section_labels(beats, sections))  # CD-10
 
     chords = []
     for i, start in enumerate(beats[:-1]):
@@ -1600,28 +1676,38 @@ def analyze_track(out_dir: Path) -> dict:
         except Exception:
             continue
 
-    # BT-04: needs the beat grid above it, so runs last and is skipped
+    # BT-20: coarse song structure (see detect_sections). Its own try — a
+    # segmentation failure never costs the readings above it — and, like every
+    # other field here, simply omitted when there's no confident reading.
+    #
+    # CD-10 moved this ABOVE chord detection, because the chord lane now uses
+    # the repeat labels: a section that comes round twice should not be
+    # annotated two different ways (see _name_root_runs). Nothing else about
+    # the ordering matters — detect_sections needs only the beat grid, which
+    # is already computed, and it was already run for every track, so this
+    # costs nothing extra. detect_chords treats missing sections as "pool per
+    # root across the whole song", so a segmentation failure degrades the
+    # chord lane's consistency rather than breaking it.
+    sections = None
+    try:
+        sections = detect_sections(out_dir, result.get("beats"))
+        if sections:
+            result["sections"] = sections
+    except Exception:
+        sections = None
+
+    # BT-04: needs the beat grid above it, so runs late and is skipped
     # entirely if beat tracking didn't produce one — separate try so a
     # chord-detection failure never costs the bpm/beats/key readings that
     # already succeeded.
     try:
-        chord_result = detect_chords(out_dir, result.get("beats"))
+        chord_result = detect_chords(out_dir, result.get("beats"), sections)
         if chord_result:
             chords, chroma_mean = chord_result
             result["chords"] = chords
             chord_key = key_from_chords(chords, chroma_mean)
             if chord_key:
                 result["key"] = chord_key  # overrides detect_key's chroma-profile guess — see key_from_chords' docstring
-    except Exception:
-        pass
-
-    # BT-20: coarse song structure (see detect_sections). Its own try — a
-    # segmentation failure never costs the readings above it — and, like every
-    # other field here, simply omitted when there's no confident reading.
-    try:
-        sections = detect_sections(out_dir, result.get("beats"))
-        if sections:
-            result["sections"] = sections
     except Exception:
         pass
 

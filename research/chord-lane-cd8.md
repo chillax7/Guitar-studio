@@ -1,11 +1,18 @@
-# CD-8 / CD-9 — the chord ribbon is too detailed and doesn't follow the chords
+# CD-8 / CD-9 / CD-10 — the chord ribbon is too detailed and doesn't follow the chords
 
-> **Read CD-9 first (bottom of this file).** CD-8 was tuned against a single
-> chord chart, for a song that is 100% power chords. The moment a chart for a
-> song with *zero* power chords arrived, CD-8 turned out to have nearly
-> doubled an error in the one direction its benchmark could not see. CD-9 is
-> the correction. The CD-8 sections below are kept as written because the
-> mistake is the most useful thing in this document.
+> **Read the later passes first (bottom of this file).** CD-8 was tuned
+> against a single chord chart, for a song that is 100% power chords. The
+> moment a chart for a song with *zero* power chords arrived, CD-8 turned out
+> to have nearly doubled an error in the one direction its benchmark could
+> not see — **CD-9** is that correction. **CD-10** then came from someone
+> simply watching the ribbon against the track and noticing the same verse
+> annotated two different ways, which no chart had caught. The CD-8 sections
+> below are kept as written, because the mistake is the most useful thing in
+> this document.
+>
+> The through-line: every real improvement here came from real audio with an
+> answer attached, and every regression came from tuning against a sample too
+> narrow to show both kinds of error.
 
 
 Real-user report, third time on this feature: *"it's still too detailed and
@@ -432,3 +439,82 @@ Note that no CD-9 result above needs restating: every number was measured at
 a consistent 200 Hz for both songs, so the v14 / CD-8 / CD-9 comparison is
 unaffected. This only settles how much of the remainder is blameable on the
 test rig, and the answer is: not much.
+
+---
+
+# CD-10 — the same verse, annotated two different ways
+
+The sharpest bug report of the three, and the one that needed no chart at
+all. Watching the ribbon against the track:
+
+> *"empty rooms 00:15 to 00:34 is the same chord progression as 00:35 to
+> 00:48 but is annotated differently in the chord ribbon and this
+> inconsistency repeats e.g. 1:08 to 1:27"*
+
+Reproduced immediately on the CD-9 output:
+
+```
+0:14.4 – 0:28.8   D5          1:07.4 – 1:21.3   Dm
+0:28.8 – 0:33.6   A#          1:21.3 – 1:26.1   A#
+```
+
+Same music, same root, different quality. This is not a new defect — it is
+the CD-9 residual ("32% of a no-power-chord song reads as power chords")
+wearing the form a user can actually see. A percentage in a research note is
+easy to discount; a verse that says D5 the first time round and Dm the second
+is obviously wrong to anyone listening.
+
+## The app already knew
+
+`detect_sections` on the same song:
+
+```
+0:14.0 – 0:43.1   label B
+1:02.2 – 1:34.3   label B      <- the same letter
+```
+
+Both stretches the user flagged are already labelled **B**. The structure
+detection had the answer the whole time; the chord lane never asked it.
+
+## The fix
+
+The two presence tests — *is a third there at all*, *is a b7 there at all* —
+now pool their evidence per **(section label, root)** rather than per run.
+Every occurrence of a root inside every repeat of that section contributes to
+one decision. Repeats become consistent by construction, and the weakest
+signal in the pipeline gets several times more audio to judge from.
+
+`detect_sections` therefore runs **before** `detect_chords` in
+`analyze_track`. It was already computed for every track, so this costs
+nothing; with no section reading available, the pooling falls back to
+per-root across the whole song, which is still wider than per-run.
+
+**maj-vs-min is deliberately not pooled.** A song is allowed to move between
+major and minor, and that is a choice between two strong alternatives rather
+than the detection of a weak one.
+
+## Result — every metric improves at once
+
+| | repeat self-contradictions | distinct names | power-chord share | chips |
+|---|---|---|---|---|
+| Airbourne CD-9 | 1 | 7 (chart 5) | 94% (chart 100%) | 34 |
+| Airbourne **CD-10** | **0** | **6** | **96%** | 34 |
+| Empty Rooms CD-9 | 15 | 19 (chart 10) | 32% (chart 0%) | 67 |
+| Empty Rooms **CD-10** | **6** | **15** | **28%** | 67 |
+
+No trade-off — unusual for this feature, and the reason it was worth doing.
+Synthetic regression stayed 5/5 green, including `major_minor_same_root`,
+which pooling could plausibly have broken and does not, because it only
+pools the presence tests.
+
+## A metric that needs no chart
+
+**Repeat-consistency**: for each (section label, root), how many *different*
+qualities that root was given across every occurrence of that repeated
+section. One is correct. Anything more is the ribbon contradicting itself
+about music that repeats — a defect whatever the right answer turns out to
+be.
+
+This joins "quality-only flips" (CD-8) as a chart-free defect signal, and it
+is the better of the two: it caught something a chord chart had not, on a
+song whose chart we already had. Charts are scarce; repeats are free.
