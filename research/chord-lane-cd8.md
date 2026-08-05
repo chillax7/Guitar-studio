@@ -394,15 +394,41 @@ They come from **surrogate stems**, not Demucs (weights are blocked by this
 environment's egress policy). `chord_bench.fabricate_stems` splits the mix
 with HPSS plus a **200 Hz crossover**, calling everything below it "bass".
 
-An open Dm voicing has its root at D3 = **147 Hz**. So the surrogate is
-feeding the low half of the rhythm guitar into the bass stem — which chord
-identity deliberately excludes — while real separation would keep the whole
-guitar in `other`. That should hurt a low-voiced ballad far more than
-high-voiced power chords, i.e. it biases the Empty Rooms numbers in exactly
-the direction of the remaining error.
+An open Dm voicing has its root at D3 = **147 Hz**, so the surrogate feeds
+the low half of the rhythm guitar into the bass stem — which chord identity
+deliberately excludes — while real separation would keep the whole guitar in
+`other`. The obvious hypothesis was that this was inflating the residual
+error, and that a LOWER crossover would help.
 
-The false power chords are spread through the song (38% / 39% / 18% across
-thirds) rather than clustered in the solos, so lead-guitar bleed is not the
-main cause; the crossover is the better suspect. **Real stems for Empty
-Rooms would settle how much of the residual 32% is the algorithm and how
-much is my test rig.**
+**It was measured, and the hypothesis was wrong in the direction it
+predicted.** Rebuilding the surrogate at three crossovers:
+
+| crossover | Empty Rooms "5" share (chart 0%) | chips |
+|---|---|---|
+| 100 Hz | **59%** | 83 |
+| 200 Hz (all results above) | **32%** | 67 |
+| 300 Hz | **29%** | 62 |
+
+Lowering the crossover nearly doubled the error. The dominant effect is not
+losing the guitar's low notes — it is **bass leaking into the harmony
+stem**. A bass note is near-pure root energy, so it inflates root+fifth,
+drives the third ratio down, and manufactures power chords: exactly the CD-7
+bass-contamination failure already documented in `detect_chords`,
+resurfacing through the test rig instead of through the pipeline.
+
+The important part is the *shape* of that curve. 100 → 200 Hz buys 27
+points; 200 → 300 Hz buys only 3. It is flattening, and real Demucs stems
+(zero bass in `other`, and the guitar's low end intact) sit past the flat
+end of it. So the honest reading is that **most of the residual ~30% is the
+algorithm, not the bench** — real stems should be worth a few points, not
+thirty. This rules out the comfortable explanation rather than supporting
+it.
+
+The false power chords are also spread through the song (38% / 39% / 18%
+across thirds) rather than clustered in the solos, so lead-guitar bleed is
+not the main cause either.
+
+Note that no CD-9 result above needs restating: every number was measured at
+a consistent 200 Hz for both songs, so the v14 / CD-8 / CD-9 comparison is
+unaffected. This only settles how much of the remainder is blameable on the
+test rig, and the answer is: not much.
