@@ -632,3 +632,18 @@ sharing, not either mode on its own.
 - [ ] **Stays out of the recording (deliberate):** with the drums looping, a Riff Capture "Save that!" and a normal Play Along take must both contain your guitar and the backing track but NOT the drum loop — same as the plain click. Check this for both modes.
 - [ ] The volume slider affects both modes; double-clicking it resets to the default level.
 - [ ] The beacon flashes in time in both modes (on kick/snare for the drum kit, not on every hi-hat).
+
+## 19. Tone search memory (Tone Lab → Suggest a tone)
+
+Each capture the search measures needs its own OfflineAudioContext +
+AudioWorklet scope with a NAM model in it, and Chromium never reclaims
+that scope — ~15MB per capture, which at the 500-capture default is ~7GB
+and kills the tab. The fix runs those throwaway contexts inside a
+disposable iframe (`probe-blank.html`) that gets recycled every 25
+captures. This section guards that fix.
+
+- [ ] **Memory stays bounded:** with a large NAM library, run a full Suggest with the sample size set high (200+) while watching the browser's own task manager (Chrome: Window → Task Manager, watch the tab's Memory). It should rise and fall in a sawtooth as the iframe recycles, not climb monotonically. The tab must survive the whole run.
+- [ ] **Results unchanged:** the suggested capture, and the reported "too heavy to run live" / unusable counts, should match what the same library produced before — the iframe only changes where the probe contexts live, not the maths.
+- [ ] **No stray iframes:** after a run finishes, is cancelled, or errors, there is no leftover hidden iframe on the page (DevTools → Elements, search for `probe-blank`). Check the error path too, e.g. by running Suggest with no track loaded.
+- [ ] **The live rig is unaffected:** switching NAM captures normally in Tone Lab still loads instantly and doesn't accumulate memory across many switches (this path uses one long-lived node and was measured clean — it must stay that way).
+- [ ] **A single probe still works:** loading one NAM capture normally still reports its speed/refusal correctly (paLoadNamModel's own probe deliberately stays in the main realm).

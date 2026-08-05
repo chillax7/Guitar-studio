@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>NAM probe sandbox</title>
+<!--
+  Deliberately empty. This page exists only to give Tone Lab's tone search
+  a DISPOSABLE same-origin realm to build its throwaway
+  OfflineAudioContexts in.
+
+  Why: each capture the search measures needs its own OfflineAudioContext
+  + AudioWorklet scope + a loaded NAM model, and Chromium does not reclaim
+  a worklet scope once its context is finished — measured at ~15MB
+  retained per capture, never returned, which is ~7GB across a default
+  500-capture run and enough to kill the tab. Destroying the DOCUMENT that
+  owns those scopes does reclaim them (measured flat across 40 probes), so
+  paSuggestClosestModel builds its contexts inside an iframe pointed here
+  and throws the whole iframe away every NAM_PROBE_REALM_RECYCLE_EVERY
+  captures.
+
+  Nothing navigates here directly — see paProbeRealm in playalong.js.
+-->

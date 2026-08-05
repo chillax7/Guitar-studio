@@ -1612,6 +1612,52 @@ function awaitNamLoad(node, msg) {
 // duration then comes from the signal itself rather than NAM_PROBE_SECONDS.
 // opts.returnAudio hands back the rendered samples for that same scoring;
 // the plain load-speed-check callers (paLoadNamModel) don't need them.
+// A disposable same-origin realm for the tone search's throwaway probe
+// contexts.
+//
+// Measured, not assumed: each probed capture needs its own
+// OfflineAudioContext + AudioWorklet scope with a NAM model loaded into it,
+// and Chromium never gives that scope back — ~15MB retained per capture,
+// flat-linear, surviving forced GC. At the search's 500-capture default
+// that is ~7GB, and at its 5000 cap ~72GB; the tab dies long before the
+// run finishes. Isolating each layer showed the cost appears only once a
+// model is actually loaded (bare contexts, addModule and even the WASM
+// module send are all free), and that reloading models into ONE long-lived
+// node — what the live rig does on every capture switch — does NOT leak,
+// it plateaus. So the problem is specifically the per-probe throwaway
+// scope, not model loading itself.
+//
+// Destroying the DOCUMENT that owns those scopes does reclaim them
+// (measured completely flat across 40 probes, vs +600MB without), so the
+// search builds its contexts here and bins the whole iframe periodically.
+const NAM_PROBE_REALM_RECYCLE_EVERY = 25; // ~370MB peak before reclaim
+
+function paProbeRealm() {
+  let frame = null;
+  let used = 0;
+  return {
+    // Returns a Window to build probe contexts in, recycling the iframe
+    // once it has absorbed enough leaked scopes.
+    async realm() {
+      if (frame && used >= NAM_PROBE_REALM_RECYCLE_EVERY) this.dispose();
+      if (!frame) {
+        frame = document.createElement("iframe");
+        frame.style.display = "none";
+        frame.src = "probe-blank.html";
+        document.body.appendChild(frame);
+        await new Promise((resolve) => { frame.onload = resolve; });
+        used = 0;
+      }
+      used++;
+      return frame.contentWindow;
+    },
+    dispose() {
+      if (frame) { frame.remove(); frame = null; }
+      used = 0;
+    },
+  };
+}
+
 async function paProbeNamModel(namJson, opts = {}) {
   try {
     // Audio.ctx always exists by the time Play Along's load paths run, but
@@ -1619,9 +1665,16 @@ async function paProbeNamModel(namJson, opts = {}) {
     const sr = (typeof Audio !== "undefined" && Audio.ctx && Audio.ctx.sampleRate) || 48000;
     const len = opts.testSignal ? opts.testSignal.length : Math.floor(sr * NAM_PROBE_SECONDS);
     const durationSec = len / sr;
-    const offlineCtx = new OfflineAudioContext(1, len, sr);
+    // opts.realm lets a caller build this probe's throwaway context in a
+    // DIFFERENT document (an iframe) so it can be reclaimed by destroying
+    // that document — see paProbeRealm. Defaults to this window, which is
+    // what the one-shot callers (paLoadNamModel's speed check) want: for a
+    // single probe the retention is irrelevant, and staying in-realm keeps
+    // that path completely unchanged.
+    const realm = opts.realm || window;
+    const offlineCtx = new realm.OfflineAudioContext(1, len, sr);
     await offlineCtx.audioWorklet.addModule("nam-processor.js");
-    const node = new AudioWorkletNode(offlineCtx, "nam-processor", {
+    const node = new realm.AudioWorkletNode(offlineCtx, "nam-processor", {
       numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
     });
     // Probing the WASM engine's speed (not the JS fallback's) is the whole
@@ -2316,6 +2369,10 @@ async function paSuggestNamModel() {
   // measurements above), which needs the overlay; later runs lift it again
   // almost immediately, which is the point.
   const busy = gsBusy("Comparing captures against this track's guitar…");
+  // Every probe below leaks its worklet scope; this is what reclaims them.
+  // Disposed in the finally, so an early return / thrown error can't leave
+  // the iframe (and the scopes it is holding) parked on the page.
+  const probeRealm = paProbeRealm();
   try {
     const targetZcr = await paTargetGuitarZcr();
     if (!PA.namModels.length) await paRefreshNamModels();
@@ -2378,7 +2435,9 @@ async function paSuggestNamModel() {
         // this loop's own noise test signal (paProbeNamModel's default is a
         // sine, no good for a zero-crossing-rate brightness proxy) and ask
         // for the rendered audio back to score.
-        const probe = await paProbeNamModel(namJson, { testSignal, returnAudio: true });
+        const probe = await paProbeNamModel(namJson, {
+          testSignal, returnAudio: true, realm: await probeRealm.realm(),
+        });
         measured++;  // the attempt cost the time either way, so it spends budget
         if (probe.rtFactor === null) {
           // Failed to build/load/render. Unlike a fetch error this is a
@@ -2448,6 +2507,7 @@ async function paSuggestNamModel() {
   } catch (e) {
     resultEl.textContent = "Could not analyze: " + e.message;
   } finally {
+    probeRealm.dispose();
     busy();
   }
 }
