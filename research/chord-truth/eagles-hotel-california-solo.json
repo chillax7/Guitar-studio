@@ -1,17 +1,31 @@
 {
-  "title": "Eagles - Hotel California (guitar solo section) - NOT USABLE for the seventh gate, see notes",
+  "title": "Eagles - Hotel California (guitar solo section) - still cannot calibrate the seventh gate, but exposed a real stem-mixing defect",
   "source": "Real bs_roformer_sw stems (bass/drums/guitar) of the solo section, 62.6s. Chart is the Ultimate Guitar official chart, which is written in a DIFFERENT KEY from this audio.",
   "key": "Dm",
   "key_note": "The CHART is in Bm. This AUDIO is in Dm - a minor third (+3 semitones) above it. Verified: 5 of 5 detected roots are explained by the chart transposed +3, and 0 of 5 at +2 or +4. The pipeline independently called the key D minor at 0.913 confidence, which is correct for this audio.",
-  "chords": ["Dm", "A", "C", "G", "A#", "F", "Gm", "A7"],
+  "chords": [
+    "Dm",
+    "A",
+    "C",
+    "G",
+    "A#",
+    "F",
+    "Gm",
+    "A7"
+  ],
   "chords_note": "The chart's Bm F# A E / G D Em F#7 transposed +3 to match the audio.",
   "notes": [
-    "DO NOT use this excerpt to calibrate CHORD_SEVENTH_ABSENCE_RATIO. It cannot answer the question, and here is the measurement that shows why: the guitar stem averages 1.76 chroma bins above half the frame peak. A triad reads about 3, a two-note harmonised lead about 2, a single line about 1. This section's guitar stem is the harmonised twin lead, NOT the rhythm chords - so there is no third present to detect, and 100% of beats read as power chords against a chart with none.",
-    "The missing chord is exactly the one needed: the V (F# in Bm, A in Dm) is the only chart root the pipeline never found. Its pitch class is actually well represented in both stems (guitar 10.5%, bass 12.9%), so it is not absent from the audio - the two-note lead texture just never states it as a chord.",
-    "Root layer did well given lead-only input: 5 of 6 chart roots found, ZERO spurious roots.",
-    "Beat grid ruled out as the cause: forcing grids at 74, 99 and 148 bpm plus half-time all gave the same 5 roots, the same missing A, and the same 100% power chords. Detected tempo is 99.4bpm regardless of the start_bpm prior, against the chart's 74 - consistent with this being a different arrangement, not a tracking error.",
-    "TO ACTUALLY CALIBRATE THE SEVENTH GATE, two things are needed: (a) the 'other' (and piano) stem as well as guitar - the acoustic/12-string rhythm part is probably in there, since it is not in the guitar stem; and (b) ideally a VERSE or CHORUS section rather than the solo, where the rhythm guitar carries the harmony and no lead is playing over it. The verse progression is identical to the solo's, so it tests the same chords.",
-    "Also note for scoring: if a chart and an audio version disagree on key, transpose the chart, do not transpose the detection. The app reports sounding pitch."
+    "AUDIO KEY DIFFERS FROM THE CHART. Chart is Bm, audio is Dm (+3 semitones). Verified: 5 of 5 detected roots explained at +3, 0 of 5 at +2 or +4. The pipeline independently reported D minor at 0.913 confidence, which is correct for this audio. When a chart and a recording disagree on key, transpose the CHART - the app reports sounding pitch.",
+    "THE REAL FINDING: detect_chords sums every pitched non-bass stem into one identity mix, and a loud monophonic LEAD in that sum destroys a chord read that the rhythm stem alone gets right. Measured on this excerpt, with the chart transposed:",
+    "    identity = guitar only        : 5 roots, A (the V) MISSING, 100% power chords",
+    "    identity = other only         : 6 roots, ALL correct, zero spurious, 4% power chords",
+    "    identity = guitar+other+piano : identical to guitar-only - the lead swamps everything",
+    "    identity = the same three, RMS-equalised before summing: 5 roots, A still missing, 54-72% power chords",
+    "So loudness is only part of it: even at equal RMS a sustained lead note is confidently wrong while rhythm chroma is spread across a triad. This is the same SHAPE as the CD-7 bass problem (a loud stem burying the informative one), but the CD-7 remedy - exclude that stem - does not transfer, because on most songs the guitar stem IS the rhythm guitar. Airbourne and Empty Rooms both read fine from guitar-ish content.",
+    "DELIBERATELY NOT FIXED. One 62-second solo excerpt is not enough evidence to change how stems are combined for every song, and shipping a change on a single unrepresentative sample is the exact mistake CD-8 made. Recorded here instead.",
+    "A possible future signal, cheap to compute and already measured: how many chroma bins a stem holds above half its frame peak. Triads read about 3, a harmonised two-note lead about 2, a single line about 1. On this excerpt guitar=1.76, other=2.13, piano=3.92 (but piano RMS is 0.0015, 34dB below guitar - near silence, so its high count is separation noise). Any such weighting must gate on stem energy first.",
+    "WHY IT STILL CANNOT CALIBRATE CHORD_SEVENTH_ABSENCE_RATIO: even from the 'other' stem alone, the V chord appears as exactly ONE 2.4-second run and reads as A5, not A or A7. One run is not a calibration, and a power-chord reading cannot distinguish A from A7 at all. Needs a VERSE or CHORUS section (identical progression, rhythm guitar carrying it, no lead over the top).",
+    "Beat grid ruled out: grids forced at 74, 99, 148 bpm and half-time all gave identical roots, the same missing V, and the same 100% power chords. Detected tempo is 99.4bpm at every start_bpm prior, against the chart's 74 - consistent with a different arrangement."
   ],
   "sections": []
 }
