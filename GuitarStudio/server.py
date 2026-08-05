@@ -3650,6 +3650,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._serve_static(path)
         except ApiError as exc:
             self._send_json(exc.status, {"error": exc.message})
+        except SystemExit as exc:
+            # Symmetry with do_POST, which has caught this since the chunked
+            # -upload work. SystemExit derives from BaseException, NOT
+            # Exception, so the catch-all below does not see it: an engine
+            # helper calling sys.exit() mid-request would return NO RESPONSE
+            # AT ALL (verified — the connection just closes), which reads in
+            # the UI as an unexplained network failure rather than the real
+            # reason. That is exactly the undiagnosable-from-the-UI failure
+            # the catch-all below was written to eliminate.
+            #
+            # No GET route reaches a sys.exit()-capable engine function today
+            # (the three that can — run_demucs_backend,
+            # run_audio_separator_backend, write_audio — are all behind POST).
+            # This is closing the trap, not fixing a live bug: without it the
+            # first GET route to touch one of those helpers regresses to a
+            # silent dead connection with nothing pointing at the cause.
+            self._send_json(500, {"error": str(exc.code) if exc.code else "Engine error"})
         except Exception as exc:
             traceback.print_exc()
             # Name the actual failure — the server's own terminal isn't
