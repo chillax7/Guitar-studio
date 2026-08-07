@@ -1,16 +1,26 @@
 {
-  "title": "Eagles - Hotel California",
-  "source": "Ultimate Guitar official chord chart (user-supplied PDF)",
+  "title": "Eagles - Hotel California (full song) - VALIDATED, and the case that calibrated the seventh gate",
+  "source": "Ultimate Guitar official chord chart + real bs_roformer_sw stems of the full song (6.45 min, 16kHz mono: guitar, bass, drums, other)",
   "key": "Bm",
   "bpm": 74,
-  "chords": ["Bm", "F#", "A", "E", "G", "D", "Em", "F#7"],
+  "chords": [
+    "Bm",
+    "F#",
+    "A",
+    "E",
+    "G",
+    "D",
+    "Em",
+    "F#7"
+  ],
   "notes": [
-    "AUDIO NOT YET SUPPLIED - this truth file is ready, the mp3 is not. Nothing has been scored against it.",
-    "Zero power chords, so like Empty Rooms any '5' emitted is wrong.",
-    "Contains a genuine dominant seventh (F#7) that recurs throughout - the only real-song test of the CD-5 seventh gate we have. F# also appears as a plain major triad in the same song, so this song tests BOTH directions of that gate: F# must not become F#7, and F#7 must not become F#.",
-    "Progression is Bm F# A E / G D Em F#7 - eight distinct chords, richer than either other chart.",
-    "Also the reference case for BT-03b key detection: the song is B minor but Bm is the RAREST chord in the loop, so 'most frequent root' fails and profile correlation is required. Detected key should read B minor.",
-    "Distinct roots: B, F#, A, E, G, D - six."
+    "THIS IS THE STUDIO VERSION, in Bm, and it MATCHES the chart. (The separately-supplied 62s solo excerpt is a different arrangement in Dm - see eagles-hotel-california-solo.json. Do not confuse them.)",
+    "RESULT: all 8 chart chords found, ZERO spurious roots, ZERO missed roots. 13 distinct names against the chart's 8; the extras (A5, B, B5, E5, G5) are quality errors on correct roots. 102 chips.",
+    "THE SEVENTH GATE IS CALIBRATED BY THIS SONG, and CHORD_SEVENTH_ABSENCE_RATIO=0.2 PASSES. The chart uses plain F# (verse line 1) and F#7 (verse line 4), once each per cycle, so a correct read shows both in rough balance. Measured: F# 115 beats / 15 chips (57%), F#7 88 beats / 11 chips (43%). Both present, neither swallowing the other. From 1:21 the ribbon reads B5 F# A E G D Em F#7 - the chart's verse exactly, bar for bar.",
+    "That closes the question left open by CD-9, which deliberately did not tune this constant because the only charts available then contained no sevenths at all and could push it in one direction only.",
+    "KNOWN DEFECT this song exposes, NOT fixed: the BPM readout is DOUBLE. analyze_track's start_bpm=140 prior (BT-01) drives this 75bpm song to 144.2. Priors of 90 or 100 read it correctly, and also keep Airbourne (115) and Empty Rooms (99) correct - but they re-break the songs the prior exists for: Phantom of the Opera reads 86.1 at priors 75/90/100 and only 172.3 at 140. A single global prior cannot serve a 75bpm ballad and a 172bpm metal song; this is the classic tempo-octave ambiguity and needs a real disambiguator, not a different constant. Users can correct it with the app's own half/double tempo control.",
+    "Note the chord lane survives the double grid reasonably: a bar is simply 8 grid-beats instead of 4, and 81% of chips land within one beat of a bar boundary (85% with the correct grid).",
+    "UNEVEN CHIP SPACING IN THE FIRST ~80 SECONDS (user report: 'from 1:21 on looks spot on but the first part is screwy'). The boundary is real and reproduces exactly: chip lengths before 1:21 are 2,7,9,8,3,5,3,13,3,5,7 beats; after, 9,7,9,8,8,8,7,9,8,8,8,8 - i.e. one bar each. Ruled out by measurement: beat-grid instability (CV ~0.035 everywhere, no early/late difference); the drums-free intro (drums do start at 0:50, and silencing drums produces MISSING chords, not uneven ones); the tempo error (the correct 75bpm grid leaves the early section just as ragged: 9,4,2,10,2,2,3,5); and harmonic texture density (chroma bins-per-frame is flat at 2.0-2.5 across the whole song). What DOES track the boundary is LEVEL: the intro builds from rms 0.010 to 0.030 right at 1:20, so early chroma has far worse signal-to-noise against separation bleed. Quiet passages give noisier chord evidence."
   ],
   "sections": []
 }
