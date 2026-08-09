@@ -183,5 +183,59 @@ normalization.
   mid-download is the most common cause, and it resumes sensibly.
 - **"Apple could not verify..." when opening the app** — see step 6
   above, right-click → Open.
+- **The app opens a browser tab after a long pause, and the page won't
+  load** — the launcher starts the server in the background, waits up to
+  45 seconds for it, then opens the browser *whether or not the server
+  came up*. So this always means the server failed to start, and the
+  launcher can't tell you why. Read the log:
+  `cat /tmp/guitar-studio-server.log`. The two usual causes are a missing
+  virtualenv (the launcher runs `venv/bin/python` specifically, and
+  `venv/` is gitignored — a fresh clone has none until you create it, see
+  step 4) and the cloud-sync problem below.
+- **Don't keep this project in iCloud Drive, OneDrive, Dropbox or Google
+  Drive.** It will appear to work and then fail in confusing ways. Cloud
+  folders store files as online-only placeholders and fetch them on
+  demand, which this project breaks on three fronts at once: git needs
+  `mmap` over its object store, the virtualenv is thousands of small
+  files Python must all read, and `separated/`/`output/` hold gigabytes
+  of audio that sync will churn through endlessly. Symptoms seen in
+  practice:
+  - `fatal: mmap failed: Operation timed out` and
+    `error: read error while indexing <file>: Operation timed out` from
+    ordinary git commands — that is the filesystem failing to deliver a
+    placeholder, not a damaged repository.
+  - `fatal: Updating an unborn branch with changes added to the index` —
+    an earlier git command timed out midway and left the index and refs
+    half-written.
+  - The server not starting at all, because `venv/bin/python` or its
+    packages can't be read.
+
+  On macOS this catches people out because **Desktop and Documents are
+  synced by default** once OneDrive or iCloud Known Folder Move is on —
+  `~/Desktop/Guitar-studio` is really
+  `~/Library/CloudStorage/…/Desktop/Guitar-studio`. Check with
+  `cd ~/Desktop/Guitar-studio && pwd -P`.
+
+  The fix is to move the project somewhere genuinely local (`~/Projects`
+  is fine) and clone fresh rather than repair in place, since every git
+  command will keep hitting the same timeouts:
+
+  ```bash
+  mkdir -p ~/Projects && cd ~/Projects
+  git clone https://github.com/chillax7/Guitar-studio.git
+  cd Guitar-studio
+  python3.12 -m venv venv && source venv/bin/activate
+  pip install -r requirements.txt
+  bash scripts/build_app.sh
+  ```
+
+  Then copy your data over — `input/`, `separated/`, `output/`, `tabs/`,
+  `GuitarStudio/projects/`, `GuitarStudio/models/`. All of those are
+  gitignored, so they are ordinary files and nothing is lost. **Before
+  copying**, right-click the old folder in Finder → **"Always Keep on
+  This Device"** and let it finish downloading, or the copy will stall on
+  the same placeholder reads. Rebuild the `.app` afterwards (as above):
+  it resolves the project directory relative to its own location, so an
+  old copy keeps pointing at the cloud folder.
 - **Anything else** — see the Troubleshooting section in
   [USER-MANUAL.md](USER-MANUAL.md).
