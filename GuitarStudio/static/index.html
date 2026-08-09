@@ -995,6 +995,30 @@
              so it's the first thing visible the moment a panel opens. -->
         <div id="pa-chain-icons"></div>
         <div id="pa-pedalboard">
+          <section class="pa-card pa-rig-card" data-card-id="input">
+            <h3>Input</h3>
+            <div class="pa-card-content">
+              <label>Trim <span id="pa-input-trim-val">0.0 dB</span></label>
+              <input type="range" id="pa-input-trim" min="-30" max="12" step="0.5" value="0">
+              <p class="hint">
+                The first thing in the chain — before the gate, the amp and
+                every pedal. Turn it <strong>down</strong> if a hot pickup or a
+                fixed-gain USB interface is slamming the amp into distortion
+                whatever you do with the amp's own gain.
+                <br>
+                Saved per machine, not per rig preset: it compensates for your
+                guitar and interface, so it stays put when you change preset or
+                song.
+                <br>
+                The input meter above deliberately shows the level
+                <em>before</em> this trim. If the meter is already pinned, your
+                interface is clipping before the app sees it and no amount of
+                trim can undo that — lower the guitar's volume knob, drop the
+                pickup height, or use an interface with its own gain control.
+              </p>
+            </div>
+          </section>
+
           <section class="pa-card pa-rig-card" data-card-id="gate">
             <h3>Noise Gate</h3>
             <div class="pa-card-content">

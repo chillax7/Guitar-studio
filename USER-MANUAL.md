@@ -2230,8 +2230,30 @@ tools, not part of the shared bar:
   reorder the chain.
 - **Bypass** (every pedal card) — turns that individual effect on or off
   without removing it from the chain.
+- **Input — Trim** — the very first stage in the chain, ahead of the
+  gate, the amp and every pedal: the "how hard am I hitting the front of
+  the rig" control a real interface's input knob would give you. Turn it
+  **down** if a high-output pickup or a fixed-gain USB guitar interface
+  (a dongle with no gain pot of its own) is driving the amp model into
+  permanent distortion no matter how you set the amp's own Drive. Range
+  is −30 dB to +12 dB, deliberately lopsided because the problem it
+  exists for is too *much* level; double-click to snap back to 0.
+  It is saved **per machine, not per rig preset** — it compensates for
+  your guitar and your interface rather than for a tone, so it stays put
+  when you switch preset or song.
+  Two things worth knowing: the input meter shows the level *before* this
+  trim, on purpose, because the trim is a software gain applied after the
+  audio has been digitised — **if your interface is clipping, the
+  flat-topped waveform is already baked into the samples and no amount of
+  trim can undo it.** A meter that moved with the trim would hide exactly
+  that. So if the meter is pinned even with the trim right down, fix it
+  upstream: roll the guitar's volume knob back, lower the pickups, or use
+  an interface with its own gain control. The tuner also reads pre-trim,
+  so its sensitivity doesn't change with your trim setting.
 - **Noise Gate — Threshold** — the input level below which the gate cuts
-  signal, to silence hum/hiss between notes.
+  signal, to silence hum/hiss between notes. Note this sits *after* the
+  trim, so a big trim cut moves your signal closer to the gate threshold —
+  if notes start getting chopped after trimming, lower the threshold too.
 - **Amp — Pass Through / Analog / Neural (NAM)** — picks the amp
   modeling mode: no modeling, a parametric analog-style model, or a real
   captured amp profile (NAM).

@@ -270,6 +270,28 @@ async function _buildPAGraph() {
     numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: "explicit",
   });
 
+  // IN-1: input trim — the very first thing in the chain, before the gate
+  // and therefore before the amp and every pedal. Real user need: a
+  // fixed-gain USB guitar dongle (no trim pot of its own) plus high-output
+  // pickups arrives far too hot, which slams the amp stage into permanent
+  // distortion no matter how the amp's own gain is set. This is the "turn
+  // the wick down before the amp" control that a real interface's input
+  // knob would be.
+  //
+  // Kept OUT of the rig preset on purpose (see PA_INPUT_TRIM_KEY): it
+  // compensates for this guitar and this interface, not for a tone, so it
+  // must not jump around when a preset or a song changes.
+  //
+  // IMPORTANT limit, and the reason the meter stays PRE-trim (see
+  // paEnableInput): this is a software gain applied after the audio has
+  // already been digitised. If the dongle's own converter is clipping, the
+  // flat tops are already in the samples and nothing here can undo them —
+  // trimming afterwards just makes a quieter clipped signal. The meter has
+  // to keep showing what actually arrived so that case stays visible.
+  PA.inputTrim = Audio.ctx.createGain();
+  PA.inputTrim.gain.value = paDbToGain(paLoadInputTrimDb());
+  PA.inputTrim.connect(PA.gateNode);
+
   PA.cleanGain = Audio.ctx.createGain();
 
   // Analog amp, v4.8 revoicing — matched against a real Marshall-sim
@@ -665,6 +687,41 @@ async function _buildPAGraph() {
 // across reloads and captured/applied by V3-T2's rig presets
 // (paCaptureRigState/paApplyRigState) for the "save the whole rig" case.
 // ---------------------------------------------------------------------------
+// IN-1: input trim, in dB, applied before the gate/amp/pedals. Stored in
+// localStorage next to the input-device choice rather than in the rig
+// preset, because it belongs to the HARDWARE (this guitar's output level,
+// this interface's fixed gain) and not to a tone: switching preset or song
+// must not change how hot the signal arriving at the amp is. Range is
+// asymmetric on purpose — the problem it exists for is too much level, so
+// there is a lot of cut and only a little boost.
+const PA_INPUT_TRIM_KEY = "gs_pa_input_trim_db";
+const PA_INPUT_TRIM_MIN_DB = -30;
+const PA_INPUT_TRIM_MAX_DB = 12;
+
+function paDbToGain(db) {
+  return Math.pow(10, db / 20);
+}
+
+function paLoadInputTrimDb() {
+  const raw = parseFloat(localStorage.getItem(PA_INPUT_TRIM_KEY));
+  if (!Number.isFinite(raw)) return 0;
+  return Math.min(PA_INPUT_TRIM_MAX_DB, Math.max(PA_INPUT_TRIM_MIN_DB, raw));
+}
+
+// Ramped rather than set outright: this sits directly in the live guitar
+// path, and a step change in gain while a note is ringing is an audible
+// click. Same reasoning as every other live control in this file.
+function paSetInputTrimDb(db, ramp = true) {
+  localStorage.setItem(PA_INPUT_TRIM_KEY, String(db));
+  if (!PA.inputTrim) return;
+  const target = paDbToGain(db);
+  if (ramp && Audio.ctx) {
+    PA.inputTrim.gain.setTargetAtTime(target, Audio.ctx.currentTime, 0.01);
+  } else {
+    PA.inputTrim.gain.value = target;
+  }
+}
+
 const PA_PEDAL_ORDER_KEY = "gs_pa_pedal_order";
 // v3.1: grew from 4 to 12 stages (post-v3-backlog-audit.md §2.2). v4.7:
 // grew to 13 — Amp joined the reorderable set (a pedal like Wah or Boost
@@ -909,7 +966,19 @@ async function paEnableInput() {
 
     PA.stream = stream;
     PA.source = Audio.ctx.createMediaStreamSource(stream);
-    PA.source.connect(PA.gateNode);
+    // IN-1: the rig now hangs off the trim, not the raw source, so the trim
+    // is genuinely the first stage — ahead of the gate, the amp and every
+    // pedal.
+    PA.source.connect(PA.inputTrim);
+    // ...but the meter and the tuner stay on the RAW source, deliberately.
+    // The trim is a software gain applied after the converter, so it cannot
+    // undo clipping that happened in the interface itself; if the meter sat
+    // after it, pulling the trim down would make a hard-clipped signal look
+    // healthy while it still sounds broken. Keeping the meter pre-trim means
+    // it always answers the question only it can answer — "is the level
+    // arriving from the hardware sane?" — and leaves the trim to answer
+    // "how hard am I hitting the amp?". It also keeps the tuner's
+    // sensitivity independent of the trim setting.
     PA.source.connect(PA.inAnal);
 
     // GP-10: a new input session clears the latched clip light — it's
@@ -2798,6 +2867,28 @@ function wirePAControls() {
   document.getElementById("pa-gate-bypass").addEventListener("change", (e) => {
     PA.gateNode.parameters.get("bypass").value = e.target.checked ? 1 : 0;
   });
+  const trimEl = document.getElementById("pa-input-trim");
+  const trimValEl = document.getElementById("pa-input-trim-val");
+  const paShowTrim = (db) => {
+    trimValEl.textContent = (db > 0 ? "+" : "") + db.toFixed(1) + " dB";
+  };
+  // Reflect the stored value on load — this control persists per machine
+  // (PA_INPUT_TRIM_KEY), so it must come back the way it was left even
+  // though no rig preset carries it.
+  trimEl.value = String(paLoadInputTrimDb());
+  paShowTrim(paLoadInputTrimDb());
+  trimEl.addEventListener("input", (e) => {
+    const db = parseFloat(e.target.value);
+    paSetInputTrimDb(db);
+    paShowTrim(db);
+  });
+  // Double-click to get back to unity, same idiom as the mixer faders.
+  trimEl.addEventListener("dblclick", () => {
+    trimEl.value = "0";
+    paSetInputTrimDb(0);
+    paShowTrim(0);
+  });
+
   document.getElementById("pa-gate-threshold").addEventListener("input", (e) => {
     PA.gateNode.parameters.get("thresholdDb").value = parseFloat(e.target.value);
     document.getElementById("pa-gate-threshold-val").textContent = e.target.value + " dB";
@@ -3098,7 +3189,7 @@ function paShowLatencyEstimate() {
 // from the icon strip's DOM order instead of the card stack's).
 // ---------------------------------------------------------------------------
 const CHAIN_ICON_LABELS = {
-  gate: "Gate", amp: "Amp", ir: "Cab IR", eq: "EQ", comp: "Comp",
+  input: "Input", gate: "Gate", amp: "Amp", ir: "Cab IR", eq: "EQ", comp: "Comp",
   fx: "Delay/Rev", wah: "Wah", octaver: "Octave", boost: "Boost",
   geq: "Graphic EQ", chorus: "Chorus", phaser: "Phaser", flanger: "Flanger",
   tremolo: "Tremolo", output: "Output",
@@ -3111,6 +3202,8 @@ const CHAIN_ICON_LABELS = {
 // notch, a doubled offset wave for flanger, pulse ticks for tremolo's
 // volume wobble) since that's what actually distinguishes them sonically.
 const CHAIN_ICON_GLYPHS = {
+  // a jack plug: the signal entering the rig
+  input: '<circle cx="7" cy="12" r="3"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="14" y1="9.5" x2="14" y2="14.5"/><line x1="17" y1="9.5" x2="17" y2="14.5"/>',
   gate: '<line x1="7" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="17" y2="20"/>',
   amp: '<rect x="4" y="7" width="16" height="11" rx="1.5"/><circle cx="12" cy="12.5" r="3.2"/>',
   ir: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><circle cx="8.5" cy="12" r="2.6"/><circle cx="15.5" cy="12" r="2.6"/>',
@@ -3134,14 +3227,19 @@ let paOpenChainStage = null;
 // see rewirePedalChain) rather than a separate fixed prepend; only Gate
 // (always first) and Output (always last) stay outside the array.
 function paChainStageOrder() {
-  return ["gate", ...(PA.pedalOrder || paLoadPedalOrder()), "output"];
+  // IN-1: "input" joins Gate and Output as a FIXED stage — it is the trim
+  // that everything else hangs off, so it is never draggable and always
+  // first.
+  return ["input", "gate", ...(PA.pedalOrder || paLoadPedalOrder()), "output"];
 }
 
 // Amp has no bypass control of its own (three modes instead) — always
 // "on". Delay/Reverb share one card (#pa-fx) but each has its own bypass,
 // so the icon lights up if either is active.
 function paChainStageIsOn(id) {
-  if (id === "amp") return true;
+  // Input (a trim) and Amp (three modes) have no bypass of their own —
+  // they are always part of the chain.
+  if (id === "input" || id === "amp") return true;
   if (id === "fx") {
     const d = document.getElementById("pa-delay-bypass");
     const r = document.getElementById("pa-reverb-bypass");
@@ -3193,7 +3291,7 @@ function renderChainIcons() {
     btn.className = "pa-chain-icon";
     btn.dataset.cardId = id;
     btn.title = CHAIN_ICON_LABELS[id] || id;
-    if (id !== "gate" && id !== "output") btn.draggable = true;
+    if (id !== "input" && id !== "gate" && id !== "output") btn.draggable = true;
     btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${CHAIN_ICON_GLYPHS[id] || ""}</svg><span class="pa-chain-icon-label">${CHAIN_ICON_LABELS[id] || id}</span>`;
     btn.addEventListener("click", () => paOpenChainCard(id));
     strip.appendChild(btn);
@@ -3211,7 +3309,7 @@ function renderChainIcons() {
 function paSyncPedalOrderFromDom() {
   PA.pedalOrder = Array.from(document.querySelectorAll("#pa-chain-icons .pa-chain-icon"))
     .map((el) => el.dataset.cardId)
-    .filter((id) => id !== "gate" && id !== "output");
+    .filter((id) => id !== "input" && id !== "gate" && id !== "output");
   paSavePedalOrder();
   rewirePedalChain();
 }
