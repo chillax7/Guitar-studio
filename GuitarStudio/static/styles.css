@@ -1952,6 +1952,18 @@ h3:first-child { margin-top: 0; }
   padding: 1px 6px; font-family: monospace; font-size: 11px;
 }
 
+/* CH-2: per-pedal MIDI footswitch binding, injected under each card's Bypass
+   control (see paRenderBypassMidiRows). Deliberately quieter than the
+   controls around it — it is setup, touched once, and should not compete
+   with the knobs you actually reach for while playing. */
+.pa-midi-bypass-row { margin: 2px 0 8px !important; font-size: 11px; opacity: 0.75; }
+.pa-midi-bypass-row:hover, .pa-midi-bypass-row:focus-within { opacity: 1; }
+.pa-midi-bypass-row button { font-size: 11px; padding: 2px 8px; }
+.pa-midi-bypass-row kbd {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 3px;
+  padding: 1px 6px; font-family: monospace; font-size: 11px;
+}
+
 /* GP-14: this song's rig-preset chain — a small vertical drag-reorderable
    list, same drag-position idiom as the old vertical pedal-card reorder
    (clientY vs. the hovered row's own midpoint). */

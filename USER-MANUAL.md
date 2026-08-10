@@ -969,6 +969,36 @@ against a real footswitch — if something behaves oddly with your specific
 hardware, that's genuinely useful to report, not a known-working feature
 being mis-described.
 
+**Stomping pedals on and off (footswitch bypass).** Every bypass in the
+rig can be bound to a footswitch button too, which is the thing a real
+pedalboard does that this app previously couldn't. The binding lives on
+the pedal itself rather than in a settings list: open any pedal's card,
+and directly under its **Bypass** control is a **Footswitch:
+`not set` [Learn…]** row. Click **Learn…**, press the button on your
+pedal, done — the button label reads *Press it…* while it's waiting, and
+clicking it again cancels if you armed it by mistake.
+
+Fifteen things are switchable this way: Gate, Auto-Wah, Compressor,
+Octaver, Boost/Overdrive, Cab IR, Graphic EQ, EQ, Chorus, Phaser,
+Flanger, Tremolo, Delay, Reverb, and the Output (which acts as a mute).
+Delay and Reverb share one card but get a switch each, the way they'd be
+two pedals on a board. The Amp has no bypass to bind (it has three modes
+instead), and Input is a trim rather than an effect.
+
+Stomping a pedal lights its icon in the chain row exactly as clicking the
+checkbox does — a footswitch press and a mouse click run the same code,
+so they can't drift apart. Only presses count, never releases, so a pedal
+that sends a "value 0" message when your foot comes off won't toggle the
+effect straight back.
+
+One button does one job: if you bind a button that's already assigned to
+something else, it's taken off the old action and the message says so.
+That's also how you clear a binding you don't want — bind that button to
+whatever you'd rather it did. The bindings are global, not per-song, and
+they use the same device dropdown in **Tone Lab → Rig presets**, so pick
+your device there first. The same first-build caveat above applies:
+verified with simulated MIDI, not yet against real hardware.
+
 Play Along carries a lighter **Rig Preset** picker in its own top strip —
 just a dropdown, no Save/Delete/chain controls, for a one-off load of any
 preset without leaving the practice screen (this doesn't touch the song's
@@ -1038,6 +1068,39 @@ with a meter:
   Monophonic by construction; it's cleanest on single notes and breaks up
   on chords, same honesty-note spirit as the guitar-split and
   chord-detection features elsewhere in this app.
+
+**The default order** is the conventional pedalboard one, and each block
+of it is a different rule worth knowing before you rearrange anything:
+
+> Input → Gate → **Wah → Compressor → Octaver → Boost/OD** → **Amp → Cab
+> IR** → **Graphic EQ → EQ** → **Chorus → Phaser → Flanger → Tremolo** →
+> **Delay/Reverb** → Output
+
+- **Filters first.** A wah after distortion sweeps the fizz rather than
+  the note; wah-into-drive is the classic sound for a reason.
+- **Dynamics and pitch before drive.** The compressor evens out what the
+  amp is fed, and the Octaver divides zero crossings — distortion adds
+  extra crossings, which is exactly what breaks it.
+- **Drive last before the amp.** That's what "pushing the front end"
+  means. In the old default, Boost sat *after* the amp and so boosted its
+  output instead of driving its input — the one thing a boost exists to
+  do.
+- **Cab IR directly after the amp**, always. A cab IR is a speaker, and
+  nothing goes between an amp and its speaker.
+- **EQ after the cab**, voicing the finished sound. That's the graphic
+  EQ's classic effects-loop job (mid scoop, solo boost).
+- **Modulation, then time, after the amp.** This *is* the effects loop.
+  Run chorus or delay into a distorting preamp and each repeat gets
+  re-distorted into mush; run them after it and the notes stay distinct.
+
+There's no separate "effects loop" stage because there doesn't need to be
+— the loop is simply the part of the chain sitting after Amp, which is
+where this default already puts modulation and delay/reverb.
+
+If you'd already dragged your chain into your own order, it's left
+exactly as you had it; only rigs still on the old untouched default get
+moved to this one. Saved rig presets keep whatever order they were saved
+with.
 
 **Drag-to-reorder:** the twelve pedals above (Cab IR, EQ, Compressor,
 Delay/Reverb, and the eight new pedals) **and the Amp itself** can all be

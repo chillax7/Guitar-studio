@@ -723,31 +723,105 @@ function paSetInputTrimDb(db, ramp = true) {
 }
 
 const PA_PEDAL_ORDER_KEY = "gs_pa_pedal_order";
-// v3.1: grew from 4 to 12 stages (post-v3-backlog-audit.md §2.2). v4.7:
-// grew to 13 — Amp joined the reorderable set (a pedal like Wah or Boost
-// can now sit between the guitar and the amp), placed first by default so
-// today's "amp immediately follows gate" behavior is unchanged until a
-// player actually drags it. A stored order that isn't a permutation of
-// ALL of these (e.g. a pre-v4.7 12-item order with no "amp") fails
-// paLoadPedalOrder's validation below and falls back to this default — no
-// migration code needed, same self-healing behavior each prior stage-count
-// change already had.
+
+// CH-1: the default chain order is now the conventional pedalboard one.
+//
+// It used to be "amp first, then everything else", which was chosen in v4.7
+// purely so that adding Amp to the reorderable set changed nobody's sound —
+// a safe migration default, never a good rig. It put every drive and
+// dynamics pedal AFTER the amp, so Boost/Overdrive boosted the amp's output
+// instead of driving its input (the one thing a boost exists to do), and it
+// put Wah, Octaver, Boost and the compressor between the amp and its cab,
+// which is not a place any of them belong.
+//
+// The order below is the standard one, and the reasoning is worth keeping
+// because each block is a different rule:
+//
+//   input, gate     Fixed, before everything. Trim first (IN-1), then gate
+//                   the guitar's own hum before anything amplifies it.
+//   wah             Filters go first, straight off the pickups. A wah after
+//                   distortion sweeps the fizz rather than the note, which
+//                   is why the classic sound is wah-into-drive.
+//   comp            Evens out the level going into the drive, so the amp
+//                   sees a consistent input. After the wah, so it isn't
+//                   squashing the sweep's own peaks.
+//   octaver         Pitch tracking needs a clean signal — this one divides
+//                   zero crossings, and distortion's extra crossings are
+//                   exactly what breaks it. Last clean stage before drive.
+//   boost           Drive is the final thing in front of the amp; that is
+//                   what "pushing the front end" means.
+//   amp             The preamp/power amp.
+//   ir              Its cab. Always directly after the amp — a cab IR is a
+//                   speaker, and nothing sits between an amp and its
+//                   speaker.
+//   geq, eq         Post-cab tone shaping, which is the graphic EQ's classic
+//                   effects-loop job (mid scoop, solo boost). After the cab
+//                   they voice the finished sound rather than re-shaping
+//                   what the amp distorts, and they stay useful whatever
+//                   amp mode is selected.
+//   chorus,
+//   phaser,
+//   flanger,
+//   tremolo         Modulation. This is the effects-loop position: run into
+//                   a distorting preamp, modulation gets smeared into the
+//                   distortion; run after it, each note stays distinct.
+//                   Their order relative to each other is genuinely taste,
+//                   so it is left as it was.
+//   fx (delay,
+//       reverb)     Time-based effects last, so repeats and tails decay
+//                   naturally instead of being re-distorted and re-modulated
+//                   on every repeat.
+//   output          Fixed, last.
+//
+// There is no separate "effects loop" stage because there doesn't need to
+// be: everything here is reorderable, so the loop is simply the part of the
+// chain that sits after Amp — which is where this default already puts
+// modulation and time.
 const PA_DEFAULT_PEDAL_ORDER = [
+  "wah", "comp", "octaver", "boost",
+  "amp", "ir",
+  "geq", "eq",
+  "chorus", "phaser", "flanger", "tremolo",
+  "fx",
+];
+
+// The v4.7 default this replaces. Kept only so the migration below can
+// recognise "this player never reordered anything" and give them the better
+// default — see paLoadPedalOrder.
+const PA_PEDAL_ORDER_V1_DEFAULT = [
   "amp", "wah", "octaver", "boost", "comp", "ir", "geq",
   "eq", "chorus", "phaser", "flanger", "tremolo", "fx",
 ];
+const PA_PEDAL_ORDER_VERSION_KEY = "gs_pa_pedal_order_v";
+const PA_PEDAL_ORDER_VERSION = 2;
 
 function paLoadPedalOrder() {
   try {
     const stored = JSON.parse(localStorage.getItem(PA_PEDAL_ORDER_KEY) || "null");
     // Defensive: only trust a stored order if it's exactly a permutation of
-    // the four known stages — a stale/foreign value falls back to default
-    // rather than dropping a stage's audio out of the chain entirely.
+    // the known stages — a stale/foreign value falls back to default
+    // rather than dropping a stage's audio out of the chain entirely. This
+    // is also what silently migrates every past stage-count change.
     if (Array.isArray(stored) && stored.length === PA_DEFAULT_PEDAL_ORDER.length &&
         PA_DEFAULT_PEDAL_ORDER.every((id) => stored.includes(id))) {
-      return stored;
+      // A stage-count change self-heals via the check above, but CH-1 keeps
+      // the same 13 stages and only reorders them — so without this, every
+      // existing player would keep the old amp-first order forever and
+      // never see the new default. Anyone still sitting on the exact v4.7
+      // default never made a choice worth preserving, so they get the new
+      // one; anyone whose order differs from it did reorder deliberately,
+      // and their rig is left completely alone. Either way the version is
+      // stamped, so this comparison happens once and never again.
+      const version = parseInt(localStorage.getItem(PA_PEDAL_ORDER_VERSION_KEY) || "1", 10);
+      if (version >= PA_PEDAL_ORDER_VERSION) return stored;
+      localStorage.setItem(PA_PEDAL_ORDER_VERSION_KEY, String(PA_PEDAL_ORDER_VERSION));
+      const untouched = stored.every((id, i) => id === PA_PEDAL_ORDER_V1_DEFAULT[i]);
+      if (!untouched) return stored;
+      localStorage.setItem(PA_PEDAL_ORDER_KEY, JSON.stringify(PA_DEFAULT_PEDAL_ORDER));
+      return [...PA_DEFAULT_PEDAL_ORDER];
     }
   } catch (e) { /* fall through to default */ }
+  localStorage.setItem(PA_PEDAL_ORDER_VERSION_KEY, String(PA_PEDAL_ORDER_VERSION));
   return [...PA_DEFAULT_PEDAL_ORDER];
 }
 
@@ -3887,11 +3961,61 @@ const PA_MIDI_MAP_BACKWARD_KEY = "gs_midi_map_backward";
 // (record -> loop -> overdub -> stop overdub -> resume, per
 // looper-pedal-spec.md §4), which is exactly the "one button
 // play/overdub" behaviour a looper pedal has.
+//
+// CH-2: every bypass in the rig is footswitchable too — one stomp per pedal,
+// which is the thing a pedalboard does that this app could not. These are
+// generated from the table below rather than written out, because the whole
+// point of the `id`-drives-the-DOM convention above is that a new action
+// costs one row; fifteen hand-written ones would be fifteen chances to
+// mistype a storage key.
+//
+// Toggling goes through the checkbox and a dispatched "change" event rather
+// than calling the audio code directly, deliberately: every bypass already
+// has a change handler that does the real work, and a delegated listener
+// repaints the chain-icon strip off the same event. Driving the control
+// means a footswitch press and a mouse click cannot diverge, and the icon
+// lighting up is free.
+//
+// Amp is absent because it has no bypass (three modes instead), and Input
+// because it is a trim. Delay and Reverb are separate entries even though
+// they share the "fx" card — they are two effects with two bypasses, and on
+// a real board they would be two switches.
+const PA_MIDI_BYPASS_STAGES = [
+  { id: "gate", label: "gate", checkbox: "pa-gate-bypass" },
+  { id: "wah", label: "auto-wah", checkbox: "pa-wah-bypass" },
+  { id: "comp", label: "compressor", checkbox: "pa-comp-bypass" },
+  { id: "octaver", label: "octaver", checkbox: "pa-octaver-bypass" },
+  { id: "boost", label: "boost/overdrive", checkbox: "pa-boost-bypass" },
+  { id: "ir", label: "cab IR", checkbox: "pa-ir-bypass" },
+  { id: "geq", label: "graphic EQ", checkbox: "pa-geq-bypass" },
+  { id: "eq", label: "EQ", checkbox: "pa-eq-bypass" },
+  { id: "chorus", label: "chorus", checkbox: "pa-chorus-bypass" },
+  { id: "phaser", label: "phaser", checkbox: "pa-phaser-bypass" },
+  { id: "flanger", label: "flanger", checkbox: "pa-flanger-bypass" },
+  { id: "tremolo", label: "tremolo", checkbox: "pa-tremolo-bypass" },
+  { id: "delay", label: "delay", checkbox: "pa-delay-bypass" },
+  { id: "reverb", label: "reverb", checkbox: "pa-reverb-bypass" },
+  { id: "output", label: "output mute", checkbox: "pa-output-bypass" },
+];
+
+function paToggleBypass(checkboxId) {
+  const el = document.getElementById(checkboxId);
+  if (!el) return;
+  el.checked = !el.checked;
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 const PA_MIDI_ACTIONS = [
   { id: "forward", label: "cycle forward", storageKey: PA_MIDI_MAP_FORWARD_KEY, run: () => paCyclePresetChain(1) },
   { id: "backward", label: "cycle backward", storageKey: PA_MIDI_MAP_BACKWARD_KEY, run: () => paCyclePresetChain(-1) },
   { id: "looper-primary", label: "looper record/overdub", storageKey: "gs_midi_map_looper_primary", run: () => paLooperPrimaryPress() },
   { id: "looper-stop", label: "looper stop", storageKey: "gs_midi_map_looper_stop", run: () => paLooperStopPress() },
+  ...PA_MIDI_BYPASS_STAGES.map((stage) => ({
+    id: `bypass-${stage.id}`,
+    label: `${stage.label} on/off`,
+    storageKey: `gs_midi_map_bypass_${stage.id}`,
+    run: () => paToggleBypass(stage.checkbox),
+  })),
 ];
 
 function paMidiLoadMapping(key) {
@@ -3922,6 +4046,67 @@ function paMidiRenderMapping(action) {
   if (el) el.textContent = paMidiMapLabel(paMidiLoadMapping(action.storageKey));
 }
 
+// CH-2: the bypass bindings live on each pedal's own card, immediately under
+// the Bypass control they drive — the same choice the Looper's bindings
+// already made ("next to the pedal they actually drive"), and the only one
+// that scales: fifteen more rows stacked in the Rig Presets panel would bury
+// the two that are there now. The device picker stays shared.
+//
+// Injected here rather than written into index.html so the rows can never
+// drift out of step with PA_MIDI_BYPASS_STAGES — one table, one source of
+// truth for which stages are switchable.
+function paRenderBypassMidiRows() {
+  for (const stage of PA_MIDI_BYPASS_STAGES) {
+    const cb = document.getElementById(stage.checkbox);
+    if (!cb) continue;
+    const anchor = cb.closest(".row") || cb.parentElement;
+    if (!anchor || anchor.nextElementSibling?.classList.contains("pa-midi-bypass-row")) continue;
+    const row = document.createElement("div");
+    row.className = "row pa-midi-bypass-row";
+    row.innerHTML =
+      `<label style="margin:0">Footswitch: <kbd id="pa-midi-bypass-${stage.id}-display">not set</kbd></label>` +
+      `<button type="button" id="pa-midi-bypass-${stage.id}-learn-btn">Learn…</button>`;
+    anchor.after(row);
+  }
+}
+
+// Arming is shared by every Learn… button, including the fifteen generated
+// ones. The button's own label becomes the feedback, because a bypass row
+// sits on a pedal card while #pa-midi-status lives over in Rig Presets —
+// telling someone "press your footswitch now" on a panel they cannot see
+// would be no message at all. Clicking an armed button again cancels, so an
+// accidental arm isn't a state you have to press a pedal to escape.
+function paMidiArmLearn(actionId) {
+  const action = PA_MIDI_ACTIONS.find((a) => a.id === actionId);
+  if (!action) return;
+  const statusEl = document.getElementById("pa-midi-status");
+  const btn = document.getElementById(`pa-midi-${action.id}-learn-btn`);
+
+  if (PA.midiLearnTarget === actionId) { // second click on an armed button
+    PA.midiLearnTarget = null;
+    paMidiResetLearnButtons();
+    if (statusEl) statusEl.textContent = "";
+    return;
+  }
+  if (!PA.midiInput) {
+    const msg = "Pick your MIDI device in Tone Lab → Rig presets first.";
+    if (statusEl) statusEl.textContent = msg;
+    if (btn) { btn.textContent = "No device"; setTimeout(() => paMidiResetLearnButtons(), 2000); }
+    return;
+  }
+  PA.midiLearnTarget = actionId;
+  paMidiResetLearnButtons();
+  if (btn) btn.textContent = "Press it…";
+  if (statusEl) statusEl.textContent = `Press the footswitch button you want for ${action.label} now…`;
+}
+
+function paMidiResetLearnButtons() {
+  for (const a of PA_MIDI_ACTIONS) {
+    const b = document.getElementById(`pa-midi-${a.id}-learn-btn`);
+    if (b && a.id !== PA.midiLearnTarget) b.textContent = "Learn…";
+  }
+}
+
 function paHandleMidiMessage(event) {
   const [status, data1, data2] = event.data;
   if (!paMidiIsPressEvent(status, data2)) return;
@@ -3929,6 +4114,7 @@ function paHandleMidiMessage(event) {
   if (PA.midiLearnTarget) {
     const action = PA_MIDI_ACTIONS.find((a) => a.id === PA.midiLearnTarget);
     PA.midiLearnTarget = null;
+    paMidiResetLearnButtons();
     if (!action) return;
     const map = { status, data1 };
     // One physical button doing two things at once is never what someone
@@ -4061,16 +4247,13 @@ function wireMidiControls() {
     paSelectMidiDevice(e.target.value);
   });
 
+  // CH-2: the per-pedal bypass rows don't exist in index.html — build them
+  // before looking for their Learn… buttons below.
+  paRenderBypassMidiRows();
+
   for (const action of PA_MIDI_ACTIONS) {
     const btn = document.getElementById(`pa-midi-${action.id}-learn-btn`);
-    if (btn) {
-      btn.addEventListener("click", () => {
-        const statusEl = document.getElementById("pa-midi-status");
-        if (!PA.midiInput) { statusEl.textContent = "Pick a MIDI device above first."; return; }
-        PA.midiLearnTarget = action.id;
-        statusEl.textContent = `Press the footswitch button you want for ${action.label} now…`;
-      });
-    }
+    if (btn) btn.addEventListener("click", () => paMidiArmLearn(action.id));
     paMidiRenderMapping(action);
   }
 
