@@ -885,6 +885,23 @@ measuring that specific path, not the acoustic path through the room
 If nothing comes back within a second, it says so plainly ("No loopback
 detected...") rather than reporting a meaningless number.
 
+**What's in front of everything (IN-2).** Before the Input trim there's a
+fixed DC-blocking filter — a 18 Hz high-pass, two octaves below a low E's
+82 Hz, so it does nothing to the guitar (measured: 0.000 dB change at
+82 Hz) but removes two things you don't want. A DC offset, which many
+interfaces produce, is a constant displacement of the waveform: every
+gain change downstream then multiplies it and steps the output, which is
+a thump with no musical cause, and the offset also eats headroom, since
+offset plus peak is what hits the ceiling. And the subsonic thump of a
+pick striking a string, which is felt more than heard but still uses up
+level. There's nothing to adjust; it's always in circuit.
+
+The **level meter and the tuner deliberately sit in front of even this**,
+tapping the raw signal from the interface. They have to keep answering
+the one question only they can — "is what's arriving from the hardware
+sane?" — and a converter clipping on its own DC offset would look clean
+if they sat after the filter.
+
 ### 4.2 Amp — three modes
 
 - **Pass Through:** dry signal, no coloration — just gate → EQ → comp → delay/reverb.
@@ -2343,6 +2360,19 @@ tools, not part of the shared bar:
   signal, to silence hum/hiss between notes. Note this sits *after* the
   trim, so a big trim cut moves your signal closer to the gate threshold —
   if notes start getting chopped after trimming, lower the threshold too.
+  - The gate uses **3 ms of lookahead** (IN-3): it delays the audio
+    slightly so the gain is already open by the time a note's attack
+    arrives. Without it the gate opened *during* the pick attack — a
+    pluck reaches its peak inside the 2 ms attack time — so the loudest
+    part of every note it opened on was multiplied by a gain sweeping up
+    from zero, which is a click. That 3 ms is real added latency, is
+    included in the latency estimate, and applies whether the gate is
+    bypassed or not, so that toggling bypass can't shift the signal in
+    time and click on its own.
+  - Its detector is DC-blocked separately from the audio, because a DC
+    offset used to read as permanent signal and hold the gate open
+    forever — at −40 dBFS of offset it never closed at all, however the
+    threshold was set.
 - **Amp — Pass Through / Analog / Neural (NAM)** — picks the amp
   modeling mode: no modeling, a parametric analog-style model, or a real
   captured amp profile (NAM).

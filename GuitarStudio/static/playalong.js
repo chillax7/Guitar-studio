@@ -290,8 +290,35 @@ async function _buildPAGraph() {
   // flat tops are already in the samples and nothing here can undo them —
   // trimming afterwards just makes a quieter clipped signal. The meter has
   // to keep showing what actually arrived so that case stays visible.
+  // IN-2: DC blocker / subsonic filter, the true first thing in the audio
+  // path. There was nothing of the kind anywhere before this: the only
+  // high-passes in the rig were inside the analog amp model and the cab IR
+  // stage, both of which a clean, IR-bypassed rig skips entirely — so a
+  // clean signal ran from the converter to the speakers with its DC offset
+  // and everything below 20Hz intact.
+  //
+  // Two things that costs. A DC offset is a constant displacement of the
+  // waveform, so every gain change downstream (the gate opening, a mute, a
+  // preset crossfade) multiplies that offset too and steps the output — an
+  // audible thump with no musical cause. And it silently ate headroom:
+  // offset plus signal peak is what hits the rail, so an offset costs
+  // exactly its own size in available level.
+  //
+  // Second order (one biquad, 12dB/octave) at 18Hz with Q=0.707 — below the
+  // low E's 82Hz fundamental by more than two octaves, so the guitar is
+  // untouched, while the DC and the subsonic thump of the pick hitting the
+  // string are gone. Sits AFTER the meter/tuner tap deliberately: those tap
+  // PA.source directly and must keep showing what the interface actually
+  // sent, offset included, or a converter clipping on DC would look clean
+  // here (see paEnableInput).
+  PA.inputDcBlock = Audio.ctx.createBiquadFilter();
+  PA.inputDcBlock.type = "highpass";
+  PA.inputDcBlock.frequency.value = 18;
+  PA.inputDcBlock.Q.value = 0.707;
+
   PA.inputTrim = Audio.ctx.createGain();
   PA.inputTrim.gain.value = paDbToGain(paLoadInputTrimDb());
+  PA.inputDcBlock.connect(PA.inputTrim);
   PA.inputTrim.connect(PA.gateNode);
 
   PA.cleanGain = Audio.ctx.createGain();
@@ -768,6 +795,11 @@ function paSetInputTrimDb(db, ramp = true) {
   }
 }
 
+// IN-3: must equal LOOKAHEAD_MS in gate-processor.js. Kept here only so the
+// latency estimate can report the delay the gate adds; the worklet's own
+// module scope isn't reachable from the main thread.
+const PA_GATE_LOOKAHEAD_MS = 3;
+
 // CH-4: Manual Wah defaults. The heel/toe range is the usual voicing of a
 // treadle wah — roughly the low-mid honk up to the top-end quack — and is
 // adjustable per-rig; Q is a touch more resonant than the Auto-Wah's 3,
@@ -1143,10 +1175,10 @@ async function paEnableInput() {
 
     PA.stream = stream;
     PA.source = Audio.ctx.createMediaStreamSource(stream);
-    // IN-1: the rig now hangs off the trim, not the raw source, so the trim
-    // is genuinely the first stage — ahead of the gate, the amp and every
-    // pedal.
-    PA.source.connect(PA.inputTrim);
+    // IN-1/IN-2: the rig hangs off the DC blocker, which feeds the trim —
+    // so the audio path is source -> DC block -> trim -> gate -> pedals,
+    // and the trim is still the first thing a player touches.
+    PA.source.connect(PA.inputDcBlock);
     // ...but the meter and the tuner stay on the RAW source, deliberately.
     // The trim is a software gain applied after the converter, so it cannot
     // undo clipping that happened in the interface itself; if the meter sat
@@ -3418,12 +3450,19 @@ function paShowLatencyEstimate() {
   // when the context was first created — if that doesn't match the
   // interface, the browser silently resamples the input stream to
   // reconcile them, adding real latency this estimate can't see either.
-  const est = ((Audio.ctx.baseLatency || 0) + (Audio.ctx.outputLatency || 0)) * 1000;
+  // IN-3: the gate's lookahead is latency this app knowingly adds, so it is
+  // counted here rather than left as an invisible surprise. Mirrors
+  // LOOKAHEAD_MS in gate-processor.js — the two must stay in step, and the
+  // worklet's own scope can't be read from here.
+  const est = ((Audio.ctx.baseLatency || 0) + (Audio.ctx.outputLatency || 0)) * 1000
+    + PA_GATE_LOOKAHEAD_MS;
   const rateNote = `Context sample rate: ${Audio.ctx.sampleRate} Hz — check this matches your interface's own rate setting.`;
+  const gateNote = `Includes ${PA_GATE_LOOKAHEAD_MS} ms of gate lookahead (IN-3), which is what stops the gate ` +
+    `chopping the front off each note.`;
   el.textContent = est > 0
     ? `Estimated OUTPUT-side latency only: ~${est.toFixed(0)} ms (browser-reported, not a full round-trip measurement — ` +
-      `excludes input/USB/driver latency entirely). ${rateNote}`
-    : `Latency estimate unavailable in this browser. ${rateNote}`;
+      `excludes input/USB/driver latency entirely). ${gateNote} ${rateNote}`
+    : `Latency estimate unavailable in this browser. ${gateNote} ${rateNote}`;
 }
 
 // ---------------------------------------------------------------------------
