@@ -928,7 +928,7 @@ plugin does:
 
 The **Rig Presets** card (above the pedalboard, on Tone Lab) saves the
 *entire* rig — amp mode, NAM capture + Tweaker knobs (or Analog's tone
-stack), Cab IR, EQ, Compressor, Delay/Reverb, all the pedals, and Output
+stack), Cab IR, EQ, Compressor, Delay, Reverb, all the pedals, and Output
 level — as a named preset. Presets are shared across every song (stored
 server-side, not per-track): pick one from the dropdown and **Load** it
 any time you just want to try a tone.
@@ -978,12 +978,18 @@ and directly under its **Bypass** control is a **Footswitch:
 pedal, done — the button label reads *Press it…* while it's waiting, and
 clicking it again cancels if you armed it by mistake.
 
-Fifteen things are switchable this way: Gate, Auto-Wah, Compressor,
-Octaver, Boost/Overdrive, Cab IR, Graphic EQ, EQ, Chorus, Phaser,
-Flanger, Tremolo, Delay, Reverb, and the Output (which acts as a mute).
-Delay and Reverb share one card but get a switch each, the way they'd be
-two pedals on a board. The Amp has no bypass to bind (it has three modes
-instead), and Input is a trim rather than an effect.
+Sixteen things are switchable this way: Gate, Wah (pedal), Auto-Wah,
+Compressor, Octaver, Boost/Overdrive, Cab IR, Graphic EQ, EQ, Chorus,
+Phaser, Flanger, Tremolo, Delay, Reverb, and the Output (which acts as a
+mute). The Amp has no bypass to bind (it has three modes instead), and
+Input is a trim rather than an effect.
+
+An **expression pedal** is bound the same way but on its own row, on the
+**Wah (pedal)** card — see §4.5. One control does one job across both
+kinds: binding a footswitch to a CC your expression pedal already uses
+takes it off the pedal, and binding the pedal back takes it off the
+footswitch. Without that rule a swept treadle would stomp a pedal on and
+off dozens of times a second, which is a baffling thing to debug by ear.
 
 Stomping a pedal lights its icon in the chain row exactly as clicking the
 checkbox does — a footswitch press and a mouse click run the same code,
@@ -1036,7 +1042,7 @@ reproduce, or taming fizz above where a guitar speaker rolls off. Wide
 open (no-op) by default; "Tone shape bypass" turns it off entirely without
 losing your slider positions.
 
-### 4.5 The pedalboard: EQ, Compressor, Delay/Reverb, Output, and more
+### 4.5 The pedalboard: EQ, Compressor, Delay, Reverb, Output, and more
 
 A standard post-amp chain — 3-band EQ, a compressor (threshold/ratio),
 delay (time/feedback/mix), and reverb (size/mix), each independently
@@ -1055,10 +1061,29 @@ with a meter:
   at 100% (a real hardware tremolo's own "depth" knob does the same) —
   low settings stay subtle on purpose, so dial it up if you want it more
   dramatic.
-- **Auto-Wah** — an LFO-swept bandpass (Rate/Depth/Center/Mix). Named
-  "Auto-Wah," not "Wah," on purpose: this sweeps on its own timer, it
-  doesn't track an expression pedal — there's no MIDI/expression input
-  wired up yet. Mix is a real dry/wet crossfade here (unlike Chorus/
+- **Wah (pedal)** — a real treadle wah, and the one to reach for if you
+  have an expression pedal. Click **Learn…** next to *Expression pedal*
+  and rock the treadle: the first CC it sends becomes the binding, and
+  from then on your foot sweeps the filter. With nothing bound, the
+  **Pedal** slider does the same job by hand, and it also tracks the
+  pedal live so you can see where the treadle is.
+  - **Heel** and **Toe** set the two ends of the sweep (350 Hz to
+    2200 Hz by default) and **Q** how sharp the peak is — higher Q is
+    more vocal and more aggressive, lower Q is gentler.
+  - The sweep is logarithmic between heel and toe, not linear in Hz.
+    That's what makes the travel feel even under your foot; a linear
+    sweep spends most of the treadle in the top octave and crawls
+    through the bottom, which doesn't sound like a wah at all.
+  - A bandpass throws away most of a guitar's energy (measured 11.85 dB
+    down across a sweep), so there's a makeup gain to stop "engage the
+    wah" reading as "turn the volume down". A resonant wah genuinely
+    peaks higher than the dry signal — that's part of the sound — so if
+    a very hot input makes it sound harsh, pull back Q, Mix, or the
+    Output level.
+- **Auto-Wah** — the same filter, swept by an LFO instead of your foot
+  (Rate/Depth/Center/Mix). Keep this one for hands-free wobble; use
+  **Wah (pedal)** above for actual wah playing. Mix is a real dry/wet
+  crossfade here (unlike Chorus/
   Flanger/Phaser, where the dry signal deliberately always stays at full
   volume underneath the wet — that's what makes those sound like
   chorus/flanger at all): 100% is the swept filter alone, with none of
@@ -1072,9 +1097,9 @@ with a meter:
 **The default order** is the conventional pedalboard one, and each block
 of it is a different rule worth knowing before you rearrange anything:
 
-> Input → Gate → **Wah → Compressor → Octaver → Boost/OD** → **Amp → Cab
-> IR** → **Graphic EQ → EQ** → **Chorus → Phaser → Flanger → Tremolo** →
-> **Delay/Reverb** → Output
+> Input → Gate → **Wah → Auto-Wah → Compressor → Octaver → Boost/OD** →
+> **Amp → Cab IR** → **Graphic EQ → EQ** → **Chorus → Phaser → Flanger →
+> Tremolo** → **Delay → Reverb** → Output
 
 - **Filters first.** A wah after distortion sweeps the fizz rather than
   the note; wah-into-drive is the classic sound for a reason.
@@ -1097,13 +1122,14 @@ There's no separate "effects loop" stage because there doesn't need to be
 — the loop is simply the part of the chain sitting after Amp, which is
 where this default already puts modulation and delay/reverb.
 
-If you'd already dragged your chain into your own order, it's left
-exactly as you had it; only rigs still on the old untouched default get
-moved to this one. Saved rig presets keep whatever order they were saved
-with.
+**One-off reset.** This release resets the live chain to that order once,
+by request, whatever it was set to before. It happens on the first load
+and never again: any reorder you make afterwards is yours and survives
+every future load. Saved rig presets are untouched and keep whatever
+order they were saved with.
 
-**Drag-to-reorder:** the twelve pedals above (Cab IR, EQ, Compressor,
-Delay/Reverb, and the eight new pedals) **and the Amp itself** can all be
+**Drag-to-reorder:** the fourteen pedals above (Cab IR, EQ, Compressor,
+Delay, Reverb, and the rest) **and the Amp itself** can all be
 rearranged into any order — drag an icon left or right in the chain row
 and drop it where you want. Wah before the amp's drive, chorus after,
 whatever your ears want — and since Amp is just another icon in the row
@@ -2339,7 +2365,7 @@ tools, not part of the shared bar:
   chain than the amp's own tone stack.
 - **Compressor — Threshold/Ratio** — evens out your dynamics, so quiet
   notes are boosted and loud ones are tamed.
-- **Delay/Reverb — Time/Feedback/Mix, Size/Mix** — echo and ambience
+- **Delay — Time/Feedback/Mix** and **Reverb — Size/Mix** — echo and ambience
   effects, each with its own bypass, timing, and mix-level controls.
 - **Auto-Wah — Rate/Depth/Center freq/Mix** — an LFO-driven (not
   pedal-controlled) wah-style filter sweep.

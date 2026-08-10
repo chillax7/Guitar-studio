@@ -1174,21 +1174,58 @@
             </div>
           </section>
 
-          <section class="pa-card pa-rig-card" data-card-id="fx">
-            <h3>Delay / Reverb</h3>
+          <!-- CH-3: Delay and Reverb were one card and one chain stage,
+               hard-wired delay-then-reverb. They are two pedals with two
+               bypasses, so they are two stages now — which is also what
+               lets either one move independently around the amp, or reverb
+               sit before delay. Control ids are unchanged, so every
+               existing handler and saved preset still finds them. -->
+          <section class="pa-card pa-rig-card" data-card-id="delay">
+            <h3>Delay</h3>
             <div class="pa-card-content">
-              <div class="row"><label>Delay bypass</label><input type="checkbox" id="pa-delay-bypass" checked></div>
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-delay-bypass" checked></div>
               <label>Time <span id="pa-delay-time-val">300 ms</span></label>
               <input type="range" id="pa-delay-time" min="10" max="1000" step="10" value="300">
               <label>Feedback <span id="pa-delay-feedback-val">30%</span></label>
               <input type="range" id="pa-delay-feedback" min="0" max="90" step="1" value="30">
-              <label>Delay mix <span id="pa-delay-mix-val">20%</span></label>
+              <label>Mix <span id="pa-delay-mix-val">20%</span></label>
               <input type="range" id="pa-delay-mix" min="0" max="100" step="1" value="20">
-              <div class="row"><label>Reverb bypass</label><input type="checkbox" id="pa-reverb-bypass" checked></div>
-              <label>Reverb size <span id="pa-reverb-size-val">1.5 s</span></label>
+            </div>
+          </section>
+
+          <section class="pa-card pa-rig-card" data-card-id="reverb">
+            <h3>Reverb</h3>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-reverb-bypass" checked></div>
+              <label>Size <span id="pa-reverb-size-val">1.5 s</span></label>
               <input type="range" id="pa-reverb-size" min="0.2" max="5" step="0.1" value="1.5">
-              <label>Reverb mix <span id="pa-reverb-mix-val">15%</span></label>
+              <label>Mix <span id="pa-reverb-mix-val">15%</span></label>
               <input type="range" id="pa-reverb-mix" min="0" max="100" step="1" value="15">
+            </div>
+          </section>
+
+          <!-- CH-4: the treadle wah, as opposed to the LFO-driven Auto-Wah
+               below. Everything about the filter is the same; the
+               difference is that a foot moves it. -->
+          <section class="pa-card pa-rig-card" data-card-id="mwah">
+            <h3>Wah (pedal)</h3>
+            <div class="pa-card-content">
+              <div class="row"><label>Bypass</label><input type="checkbox" id="pa-mwah-bypass" checked></div>
+              <p class="hint">A real treadle wah: bind an expression pedal below and your foot sweeps it. With nothing bound, the Pedal slider does the same job by hand.</p>
+              <label>Pedal <span id="pa-mwah-pos-val">0% · 350 Hz</span></label>
+              <input type="range" id="pa-mwah-pos" min="0" max="100" step="1" value="0">
+              <div class="row">
+                <label style="margin:0">Expression pedal: <kbd id="pa-midi-expr-mwah-display">not set</kbd></label>
+                <button type="button" id="pa-midi-expr-mwah-learn-btn">Learn…</button>
+              </div>
+              <label>Heel (dark end) <span id="pa-mwah-heel-val">350 Hz</span></label>
+              <input type="range" id="pa-mwah-heel" min="150" max="800" step="10" value="350">
+              <label>Toe (bright end) <span id="pa-mwah-toe-val">2200 Hz</span></label>
+              <input type="range" id="pa-mwah-toe" min="1000" max="3500" step="50" value="2200">
+              <label>Q (sharpness) <span id="pa-mwah-q-val">4.0</span></label>
+              <input type="range" id="pa-mwah-q" min="1" max="10" step="0.1" value="4">
+              <label>Mix <span id="pa-mwah-mix-val">100%</span></label>
+              <input type="range" id="pa-mwah-mix" min="0" max="100" step="1" value="100">
             </div>
           </section>
 

@@ -55,7 +55,9 @@ const PA = {
                        // and there's no reason to spend it when not tuning
   midiAccess: null, // GP-11: Web MIDI access object, once granted
   midiInput: null, // the currently selected MIDIInput, if any
-  midiLearnTarget: null, // "forward"|"backward"|null — set while a Learn… button is armed
+  midiLearnTarget: null, // a PA_MIDI_ACTIONS id, or null — set while a footswitch Learn… button is armed
+  midiExprLearnTarget: null, // CH-4: a PA_MIDI_EXPRESSION_TARGETS id, or null — armed separately from the above, since an expression pedal is learned by sweeping rather than pressing
+  mwahPosition: 0, // CH-4: treadle position 0 (heel) to 1 (toe); driven by the on-screen slider or a bound expression pedal
   loopSum: null, // GP-06 (looper-pedal-spec.md §2): sits between outputMute and outAnal so a Take/Riff Capture recorded while the loop plays actually contains it
   looperNode: null,
   looperState: "idle", // "idle" | "recording" | "playing" | "overdubbing" | "stopped" — mirrors the worklet's own state, kept here so the UI can render without a round trip
@@ -451,13 +453,21 @@ async function _buildPAGraph() {
   PA.delayMerge = Audio.ctx.createGain();
   PA.delayWet.connect(PA.delayMerge);
 
-  // Reverb (same mix-gain-as-bypass pattern)
+  // Reverb (same mix-gain-as-bypass pattern).
+  //
+  // CH-3: Delay and Reverb used to be one chain stage, hard-wired
+  // delay-then-reverb (delayMerge fed the convolver and the dry path
+  // directly). They are two pedals with two bypasses, so they are now two
+  // stages — which also means reverb can go BEFORE delay if that's what you
+  // want, and either can move independently around the amp. The only change
+  // needed here is to stop reverb from wiring itself to delay's output:
+  // whatever precedes it in PA.pedalOrder now feeds both the convolver and
+  // the dry merge, exactly like every other wet/dry stage.
   PA.reverbConvolver = Audio.ctx.createConvolver();
   PA.reverbConvolver.buffer = paMakeReverbImpulse(Audio.ctx, 1.5, 2.5);
   PA.reverbWet = Audio.ctx.createGain(); PA.reverbWet.gain.value = 0;
-  PA.delayMerge.connect(PA.reverbConvolver).connect(PA.reverbWet);
+  PA.reverbConvolver.connect(PA.reverbWet);
   PA.reverbMerge = Audio.ctx.createGain();
-  PA.delayMerge.connect(PA.reverbMerge);
   PA.reverbWet.connect(PA.reverbMerge);
 
   // ---------------------------------------------------------------------
@@ -605,6 +615,37 @@ async function _buildPAGraph() {
   PA.wahWetGain.connect(PA.wahMerge);
   PA.wahDryGain.connect(PA.wahMerge);
 
+  // CH-4: Manual Wah — a treadle wah, swept by a real expression pedal
+  // (MIDI CC) or the on-screen Pedal slider, as opposed to the Auto-Wah
+  // above which sweeps itself from an LFO. Same filter topology and the
+  // same real dry/wet crossfade; the only difference is what moves the
+  // centre frequency, which is exactly the difference between the two
+  // pedals in real life.
+  //
+  // The sweep is LOGARITHMIC between heel and toe (f = heel * (toe/heel)^p)
+  // rather than linear in Hz. A wah's musical effect is the vowel-like
+  // formant moving by roughly equal intervals per equal treadle movement,
+  // and pitch is logarithmic — a linear Hz sweep spends most of the travel
+  // up in the top octave and crawls through the low end, which does not
+  // sound like a wah at all.
+  PA.mwahFilter = Audio.ctx.createBiquadFilter();
+  PA.mwahFilter.type = "bandpass";
+  PA.mwahFilter.Q.value = PA_MWAH_DEFAULT_Q;
+  PA.mwahFilter.frequency.value = PA_MWAH_DEFAULT_HEEL_HZ;
+  // Same makeup-gain reasoning as the Auto-Wah's: a bandpass is 0dB at its
+  // centre, but a guitar's energy is spread across the spectrum and most of
+  // it lands outside the band, so the filtered signal is much quieter than
+  // the dry one and engaging the pedal would read as a volume drop. See
+  // PA_MWAH_MAKEUP_GAIN for the measurement behind the number.
+  PA.mwahMakeupGain = Audio.ctx.createGain();
+  PA.mwahMakeupGain.gain.value = PA_MWAH_MAKEUP_GAIN;
+  PA.mwahWetGain = Audio.ctx.createGain(); PA.mwahWetGain.gain.value = 0;
+  PA.mwahFilter.connect(PA.mwahMakeupGain).connect(PA.mwahWetGain);
+  PA.mwahDryGain = Audio.ctx.createGain(); PA.mwahDryGain.gain.value = 1;
+  PA.mwahMerge = Audio.ctx.createGain();
+  PA.mwahWetGain.connect(PA.mwahMerge);
+  PA.mwahDryGain.connect(PA.mwahMerge);
+
   // Octaver — real octave-down via zero-crossing frequency division
   // (octave-processor.js AudioWorklet), same technique classic analog
   // octave pedals use. An earlier version tried a WaveShaper "rectify and
@@ -661,7 +702,11 @@ async function _buildPAGraph() {
     ir: { inputs: [PA.irDryGain, PA.convolver], output: PA.irMerge },
     eq: { inputs: [eqBass], output: eqTreble },
     comp: { inputs: [PA.compBypassDry, PA.compressor], output: PA.compMerge },
-    fx: { inputs: [PA.delayNode, PA.delayMerge], output: PA.reverbMerge },
+    // CH-3: two stages, not one. Each takes the standard wet-send shape —
+    // the previous stage feeds the effect's input AND the merge node
+    // directly, so the dry signal is always present underneath.
+    delay: { inputs: [PA.delayNode, PA.delayMerge], output: PA.delayMerge },
+    reverb: { inputs: [PA.reverbConvolver, PA.reverbMerge], output: PA.reverbMerge },
     boost: { inputs: [PA.boostDryGain, PA.boostShaper], output: PA.boostMerge },
     geq: { inputs: [PA.geqNodes[100]], output: PA.geqNodes[8000] },
     chorus: { inputs: [PA.chorusDelay, PA.chorusMerge], output: PA.chorusMerge },
@@ -669,6 +714,7 @@ async function _buildPAGraph() {
     phaser: { inputs: [PA.phaserStages[0], PA.phaserMerge], output: PA.phaserMerge },
     tremolo: { inputs: [PA.tremoloGain], output: PA.tremoloGain },
     wah: { inputs: [PA.wahFilter, PA.wahDryGain], output: PA.wahMerge },
+    mwah: { inputs: [PA.mwahFilter, PA.mwahDryGain], output: PA.mwahMerge },
     octaver: { inputs: [PA.octaverDryGain, PA.octaveNode], output: PA.octaverMerge },
   };
   PA.pedalOrder = paLoadPedalOrder();
@@ -721,6 +767,39 @@ function paSetInputTrimDb(db, ramp = true) {
     PA.inputTrim.gain.value = target;
   }
 }
+
+// CH-4: Manual Wah defaults. The heel/toe range is the usual voicing of a
+// treadle wah — roughly the low-mid honk up to the top-end quack — and is
+// adjustable per-rig; Q is a touch more resonant than the Auto-Wah's 3,
+// which is what makes a swept wah sound vocal rather than like a tone
+// control being turned.
+const PA_MWAH_DEFAULT_HEEL_HZ = 350;
+const PA_MWAH_DEFAULT_TOE_HZ = 2200;
+const PA_MWAH_DEFAULT_Q = 4;
+// Measured, not guessed — same method as the Auto-Wah's own 2.15, and worth
+// measuring because the answer depends on the spectrum of real guitar, not
+// on the filter alone. A separated guitar stem was run through this exact
+// BiquadFilterNode at Q=4 in an OfflineAudioContext, swept heel-to-toe the
+// way a foot would, and the wet RMS compared to the dry: the band keeps
+// only a slice of the signal's energy and the sweep measured 11.85 dB down,
+// so without makeup gain "engage the wah" would read as "turn the volume
+// down". First guess here was 2.6x; the measurement said 3.91x. Rerun with
+// scripts/wah_makeup_measure.js.
+//
+// This matches RMS — loudness — deliberately, and that means PEAKS grow: a
+// resonant bandpass rings, so the level-matched wet signal measured a peak
+// of 0.693 against the dry stem's 0.499, about 3dB up. That is real wah
+// behaviour rather than an artifact (a Cry Baby's resonant peak does the
+// same, and it is part of why a wah into a drive pedal sounds like it
+// does), but it does mean a very hot input can reach the rail with the wah
+// full up. Lower Q, lower Mix, or the Output level all pull it back.
+const PA_MWAH_MAKEUP_GAIN = 3.9;
+// A CC arrives as one of 128 steps, and a pedal being swept sends them in a
+// fast stream. Writing frequency.value directly turns that into 128 audible
+// steps (zipper noise) rather than a sweep, so each update ramps instead —
+// short enough to feel immediate under the foot, long enough to smooth the
+// staircase. Same setTargetAtTime idiom as IN-1's input trim.
+const PA_MWAH_SMOOTHING_SEC = 0.012;
 
 const PA_PEDAL_ORDER_KEY = "gs_pa_pedal_order";
 
@@ -777,51 +856,75 @@ const PA_PEDAL_ORDER_KEY = "gs_pa_pedal_order";
 // be: everything here is reorderable, so the loop is simply the part of the
 // chain that sits after Amp — which is where this default already puts
 // modulation and time.
+// CH-3/CH-4 change two entries of it: "fx" became the separate "delay" and
+// "reverb" stages, and "mwah" (the treadle wah) joined the filters at the
+// front. Both wahs sit first for the same reason — they are filters — and
+// their order relative to each other barely matters, since you would only
+// ever have one of them engaged.
 const PA_DEFAULT_PEDAL_ORDER = [
-  "wah", "comp", "octaver", "boost",
+  "mwah", "wah", "comp", "octaver", "boost",
   "amp", "ir",
   "geq", "eq",
   "chorus", "phaser", "flanger", "tremolo",
-  "fx",
+  "delay", "reverb",
 ];
 
-// The v4.7 default this replaces. Kept only so the migration below can
-// recognise "this player never reordered anything" and give them the better
-// default — see paLoadPedalOrder.
-const PA_PEDAL_ORDER_V1_DEFAULT = [
-  "amp", "wah", "octaver", "boost", "comp", "ir", "geq",
-  "eq", "chorus", "phaser", "flanger", "tremolo", "fx",
-];
 const PA_PEDAL_ORDER_VERSION_KEY = "gs_pa_pedal_order_v";
-const PA_PEDAL_ORDER_VERSION = 2;
+// Bumping this resets the live chain to PA_DEFAULT_PEDAL_ORDER exactly once,
+// for anyone who hasn't already been reset at this version. Version 2
+// preserved a deliberately customised order and only replaced the untouched
+// old default; version 3 is a requested one-off "just give me the fix" —
+// the app currently has one user, who asked for the new order outright, and
+// a conditional migration would have had to guess whether an order was
+// deliberate. It still runs ONCE: the stamp is written the first time this
+// is called, so any reorder made afterwards survives every future load.
+//
+// If this app ever has other users, prefer version 2's shape (replace only
+// what matches a known old default) over this one. Resetting someone's rig
+// without being asked is the sort of thing that is fine exactly once, on
+// request, and never as a habit.
+const PA_PEDAL_ORDER_VERSION = 3;
+
+// A stored or preset order can predate the current stage list: CH-3 split
+// "fx" into "delay" + "reverb", and CH-4 added "mwah". Rather than throwing
+// such an order away (which would silently discard a rig someone built),
+// translate what it does say and append whatever it doesn't mention, in
+// default-order position. Unknown ids are dropped — a stage that no longer
+// exists has nowhere to be wired.
+function paNormalizePedalOrder(order) {
+  if (!Array.isArray(order)) return [...PA_DEFAULT_PEDAL_ORDER];
+  const known = new Set(PA_DEFAULT_PEDAL_ORDER);
+  const out = [];
+  for (const raw of order) {
+    // "fx" was one stage holding both; it expands in place, delay first,
+    // which is the order it was hard-wired in before the split.
+    const ids = raw === "fx" ? ["delay", "reverb"] : [raw];
+    for (const id of ids) if (known.has(id) && !out.includes(id)) out.push(id);
+  }
+  for (const id of PA_DEFAULT_PEDAL_ORDER) if (!out.includes(id)) out.push(id);
+  return out;
+}
 
 function paLoadPedalOrder() {
+  const version = parseInt(localStorage.getItem(PA_PEDAL_ORDER_VERSION_KEY) || "1", 10);
+  if (version < PA_PEDAL_ORDER_VERSION) {
+    localStorage.setItem(PA_PEDAL_ORDER_VERSION_KEY, String(PA_PEDAL_ORDER_VERSION));
+    localStorage.setItem(PA_PEDAL_ORDER_KEY, JSON.stringify(PA_DEFAULT_PEDAL_ORDER));
+    return [...PA_DEFAULT_PEDAL_ORDER];
+  }
   try {
     const stored = JSON.parse(localStorage.getItem(PA_PEDAL_ORDER_KEY) || "null");
-    // Defensive: only trust a stored order if it's exactly a permutation of
-    // the known stages — a stale/foreign value falls back to default
-    // rather than dropping a stage's audio out of the chain entirely. This
-    // is also what silently migrates every past stage-count change.
+    // Defensive: only trust a stored order if it names exactly the known
+    // stages — a stale or foreign value falls back to the default rather
+    // than dropping a stage's audio out of the chain entirely.
     if (Array.isArray(stored) && stored.length === PA_DEFAULT_PEDAL_ORDER.length &&
         PA_DEFAULT_PEDAL_ORDER.every((id) => stored.includes(id))) {
-      // A stage-count change self-heals via the check above, but CH-1 keeps
-      // the same 13 stages and only reorders them — so without this, every
-      // existing player would keep the old amp-first order forever and
-      // never see the new default. Anyone still sitting on the exact v4.7
-      // default never made a choice worth preserving, so they get the new
-      // one; anyone whose order differs from it did reorder deliberately,
-      // and their rig is left completely alone. Either way the version is
-      // stamped, so this comparison happens once and never again.
-      const version = parseInt(localStorage.getItem(PA_PEDAL_ORDER_VERSION_KEY) || "1", 10);
-      if (version >= PA_PEDAL_ORDER_VERSION) return stored;
-      localStorage.setItem(PA_PEDAL_ORDER_VERSION_KEY, String(PA_PEDAL_ORDER_VERSION));
-      const untouched = stored.every((id, i) => id === PA_PEDAL_ORDER_V1_DEFAULT[i]);
-      if (!untouched) return stored;
-      localStorage.setItem(PA_PEDAL_ORDER_KEY, JSON.stringify(PA_DEFAULT_PEDAL_ORDER));
-      return [...PA_DEFAULT_PEDAL_ORDER];
+      return stored;
     }
+    // Recognisably an older order (it had stages) rather than junk — keep
+    // the arrangement and just bring it up to date.
+    if (Array.isArray(stored) && stored.length) return paNormalizePedalOrder(stored);
   } catch (e) { /* fall through to default */ }
-  localStorage.setItem(PA_PEDAL_ORDER_VERSION_KEY, String(PA_PEDAL_ORDER_VERSION));
   return [...PA_DEFAULT_PEDAL_ORDER];
 }
 
@@ -2878,6 +2981,53 @@ function updateWahWet() {
   PA.wahWetGain.gain.value = bypassed ? 0 : mix;
   PA.wahDryGain.gain.value = bypassed ? 1 : (1 - mix);
 }
+
+// CH-4: Manual Wah. Same crossfade contract as the Auto-Wah above.
+function updateMwahWet() {
+  const bypassed = document.getElementById("pa-mwah-bypass").checked;
+  const mix = parseFloat(document.getElementById("pa-mwah-mix").value) / 100;
+  PA.mwahWetGain.gain.value = bypassed ? 0 : mix;
+  PA.mwahDryGain.gain.value = bypassed ? 1 : (1 - mix);
+}
+
+// Treadle position, 0 (heel, dark) to 1 (toe, bright). Called from the
+// on-screen slider AND from every expression-pedal CC message, so it has to
+// be cheap and it has to ramp rather than jump — see PA_MWAH_SMOOTHING_SEC.
+function paSetMwahPosition(pos, fromMidi = false) {
+  PA.mwahPosition = Math.max(0, Math.min(1, pos));
+  if (!PA.mwahFilter) return;
+  const heel = parseFloat(document.getElementById("pa-mwah-heel").value) || PA_MWAH_DEFAULT_HEEL_HZ;
+  const toe = parseFloat(document.getElementById("pa-mwah-toe").value) || PA_MWAH_DEFAULT_TOE_HZ;
+  // Logarithmic sweep — see the ensurePAGraph comment for why this isn't a
+  // linear interpolation in Hz.
+  const hz = heel * Math.pow(toe / heel, PA.mwahPosition);
+  PA.mwahFilter.frequency.setTargetAtTime(hz, Audio.ctx.currentTime, PA_MWAH_SMOOTHING_SEC);
+  paRenderMwahPosition(hz, fromMidi);
+}
+
+// The readout follows the pedal, but a swept expression pedal sends CCs far
+// faster than the screen refreshes — writing the DOM per message would burn
+// the main thread repainting frames nobody sees. Coalesce to one paint per
+// animation frame; the audio above is never throttled, only the display.
+let _mwahPaintQueued = false;
+let _mwahPaintHz = 0;
+function paRenderMwahPosition(hz, fromMidi) {
+  _mwahPaintHz = hz;
+  if (_mwahPaintQueued) return;
+  _mwahPaintQueued = true;
+  requestAnimationFrame(() => {
+    _mwahPaintQueued = false;
+    const val = document.getElementById("pa-mwah-pos-val");
+    if (val) val.textContent = `${Math.round(PA.mwahPosition * 100)}% · ${Math.round(_mwahPaintHz)} Hz`;
+    // Only drive the slider FROM MIDI. Writing .value while the user is
+    // dragging that same slider fights their own drag.
+    if (fromMidi) {
+      const slider = document.getElementById("pa-mwah-pos");
+      if (slider) slider.value = String(Math.round(PA.mwahPosition * 100));
+    }
+  });
+}
+
 // Tremolo has no Mix knob (pure in-place amplitude modulation) — bypass
 // disconnects the LFO from the gain param entirely rather than zeroing a
 // wet send, since there's no dry/wet split to begin with.
@@ -3192,6 +3342,31 @@ function wirePAControls() {
     document.getElementById("pa-wah-center-val").textContent = e.target.value + " Hz";
   });
 
+  // CH-4: Manual Wah. The Pedal slider and a bound expression pedal are two
+  // routes into the same paSetMwahPosition, so they cannot disagree about
+  // where the treadle is.
+  document.getElementById("pa-mwah-bypass").addEventListener("change", updateMwahWet);
+  document.getElementById("pa-mwah-mix").addEventListener("input", (e) => {
+    document.getElementById("pa-mwah-mix-val").textContent = e.target.value + "%";
+    updateMwahWet();
+  });
+  document.getElementById("pa-mwah-pos").addEventListener("input", (e) => {
+    paSetMwahPosition(parseFloat(e.target.value) / 100);
+  });
+  document.getElementById("pa-mwah-q").addEventListener("input", (e) => {
+    PA.mwahFilter.Q.value = parseFloat(e.target.value);
+    document.getElementById("pa-mwah-q-val").textContent = parseFloat(e.target.value).toFixed(1);
+  });
+  // Moving either end of the range re-derives the current frequency from
+  // the treadle's existing position, so the sweep rescales under your foot
+  // instead of only taking effect on the next pedal movement.
+  for (const [id, valId, unit] of [["pa-mwah-heel", "pa-mwah-heel-val", " Hz"], ["pa-mwah-toe", "pa-mwah-toe-val", " Hz"]]) {
+    document.getElementById(id).addEventListener("input", (e) => {
+      document.getElementById(valId).textContent = e.target.value + unit;
+      paSetMwahPosition(PA.mwahPosition);
+    });
+  }
+
   document.getElementById("pa-octaver-bypass").addEventListener("change", (e) => {
     const bypassed = e.target.checked;
     const blend = parseFloat(document.getElementById("pa-octaver-blend").value) / 100;
@@ -3264,9 +3439,9 @@ function paShowLatencyEstimate() {
 // ---------------------------------------------------------------------------
 const CHAIN_ICON_LABELS = {
   input: "Input", gate: "Gate", amp: "Amp", ir: "Cab IR", eq: "EQ", comp: "Comp",
-  fx: "Delay/Rev", wah: "Wah", octaver: "Octave", boost: "Boost",
-  geq: "Graphic EQ", chorus: "Chorus", phaser: "Phaser", flanger: "Flanger",
-  tremolo: "Tremolo", output: "Output",
+  delay: "Delay", reverb: "Reverb", wah: "Auto-Wah", mwah: "Wah", octaver: "Octave",
+  boost: "Boost", geq: "Graphic EQ", chorus: "Chorus", phaser: "Phaser",
+  flanger: "Flanger", tremolo: "Tremolo", output: "Output",
 };
 
 // Simple single-color line glyphs (24x24, stroke=currentColor), matching
@@ -3283,8 +3458,15 @@ const CHAIN_ICON_GLYPHS = {
   ir: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><circle cx="8.5" cy="12" r="2.6"/><circle cx="15.5" cy="12" r="2.6"/>',
   eq: '<line x1="6" y1="4" x2="6" y2="20"/><circle cx="6" cy="9" r="1.6"/><line x1="12" y1="4" x2="12" y2="20"/><circle cx="12" cy="15" r="1.6"/><line x1="18" y1="4" x2="18" y2="20"/><circle cx="18" cy="7" r="1.6"/>',
   comp: '<polyline points="9,7 4,12 9,17"/><polyline points="15,7 20,12 15,17"/>',
-  fx: '<path d="M4 14a8 8 0 0 1 16 0"/><path d="M7.5 14a4.5 4.5 0 0 1 9 0"/>',
-  wah: '<polygon points="4,18 20,18 13,5"/>',
+  // CH-3: delay is discrete repeats decaying away; reverb is the diffuse
+  // tail the old shared "fx" arc glyph stood for.
+  delay: '<line x1="4" y1="6" x2="4" y2="18"/><line x1="10" y1="8" x2="10" y2="16"/><line x1="16" y1="10" x2="16" y2="14"/><line x1="21" y1="11.5" x2="21" y2="12.5"/>',
+  reverb: '<path d="M4 14a8 8 0 0 1 16 0"/><path d="M7.5 14a4.5 4.5 0 0 1 9 0"/>',
+  // The treadle outline is the wah pedal itself; the auto-wah gets the same
+  // shape with the LFO's sine through it, since that is the whole
+  // difference between them.
+  mwah: '<polygon points="4,18 20,18 13,5"/>',
+  wah: '<polygon points="4,18 20,18 13,5"/><path d="M6.5 15.5 Q9 12.5 11.5 15.5 T16.5 15.5" opacity="0.85"/>',
   octaver: '<circle cx="12" cy="8.5" r="3.6"/><circle cx="12" cy="17" r="5.2"/>',
   boost: '<polyline points="6,16 12,7 18,16"/><line x1="4" y1="19" x2="20" y2="19"/>',
   geq: '<rect x="2.5" y="10" width="2.6" height="10"/><rect x="7.5" y="5" width="2.6" height="15"/><rect x="12.5" y="12" width="2.6" height="8"/><rect x="17.5" y="3" width="2.6" height="17"/>',
@@ -3308,17 +3490,13 @@ function paChainStageOrder() {
 }
 
 // Amp has no bypass control of its own (three modes instead) — always
-// "on". Delay/Reverb share one card (#pa-fx) but each has its own bypass,
-// so the icon lights up if either is active.
+// "on". CH-3 removed the one special case here: Delay and Reverb used to
+// share a card and light one icon between them, and are now two stages with
+// one bypass each, like everything else.
 function paChainStageIsOn(id) {
   // Input (a trim) and Amp (three modes) have no bypass of their own —
   // they are always part of the chain.
   if (id === "input" || id === "amp") return true;
-  if (id === "fx") {
-    const d = document.getElementById("pa-delay-bypass");
-    const r = document.getElementById("pa-reverb-bypass");
-    return (d && !d.checked) || (r && !r.checked);
-  }
   const el = document.getElementById(`pa-${id}-bypass`);
   return el ? !el.checked : true;
 }
@@ -3483,6 +3661,14 @@ function paCaptureRigState() {
       bypass: c("pa-wah-bypass"), rate: v("pa-wah-rate"), depth: v("pa-wah-depth"),
       center: v("pa-wah-center"), mix: v("pa-wah-mix"),
     },
+    // CH-4. The expression-pedal BINDING is deliberately not saved here:
+    // like the footswitch bindings, it describes your hardware, not your
+    // tone, and would be wrong to carry between machines or overwrite every
+    // time you load a preset.
+    mwah: {
+      bypass: c("pa-mwah-bypass"), pos: v("pa-mwah-pos"), heel: v("pa-mwah-heel"),
+      toe: v("pa-mwah-toe"), q: v("pa-mwah-q"), mix: v("pa-mwah-mix"),
+    },
     octaver: { bypass: c("pa-octaver-bypass"), blend: v("pa-octaver-blend") },
     output: { level: v("pa-output-level"), bypass: c("pa-output-bypass") },
     pedalOrder: [...PA.pedalOrder], // GP-03
@@ -3614,6 +3800,17 @@ async function paApplyRigState(state) {
     paSetControlValue("pa-wah-mix", state.wah.mix);
     paSetControlChecked("pa-wah-bypass", state.wah.bypass);
   }
+  if (state.mwah) {
+    // Range and Q before position: paSetMwahPosition reads heel/toe off the
+    // DOM to derive the frequency, so setting the position first would
+    // compute it against the outgoing preset's range.
+    paSetControlValue("pa-mwah-heel", state.mwah.heel);
+    paSetControlValue("pa-mwah-toe", state.mwah.toe);
+    paSetControlValue("pa-mwah-q", state.mwah.q);
+    paSetControlValue("pa-mwah-pos", state.mwah.pos);
+    paSetControlValue("pa-mwah-mix", state.mwah.mix);
+    paSetControlChecked("pa-mwah-bypass", state.mwah.bypass);
+  }
   if (state.octaver) {
     paSetControlValue("pa-octaver-blend", state.octaver.blend);
     paSetControlChecked("pa-octaver-bypass", state.octaver.bypass);
@@ -3627,7 +3824,11 @@ async function paApplyRigState(state) {
   // source of truth, so leaving it stale here would make the next drag
   // silently revert to whatever order was on screen before this preset
   // loaded, discarding the very order the preset just asked for.
-  if (state.pedalOrder) paApplyPedalOrderToDom(state.pedalOrder);
+  // Normalised first (CH-3/CH-4): a preset saved before the Delay/Reverb
+  // split names "fx" and knows nothing about "mwah", and applying it raw
+  // would leave both new stages wherever they happened to be sitting rather
+  // than where the preset meant them to go.
+  if (state.pedalOrder) paApplyPedalOrderToDom(paNormalizePedalOrder(state.pedalOrder));
   // Last: connects whichever mode's chain is now fully parameterized above.
   if (state.ampMode) setAmpMode(state.ampMode);
 }
@@ -3995,6 +4196,7 @@ const PA_MIDI_BYPASS_STAGES = [
   { id: "tremolo", label: "tremolo", checkbox: "pa-tremolo-bypass" },
   { id: "delay", label: "delay", checkbox: "pa-delay-bypass" },
   { id: "reverb", label: "reverb", checkbox: "pa-reverb-bypass" },
+  { id: "mwah", label: "manual wah", checkbox: "pa-mwah-bypass" },
   { id: "output", label: "output mute", checkbox: "pa-output-bypass" },
 ];
 
@@ -4017,6 +4219,67 @@ const PA_MIDI_ACTIONS = [
     run: () => paToggleBypass(stage.checkbox),
   })),
 ];
+
+// CH-4: expression-pedal bindings are a different kind of thing from the
+// footswitch bindings above, and deliberately kept separate rather than
+// bolted onto PA_MIDI_ACTIONS. A footswitch action cares only THAT a
+// message arrived; an expression pedal's whole content is the value it
+// carries, and it sends a continuous stream of them. Sharing one table
+// would have meant every consumer checking which kind it was holding.
+//
+// Only Control Change can carry a sweep, so unlike the footswitch bindings
+// (which accept Note/CC/Program alike) this one matches CC exclusively.
+const PA_MIDI_EXPRESSION_TARGETS = [
+  {
+    id: "mwah",
+    label: "manual wah",
+    storageKey: "gs_midi_expr_mwah",
+    apply: (v) => paSetMwahPosition(v, true), // v is 0..1
+  },
+];
+
+function paMidiExpressionMatch(status, data1) {
+  if ((status & 0xf0) !== 0xb0) return null;
+  for (const t of PA_MIDI_EXPRESSION_TARGETS) {
+    const m = paMidiLoadMapping(t.storageKey);
+    if (m && m.status === status && m.data1 === data1) return t;
+  }
+  return null;
+}
+
+function paMidiRenderExpression(target) {
+  const el = document.getElementById(`pa-midi-expr-${target.id}-display`);
+  if (!el) return;
+  const m = paMidiLoadMapping(target.storageKey);
+  el.textContent = m ? `CC ${m.data1} (ch ${(m.status & 0x0f) + 1})` : "not set";
+}
+
+// Arming works the same way the footswitch Learn does, with one difference
+// that matters in practice: a treadle sends a burst of CCs the instant you
+// move it, so the FIRST one to arrive wins and learning ends immediately —
+// otherwise a single sweep would rebind the target dozens of times and the
+// last message (wherever the foot stopped) would decide, which is the same
+// answer only by luck.
+function paMidiArmExpressionLearn(targetId) {
+  const target = PA_MIDI_EXPRESSION_TARGETS.find((t) => t.id === targetId);
+  if (!target) return;
+  const btn = document.getElementById(`pa-midi-expr-${target.id}-learn-btn`);
+  const statusEl = document.getElementById("pa-midi-status");
+
+  if (PA.midiExprLearnTarget === targetId) {
+    PA.midiExprLearnTarget = null;
+    if (btn) btn.textContent = "Learn…";
+    return;
+  }
+  if (!PA.midiInput) {
+    if (statusEl) statusEl.textContent = "Pick your MIDI device in Tone Lab → Rig presets first.";
+    if (btn) { btn.textContent = "No device"; setTimeout(() => { btn.textContent = "Learn…"; }, 2000); }
+    return;
+  }
+  PA.midiExprLearnTarget = targetId;
+  if (btn) btn.textContent = "Sweep it…";
+  if (statusEl) statusEl.textContent = `Rock the expression pedal you want for ${target.label} now…`;
+}
 
 function paMidiLoadMapping(key) {
   try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; }
@@ -4109,9 +4372,46 @@ function paMidiResetLearnButtons() {
 
 function paHandleMidiMessage(event) {
   const [status, data1, data2] = event.data;
-  if (!paMidiIsPressEvent(status, data2)) return;
 
-  if (PA.midiLearnTarget) {
+  // CH-4: an armed expression Learn outranks everything — the first CC to
+  // arrive is the binding, and a treadle sends a burst of them the moment
+  // it moves.
+  if (PA.midiExprLearnTarget && (status & 0xf0) === 0xb0) {
+    const target = PA_MIDI_EXPRESSION_TARGETS.find((t) => t.id === PA.midiExprLearnTarget);
+    PA.midiExprLearnTarget = null;
+    if (!target) return;
+    localStorage.setItem(target.storageKey, JSON.stringify({ status, data1 }));
+    // One control, one job — the same rule the footswitch learn enforces,
+    // applied across the two kinds. A CC bound to both would sweep the wah
+    // AND stomp a pedal on and off dozens of times a second.
+    for (const other of PA_MIDI_ACTIONS) {
+      const m = paMidiLoadMapping(other.storageKey);
+      if (m && m.status === status && m.data1 === data1) {
+        localStorage.removeItem(other.storageKey);
+        paMidiRenderMapping(other);
+      }
+    }
+    paMidiRenderExpression(target);
+    const btn = document.getElementById(`pa-midi-expr-${target.id}-learn-btn`);
+    if (btn) btn.textContent = "Learn…";
+    const statusEl = document.getElementById("pa-midi-status");
+    if (statusEl) statusEl.textContent = `Expression pedal for ${target.label} set to CC ${data1} (ch ${(status & 0x0f) + 1}).`;
+    return;
+  }
+  // An armed footswitch Learn outranks a live expression binding, and that
+  // ordering is load-bearing rather than arbitrary: it is the only way to
+  // rebind a CC an expression pedal already owns. With the match first, a
+  // bound treadle CC would sweep the wah and return before the Learn branch
+  // ever saw it, so that button/pedal could never be reassigned to anything
+  // — found by the CH-4 test, which is exactly the sort of dead end that
+  // reads as "the app ignored me" rather than as a bug.
+  //
+  // The press gate still applies to learning (a footswitch's release sends
+  // CC value 0, and learning from that half of the pair would bind the
+  // wrong thing), so it is evaluated up front and shared.
+  const isPress = paMidiIsPressEvent(status, data2);
+
+  if (PA.midiLearnTarget && isPress) {
     const action = PA_MIDI_ACTIONS.find((a) => a.id === PA.midiLearnTarget);
     PA.midiLearnTarget = null;
     paMidiResetLearnButtons();
@@ -4129,6 +4429,16 @@ function paHandleMidiMessage(event) {
       localStorage.removeItem(other.storageKey);
       paMidiRenderMapping(other);
     }
+    // ...and the same rule in the other direction (CH-4): binding a
+    // footswitch to a CC an expression pedal already owns unbinds the pedal.
+    for (const t of PA_MIDI_EXPRESSION_TARGETS) {
+      const m = paMidiLoadMapping(t.storageKey);
+      if (m && m.status === status && m.data1 === data1) {
+        localStorage.removeItem(t.storageKey);
+        paMidiRenderExpression(t);
+        stolenFrom.push(t);
+      }
+    }
     localStorage.setItem(action.storageKey, JSON.stringify(map));
     paMidiRenderMapping(action);
     document.getElementById("pa-midi-status").textContent =
@@ -4136,6 +4446,17 @@ function paHandleMidiMessage(event) {
       (stolenFrom.length ? ` (Unassigned from ${stolenFrom.map((o) => o.label).join(", ")} — one button, one job.)` : "");
     return;
   }
+
+  // CH-4: a bound expression pedal, once nothing is being learned. This has
+  // to sit ahead of the press gate below AND ahead of the footswitch match:
+  // a swept CC always carries a non-zero value, which the gate would read
+  // as a press, so a treadle would otherwise also fire whatever footswitch
+  // action shared its CC number — dozens of times a second. And heel-down
+  // is CC value 0, a real position the gate would throw away as a release.
+  const exprTarget = paMidiExpressionMatch(status, data1);
+  if (exprTarget) { exprTarget.apply((data2 || 0) / 127); return; }
+
+  if (!isPress) return;
 
   // First match wins. Duplicate bindings are prevented at Learn time above,
   // so in practice at most one action ever matches.
@@ -4255,6 +4576,13 @@ function wireMidiControls() {
     const btn = document.getElementById(`pa-midi-${action.id}-learn-btn`);
     if (btn) btn.addEventListener("click", () => paMidiArmLearn(action.id));
     paMidiRenderMapping(action);
+  }
+
+  // CH-4: expression-pedal bindings live on their own pedal's card too.
+  for (const target of PA_MIDI_EXPRESSION_TARGETS) {
+    const btn = document.getElementById(`pa-midi-expr-${target.id}-learn-btn`);
+    if (btn) btn.addEventListener("click", () => paMidiArmExpressionLearn(target.id));
+    paMidiRenderExpression(target);
   }
 
   // Code-review finding: this used to call paRefreshMidiDevices() right
