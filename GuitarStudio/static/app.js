@@ -824,15 +824,72 @@ function seekTo(sec) {
   resyncClickPointer(clamped); // BT-02 — a jump must resync which beat fires next, or a forward seek would burst-fire every skipped beat in one tick()
 }
 
-// Switches the active playback mode, preserving position/play-state across
-// the switch. Called whenever Speed/Tune move away from (or back to)
-// unity — see wireSpeedTune().
-async function setSpeedTune(speed, pitchRatio) {
+// SPD-1: the mode switch below is async and takes a long time (it copies or
+// re-decodes every stem's PCM), but it is driven by a slider's `input`
+// event, which fires continuously while dragging or clicking around. Two
+// overlapping runs corrupt each other, and the damage is unrecoverable
+// without reloading the page:
+//
+//   A (-> processed): sets mode, stops the direct sources, awaits
+//                     ensureStretchNodes() — slow, one PCM copy per stem
+//   B (-> direct), firing inside A's await: sees mode === "processed" so it
+//                     proceeds, tears down the nodes A is still building,
+//                     finds nothing to re-decode (A hasn't freed yet) and
+//                     starts direct playback
+//   A resumes:        freeProcessedRedundantBuffers() deletes the very
+//                     buffers direct playback is now using, then starts
+//                     playback on a half-dead graph
+//
+// Result: silence that no further play/seek recovers, because the PCM is
+// gone. Real user report — "clicking around on the speed slider stops the
+// track and it won't restart" — and it reproduced far more easily on songs
+// with split guitar stems for exactly the reason the race predicts: more
+// stems means a slower ensureStretchNodes, which means a wider window for
+// the second click to land inside.
+//
+// Fix: serialize the switches and coalesce them. Only one runs at a time,
+// and a burst of slider events collapses to its final value rather than
+// queueing a switch per event.
+// A promise chain rather than a plain busy flag, so `await setSpeedTune(...)`
+// still means "the switch has finished" for the callers that rely on it
+// (selectTrack resets to 1.0x and then loads, and must not race its own
+// reset). Coalescing falls out of it: each call publishes the latest wanted
+// value and appends a link; the first link to run consumes it, and links
+// queued behind find nothing left to do. A burst of slider events therefore
+// performs ONE switch, to the value the slider finally landed on.
+let _speedTuneChain = Promise.resolve();
+let _speedTunePending = null;
+
+function setSpeedTune(speed, pitchRatio) {
+  // The live parameters are cheap and must track the slider immediately,
+  // even while a mode switch is in flight — only the switch is serialized.
   Audio.speed = speed;
   Audio.pitchRatio = pitchRatio;
   for (const name in Audio.stretchNodes) {
     Audio.stretchNodes[name].port.postMessage({ type: "params", speed, pitchRatio });
   }
+
+  _speedTunePending = { speed, pitchRatio };
+  _speedTuneChain = _speedTuneChain.then(async () => {
+    const next = _speedTunePending;
+    if (!next) return; // a later call already applied this, or a newer value
+    _speedTunePending = null;
+    await applySpeedTuneMode(next.speed, next.pitchRatio);
+  }).catch((e) => {
+    // Never let one failure poison the chain — every later switch would
+    // silently stop working. applySpeedTuneMode already reports its own
+    // failures to the user.
+    console.error("Speed/Tune switch failed:", e);
+  });
+  return _speedTuneChain;
+}
+
+// Switches the active playback mode, preserving position/play-state across
+// the switch. Never call this directly — go through setSpeedTune, which
+// guarantees only one of these is ever in flight (see SPD-1 above).
+async function applySpeedTuneMode(speed, pitchRatio) {
+  Audio.speed = speed;
+  Audio.pitchRatio = pitchRatio;
   const wantProcessed = speed !== 1.0 || pitchRatio !== 1.0;
   const newMode = wantProcessed ? "processed" : "direct";
   if (newMode === Audio.mode) return;
