@@ -57,6 +57,41 @@
 //      attack, and exactly the "quality gets significantly worse" part of
 //      the report that neither A nor B explains. Now 4-point cubic
 //      (-0.67dB at 15kHz) for two extra multiply-adds per sample.
+//
+// S-4: third real-user report of crackle, this time specifically "slowed to
+// 0.85/0.9, mostly on the vocal and drum stems, a bit on the other". Fault A
+// had come back. The offline output was measured first and exonerated —
+// against the same real stems this file is tuned on, the algorithm at 0.85x
+// scored level with ffmpeg's atempo on added-HF-noise and transient-burst
+// counts, and at unity speed it reconstructs the source to 136dB, i.e. it is
+// exactly transparent when it should be. So the artifact was never in the
+// arithmetic; it was that the arithmetic could not finish in time. Measured
+// per stem on the same machine, one full second of output:
+//
+//     before S-4   28.3%  of real time per stem   ->  six stems need 170%
+//     after  S-4    8.9%                          ->  six stems need  54%
+//
+// Which is worth recording, because the intuitive suspects were both wrong:
+//
+//   * The 12-tap Lanczos kernel S-2 introduced looked like the obvious
+//     regression, and it was not — cutting it to 2 taps saved 1.3 points out
+//     of 28. What cost 45% of the whole worklet was the per-sample OVERHEAD
+//     around those taps, chiefly two bounds branches per tap (24 per output
+//     sample) guarding against an edge condition that can only occur within
+//     a kernel's reach of the ends of the song. See _fillAnalysisFrame.
+//   * The FFT was documented at 89% of total cost, so it looked like the only
+//     thing worth attacking. Its own inner loop turned out to be carrying two
+//     float modulos per butterfly that were never needed at all (FFT
+//     ._transform) — 15% of the total for a two-line change.
+//
+// Everything in S-4 is a pure speed change: output was compared against the
+// previous implementation across speeds 0.85/0.9/1.0, pitch ratios
+// 0.94/1.0/1.06, and both buffer edges, and agrees to at least 113dB SNR
+// (float reassociation only — no path differs by more than 4e-4).
+//
+// The lesson for the next person here: a quality complaint about this file
+// is a CPU complaint until measured otherwise, and the measurement is
+// scripts/pv_bench.js, not intuition about which line looks expensive.
 
 const FFT_SIZE = 2048;
 // 4x overlap. This was moved to 8x (hop 256) in an earlier attempt at the
@@ -216,16 +251,24 @@ class FFT {
         t = im[i]; im[i] = im[j]; im[j] = t;
       }
     }
-    const sign = inverse ? 1 : -1;
+    // S-4: the twiddle index used to be ((k * sign) % n + n) % n — two float
+    // modulos in the innermost loop of the single most expensive routine in
+    // this file (~11k butterflies per transform, 172 transforms/sec/stem).
+    // They were never needed: k only ever reaches (size/2 - 1) * (n/size) <
+    // n/2, so it is already in range, and the whole point of the sign is the
+    // conjugate twiddle — cos(-x) = cos(x), sin(-x) = -sin(x). Reading the
+    // table at k and negating the sine is exactly equivalent and measured
+    // 15% off this worklet's total cost on its own.
+    const sinSign = inverse ? 1 : -1;
+    const cosTable = this.cosTable, sinTable = this.sinTable;
     for (let size = 2; size <= n; size *= 2) {
       const halfSize = size / 2;
       const tableStep = n / size;
       for (let i = 0; i < n; i += size) {
         for (let j = i, k = 0; j < i + halfSize; j++, k += tableStep) {
           const l = j + halfSize;
-          const angleIdx = ((k * sign) % n + n) % n;
-          const cos = this.cosTable[angleIdx];
-          const sin = this.sinTable[angleIdx];
+          const cos = cosTable[k];
+          const sin = sinSign * sinTable[k];
           const tre = re[l] * cos - im[l] * sin;
           const tim = re[l] * sin + im[l] * cos;
           re[l] = re[j] - tre; im[l] = im[j] - tim;
@@ -240,7 +283,8 @@ class FFT {
   inverse(re, im) {
     this._transform(re, im, true);
     const n = this.size;
-    for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+    const inv = 1 / n;
+    for (let i = 0; i < n; i++) { re[i] *= inv; im[i] *= inv; }
   }
 }
 
@@ -502,12 +546,12 @@ class PVChannel {
     this.haveState = true;
 
     // Save this frame's spectra (and magnitudes, for the next hop's flux) for
-    // the next hop's phase advance.
-    for (let k = 0; k < bins; k++) {
-      prevInRe[k] = re[k]; prevInIm[k] = im[k];
-      prevOutRe[k] = outRe[k]; prevOutIm[k] = outIm[k];
-      prevMag[k] = mag[k];
-    }
+    // the next hop's phase advance. Five typed-array copies rather than a
+    // 1025-iteration JS loop doing five element writes each — same result,
+    // and TypedArray.set is a memcpy (S-4).
+    prevInRe.set(re); prevInIm.set(im);
+    prevOutRe.set(outRe); prevOutIm.set(outIm);
+    prevMag.set(mag);
   }
 }
 
@@ -525,6 +569,7 @@ class StretchProcessor extends AudioWorkletProcessor {
     this.fft = new FFT(FFT_SIZE);
     this.window = hannWindow(FFT_SIZE);
     this.olaGain = colaNormalization(this.window, SYNTHESIS_HOP);
+    this.invOlaGain = 1 / this.olaGain;
     this.channels = [new PVChannel(), new PVChannel()];
     this.mono = false; // set on "load" — see arraysEqual below
     this.silenceGap = false; // set when a hop is skipped as all-zero — see _regenerateBlock
@@ -656,6 +701,72 @@ class StretchProcessor extends AudioWorkletProcessor {
   // a fractional-hop Speed/Tune setting — a cubic's high-frequency response
   // still falls away well before Nyquist). This measures within ±0.15dB to
   // 14kHz and ±0.4dB to 17kHz (see the review's S-2 acceptance criteria).
+  // S-4: fills one windowed analysis frame (both channels) from the virtual
+  // resampled domain, and reports whether every sample of it came out exactly
+  // zero. This is a hand-inlined equivalent of FFT_SIZE calls to
+  // _readVirtual() below, and it exists purely for speed: _readVirtual
+  // measured 45% of this worklet's ENTIRE cost, which for a while looked like
+  // the price of S-2's 12-tap kernel — but cutting the kernel to 2 taps saved
+  // almost nothing (27.8% -> 26.5% of real time), so the taps were never
+  // where the time went. It was everything the call repeated per sample and
+  // did not have to: a method call, three property loads to reach
+  // sourceChannels[c], a Math.floor, a Math.min for the table phase, and —
+  // worst of all — two bounds branches PER TAP, i.e. 24 branches per output
+  // sample, ~98k per hop, for a range check that can only fail within a
+  // kernel's reach of the two ends of the song.
+  //
+  // So: hoist the invariants, decide the range check ONCE for the whole frame,
+  // and let the interior case run a straight 12-tap multiply-add with the
+  // weights and both channel arrays already in locals. _readVirtual is kept
+  // as the reference implementation this must agree with, and as the clamped
+  // path for the handful of frames at each end that genuinely need it.
+  _fillAnalysisFrame(dstL, dstR) {
+    const n = FFT_SIZE;
+    const win = this.window;
+    const srcL = this.sourceChannels[0], srcR = this.sourceChannels[1];
+    const len = this.sourceLength;
+    const a = LANCZOS_A, taps = LANCZOS_TAPS, tbl = LANCZOS_TABLE;
+    const pr = this.pitchRatio;
+    const start = this.readPos * pr;
+    let silent = true;
+
+    // Widest source index this whole frame can touch, kernel reach included.
+    // readPos never goes negative (seek clamps at 0 and it only advances), so
+    // `| 0` truncation is floor here, and the frame is interior unless it is
+    // within a few samples of one end of the song.
+    const firstIdx = (start | 0) - (a - 1);
+    const lastIdx = ((start + (n - 1) * pr) | 0) + a;
+    if (firstIdx >= 0 && lastIdx < len) {
+      for (let j = 0; j < n; j++) {
+        const pos = start + j * pr; // not pos += pr: no accumulated drift
+        const i1 = pos | 0;
+        const base = (((pos - i1) * LANCZOS_PHASES) | 0) * taps;
+        const o = i1 - (a - 1);
+        let l = 0, r = 0;
+        for (let k = 0; k < taps; k++) {
+          const wk = tbl[base + k];
+          l += wk * srcL[o + k];
+          r += wk * srcR[o + k];
+        }
+        const w = win[j];
+        l *= w; r *= w;
+        dstL[j] = l; dstR[j] = r;
+        if (l !== 0 || r !== 0) silent = false;
+      }
+      return silent;
+    }
+
+    // Near one end of the buffer — same result, via the reference path.
+    for (let j = 0; j < n; j++) {
+      const w = win[j];
+      const l = this._readVirtual(0, this.readPos + j) * w;
+      const r = this._readVirtual(1, this.readPos + j) * w;
+      dstL[j] = l; dstR[j] = r;
+      if (l !== 0 || r !== 0) silent = false;
+    }
+    return silent;
+  }
+
   _readVirtual(channelIdx, resampledIndex) {
     const src = this.sourceChannels[channelIdx];
     const originalIndex = resampledIndex * this.pitchRatio;
@@ -723,17 +834,9 @@ class StretchProcessor extends AudioWorkletProcessor {
 
       const n = FFT_SIZE, bins = n / 2 + 1;
       const packRe = this.packRe, packIm = this.packIm;
-      const win = this.window;
       // Pack: left into the real part, right into the imaginary part, so a
       // single complex FFT transforms both channels at once.
-      let silent = true;
-      for (let j = 0; j < n; j++) {
-        const w = win[j];
-        const l = this._readVirtual(0, this.readPos + j) * w;
-        const r = this._readVirtual(1, this.readPos + j) * w;
-        packRe[j] = l; packIm[j] = r;
-        if (l !== 0 || r !== 0) silent = false;
-      }
+      const silent = this._fillAnalysisFrame(packRe, packIm);
       // S-1: source-separation stems commonly have exact digital silence in
       // sections a model produced nothing for (e.g. a guitar-only stem
       // during a drum fill). An all-zero window transforms, phase-locks, and
@@ -765,8 +868,14 @@ class StretchProcessor extends AudioWorkletProcessor {
       //   R[k] = -i * (Z[k] - conj(Z[N-k])) / 2
       const Lre = this.specRe[0], Lim = this.specIm[0];
       const Rre = this.specRe[1], Rim = this.specIm[1];
-      for (let k = 0; k < bins; k++) {
-        const kk = (n - k) % n;
+      // kk is (n - k) % n, which is n - k for every k except 0 — hoisting the
+      // one special case out beats a modulo per bin (S-4).
+      {
+        const a = packRe[0], b = packIm[0];
+        Lre[0] = a; Lim[0] = 0; Rre[0] = b; Rim[0] = 0;
+      }
+      for (let k = 1; k < bins; k++) {
+        const kk = n - k;
         const a = packRe[k], b = packIm[k], c = packRe[kk], d = packIm[kk];
         Lre[k] = (a + c) * 0.5; Lim[k] = (b - d) * 0.5;
         Rre[k] = (b + d) * 0.5; Rim[k] = (c - a) * 0.5;
@@ -800,6 +909,7 @@ class StretchProcessor extends AudioWorkletProcessor {
 
       // Unpack the time domain: real part is left, imaginary part is right.
       const extL = this.extended[0], extR = this.extended[1];
+      const win = this.window;
       for (let j = 0; j < n; j++) {
         const w = win[j];
         extL[written + j] += packRe[j] * w;
@@ -815,7 +925,14 @@ class StretchProcessor extends AudioWorkletProcessor {
       // See colaNormalization above — without this, every processed-mode
       // sample comes out ~1.5x too loud (double-windowed overlap-add,
       // never scaled back down).
-      for (let i = 0; i < BLOCK_SIZE; i++) dst[i] = softLimit(ext[i] / this.olaGain);
+      // Reciprocal multiply, and the softLimit call only for the rare sample
+      // that is actually above the threshold — the branch here saves a
+      // function call on every one of the other ~99.99% (S-4).
+      const invOla = this.invOlaGain;
+      for (let i = 0; i < BLOCK_SIZE; i++) {
+        const v = ext[i] * invOla;
+        dst[i] = (v <= SOFT_LIMIT_THRESHOLD && v >= -SOFT_LIMIT_THRESHOLD) ? v : softLimit(v);
+      }
       ext.copyWithin(0, BLOCK_SIZE, BLOCK_SIZE + FFT_SIZE);
     }
     this.blockPos = 0;
