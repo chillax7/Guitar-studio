@@ -793,6 +793,12 @@ async function _buildPAGraph() {
   rewirePedalChain();
 
   setAmpMode("clean");
+  // GEQ-3: the graphic EQ's nodes are created flat, but its CONTROLS were
+  // already set to the default cab curve at script load (see
+  // paLoadGeqCabPreset in wirePAControls) — long before this graph existed.
+  // Push that state at the nodes now, or the card would read "cab" while the
+  // audio ran flat, which is the worst of both.
+  applyGeqToNodes();
   PA.built = true;
 }
 
@@ -3169,7 +3175,27 @@ function paRenderMwahPosition(hz, fromMidi) {
 // The cuts move to their parked "off" frequencies rather than being
 // disconnected, so bypassing is a parameter change on a filter that is
 // always in circuit — nothing is rewired while audio is flowing.
+// Sets every graphic-EQ control to PA_GEQ_CAB_PRESET and engages the stage.
+// Used by the "Guitar cab" button and, at startup, to make that curve the
+// rig's default (GEQ-3).
+function paLoadGeqCabPreset() {
+  paSetControlValue("pa-geq-lowcut", String(PA_GEQ_CAB_PRESET.lowCut));
+  paSetControlValue("pa-geq-highcut", String(PA_GEQ_CAB_PRESET.highCut));
+  for (const freq of PA_GEQ_FREQS) {
+    paSetControlValue("pa-geq-" + freq, String(PA_GEQ_CAB_PRESET.bands[freq] ?? 0));
+  }
+  // A cab curve you can't hear isn't a cab curve.
+  paSetControlChecked("pa-geq-bypass", false);
+  applyGeqToNodes();
+}
+
 function applyGeqToNodes() {
+  // GEQ-3: callable before the audio graph exists — this now runs once at
+  // script load to seed the default curve, and the controls are in the DOM
+  // long before anything opens Tone Lab and builds the nodes. The values are
+  // pushed at the nodes again from _buildPAGraph, so nothing is lost by
+  // returning early here.
+  if (!PA.geqNodes || !PA.geqLowCut) return;
   const bypassed = document.getElementById("pa-geq-bypass").checked;
   for (const freq of PA_GEQ_FREQS) {
     const el = document.getElementById("pa-geq-" + freq);
@@ -3426,22 +3452,27 @@ function wirePAControls() {
     document.getElementById(id).addEventListener("change", applyGeqToNodes);
     document.getElementById(id).addEventListener("input", applyGeqToNodes);
   }
-  document.getElementById("pa-geq-cab-btn").addEventListener("click", () => {
-    paSetControlValue("pa-geq-lowcut", String(PA_GEQ_CAB_PRESET.lowCut));
-    paSetControlValue("pa-geq-highcut", String(PA_GEQ_CAB_PRESET.highCut));
-    for (const freq of PA_GEQ_FREQS) {
-      paSetControlValue("pa-geq-" + freq, String(PA_GEQ_CAB_PRESET.bands[freq] ?? 0));
-    }
-    // A cab curve you can't hear isn't a cab curve.
-    paSetControlChecked("pa-geq-bypass", false);
-    applyGeqToNodes();
-  });
+  document.getElementById("pa-geq-cab-btn").addEventListener("click", () => paLoadGeqCabPreset());
   document.getElementById("pa-geq-flat-btn").addEventListener("click", () => {
     paSetControlValue("pa-geq-lowcut", "0");
     paSetControlValue("pa-geq-highcut", "0");
     for (const freq of PA_GEQ_FREQS) paSetControlValue("pa-geq-" + freq, "0");
     applyGeqToNodes();
   });
+
+  // GEQ-3: the cab curve is the STARTING state of the rig, not just a button.
+  // Everything downstream of the guitar assumes a speaker somewhere, and
+  // there wasn't one by default — Pass Through has no cab and Cab IR ships
+  // bypassed, so a fresh rig monitored full-range straight from the
+  // converter. Loading the preset here rather than hardcoding the numbers
+  // into index.html's value= attributes keeps PA_GEQ_CAB_PRESET the single
+  // source of truth; the controls, the button and the default can't drift
+  // apart into three different curves.
+  //
+  // Runs at script load, which is before anything can recall a rig preset
+  // (those need a track selection or a click), so a saved preset still wins
+  // — this only decides what you get before you have chosen anything.
+  paLoadGeqCabPreset();
 
   document.getElementById("pa-chorus-bypass").addEventListener("change", updateChorusWet);
   document.getElementById("pa-chorus-mix").addEventListener("input", (e) => {

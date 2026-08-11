@@ -1081,7 +1081,17 @@ with a meter:
     is three filters deep (18 dB/octave) and the Low cut two (24 dB/oct),
     which is what actually sounds like a speaker rather than a blanket
     over one.
-  - **Guitar cab** sets the whole thing in one click: 80 Hz low cut,
+  - **This is where the rig starts.** The cab curve is the default, not
+    just a button — a fresh rig has a speaker in it rather than going out
+    full-range straight from the converter, which is what a DI'd guitar
+    otherwise sounds like (spiky, fizzy, all pick and no body). Bypass it
+    and you're back to the raw signal.
+  - **If you load a Cab IR, bypass this one.** An IR is already a
+    speaker; two in a row is too dark. The same goes for Amp = Analog,
+    which has its own 4.5 kHz cab rolloff built in — it'll work, but
+    you're stacking two cabs, so expect to lift the High cut or turn it
+    off.
+  - **Guitar cab** re-applies it in one click if you've wandered off: 80 Hz low cut,
     4.5 kHz high cut, +3 dB at 100 Hz for the cabinet resonance, −2 dB
     through 400–800 Hz to take the box out, +3 dB at 3 kHz for bite, and
     trims at 5 k and 8 k. Measured, the result is −18 dB at 50 Hz relative
@@ -1089,6 +1099,9 @@ with a meter:
     3.15 kHz, and −38 dB by 8 kHz still falling. It's within 0.6 dB of
     bypass for overall loudness, so switching it in doesn't move your
     levels. **Flat** puts everything back to no effect.
+  - Whatever you set is captured by a rig preset, so per-song curves
+    work the way every other pedal does. The default only decides what
+    you get before you've chosen anything.
   - This is a substitute for a cab IR, not a replacement. An IR carries
     the cabinet's resonances and time behaviour; this is nine bells and
     two slopes. It gets you the shape, which is most of the way.
