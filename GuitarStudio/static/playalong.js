@@ -1239,14 +1239,33 @@ async function paEnableInput() {
   const deviceId = document.getElementById("pa-device-select").value;
   const hintEl = document.getElementById("pa-input-hint");
   try {
-    // latency ideal:0 asks the capture stack for its smallest input buffer
-    // — an "ideal" constraint can't fail the getUserMedia call, the
-    // browser just gets as close as it can. The input buffer is the one
-    // piece of the monitoring path no Web Audio API can even measure
-    // (see paShowLatencyEstimate), so asking is all that's available.
+    // V6-MEM1: this used to ALSO request `latency: { ideal: 0 }`, to shave
+    // the input buffer as tight as the output side already is (ensureCtx's
+    // latencyHint: 0). With a real external USB interface — whose capture
+    // clock is independent of the Mac's output clock — asking BOTH ends for
+    // the smallest possible buffer maximises how often Chrome's renderer
+    // has to reconcile drift between the two clock domains, and that
+    // reconciliation path was where a real, continuous native memory leak
+    // showed up: Chrome Helper (Renderer) RSS climbing without bound for as
+    // long as input stayed enabled. Invisible to the JS heap, absent during
+    // plain backing-track playback, and NOT reproducible against a
+    // synthetic capture device, which has no independent hardware clock to
+    // drift against in the first place.
+    //
+    // It was only ever a latency preference, never a correctness
+    // requirement — an "ideal" constraint cannot fail the getUserMedia call
+    // either way — so dropping it costs nothing but an unmeasurable sliver
+    // of input latency (the one part of the path no Web Audio API can
+    // measure anyway, see paShowLatencyEstimate), in exchange for letting
+    // Chrome's capture stack pick a buffer that survives clock drift.
+    //
+    // This fix was made and confirmed against a Helix on a branch that was
+    // never merged; main carried the constraint for months afterwards. It
+    // cannot be re-verified in CI or against a fake device by construction
+    // — if renderer memory still climbs with a real interface attached,
+    // that is a NEW finding, not this one recurring.
     const audioConstraints = {
       echoCancellation: false, noiseSuppression: false, autoGainControl: false,
-      latency: { ideal: 0 },
     };
     if (deviceId) audioConstraints.deviceId = { exact: deviceId };
     const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });

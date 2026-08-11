@@ -192,6 +192,17 @@ normalization.
   virtualenv (the launcher runs `venv/bin/python` specifically, and
   `venv/` is gitignored — a fresh clone has none until you create it, see
   step 4) and the cloud-sync problem below.
+- **Memory climbing while a USB audio interface is plugged in and Input
+  is on.** If Chrome Helper (Renderer) in Activity Monitor grows steadily
+  for as long as monitoring is enabled — and stays flat when you disable
+  Input and just play a backing track — that is a specific fault, not
+  general heaviness. It was traced to asking for the smallest possible
+  audio buffer on the input side and the output side at the same time,
+  which makes Chrome constantly reconcile drift between the interface's
+  own clock and the Mac's. The input-side request has been dropped, so it
+  should not happen; if it does, that's worth reporting, and the
+  workaround in the meantime is to disable Input between practice
+  stretches rather than leaving it live all session.
 - **Don't keep this project in iCloud Drive, OneDrive, Dropbox or Google
   Drive.** It will appear to work and then fail in confusing ways. Cloud
   folders store files as online-only placeholders and fetch them on
