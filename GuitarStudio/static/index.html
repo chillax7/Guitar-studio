@@ -1271,18 +1271,58 @@
             </div>
           </section>
 
+          <!-- GEQ-2: nine bands plus a low cut and a three-deep (18 dB/oct)
+               high cut. The cuts are the point: a peaking band can only make
+               a bump, so "cut everything above 8 kHz" is not something a
+               graphic EQ can express — the cliff above 4-5 kHz is most of
+               what makes a speaker cabinet sound like one. -->
           <section class="pa-card pa-rig-card" data-card-id="geq">
             <h3>Graphic EQ</h3>
             <div class="pa-card-content">
               <div class="row"><label>Bypass</label><input type="checkbox" id="pa-geq-bypass"></div>
+              <div class="row">
+                <button type="button" id="pa-geq-cab-btn">Guitar cab</button>
+                <button type="button" id="pa-geq-flat-btn">Flat</button>
+              </div>
+              <p class="hint">“Guitar cab” sets the whole EQ to a speaker-cabinet curve — useful when you have no IR loaded. The two cuts below do most of that work; a band on its own can only make a bump, and a cab is defined by where it stops.</p>
+              <div class="row">
+                <label style="margin:0">Low cut</label>
+                <select id="pa-geq-lowcut">
+                  <option value="0">Off</option>
+                  <option value="60">60 Hz</option>
+                  <option value="80">80 Hz</option>
+                  <option value="100">100 Hz</option>
+                  <option value="120">120 Hz</option>
+                </select>
+              </div>
+              <div class="row">
+                <label style="margin:0">High cut (18 dB/oct)</label>
+                <select id="pa-geq-highcut">
+                  <option value="0">Off</option>
+                  <option value="3500">3.5 kHz</option>
+                  <option value="4000">4 kHz</option>
+                  <option value="4500">4.5 kHz</option>
+                  <option value="5000">5 kHz</option>
+                  <option value="6000">6 kHz</option>
+                  <option value="8000">8 kHz</option>
+                </select>
+              </div>
+              <label>50 Hz <span id="pa-geq-50-val">0 dB</span></label>
+              <input type="range" id="pa-geq-50" min="-12" max="12" step="1" value="0">
               <label>100 Hz <span id="pa-geq-100-val">0 dB</span></label>
               <input type="range" id="pa-geq-100" min="-12" max="12" step="1" value="0">
-              <label>300 Hz <span id="pa-geq-300-val">0 dB</span></label>
-              <input type="range" id="pa-geq-300" min="-12" max="12" step="1" value="0">
-              <label>1 kHz <span id="pa-geq-1000-val">0 dB</span></label>
-              <input type="range" id="pa-geq-1000" min="-12" max="12" step="1" value="0">
+              <label>200 Hz <span id="pa-geq-200-val">0 dB</span></label>
+              <input type="range" id="pa-geq-200" min="-12" max="12" step="1" value="0">
+              <label>400 Hz <span id="pa-geq-400-val">0 dB</span></label>
+              <input type="range" id="pa-geq-400" min="-12" max="12" step="1" value="0">
+              <label>800 Hz <span id="pa-geq-800-val">0 dB</span></label>
+              <input type="range" id="pa-geq-800" min="-12" max="12" step="1" value="0">
+              <label>1.6 kHz <span id="pa-geq-1600-val">0 dB</span></label>
+              <input type="range" id="pa-geq-1600" min="-12" max="12" step="1" value="0">
               <label>3 kHz <span id="pa-geq-3000-val">0 dB</span></label>
               <input type="range" id="pa-geq-3000" min="-12" max="12" step="1" value="0">
+              <label>5 kHz <span id="pa-geq-5000-val">0 dB</span></label>
+              <input type="range" id="pa-geq-5000" min="-12" max="12" step="1" value="0">
               <label>8 kHz <span id="pa-geq-8000-val">0 dB</span></label>
               <input type="range" id="pa-geq-8000" min="-12" max="12" step="1" value="0">
             </div>

@@ -1068,8 +1068,30 @@ with a meter:
 
 - **Boost/Overdrive** — Drive + Level, a gain-staged waveshaper (the same
   distortion curve the Analog amp uses), true hard bypass.
-- **Graphic EQ** — 5 bands (100Hz/300Hz/1kHz/3kHz/8kHz), ±12dB each,
-  distinct from the 3-band EQ card.
+- **Graphic EQ** — nine bands (50 Hz / 100 / 200 / 400 / 800 / 1.6 kHz /
+  3 kHz / 5 kHz / 8 kHz), ±12 dB each, distinct from the 3-band EQ card —
+  plus a **Low cut** and a **High cut**, which are the part that matters
+  if you're trying to imitate a speaker cabinet.
+  - **Why the cuts exist.** A graphic EQ band is a *bell*: it makes a bump
+    or a dip and then returns to flat. That means "cut everything above
+    8 kHz" is not something a graphic EQ can express, however many bands
+    it has — pull the 8 kHz band to −12 dB and 16 kHz comes straight back
+    up to unity behind it. A guitar speaker is defined by the opposite: a
+    cliff it falls off around 4–5 kHz and keeps falling. So the High cut
+    is three filters deep (18 dB/octave) and the Low cut two (24 dB/oct),
+    which is what actually sounds like a speaker rather than a blanket
+    over one.
+  - **Guitar cab** sets the whole thing in one click: 80 Hz low cut,
+    4.5 kHz high cut, +3 dB at 100 Hz for the cabinet resonance, −2 dB
+    through 400–800 Hz to take the box out, +3 dB at 3 kHz for bite, and
+    trims at 5 k and 8 k. Measured, the result is −18 dB at 50 Hz relative
+    to the 100 Hz resonance, +6 dB of resonance, a +6 dB presence peak at
+    3.15 kHz, and −38 dB by 8 kHz still falling. It's within 0.6 dB of
+    bypass for overall loudness, so switching it in doesn't move your
+    levels. **Flat** puts everything back to no effect.
+  - This is a substitute for a cab IR, not a replacement. An IR carries
+    the cabinet's resonances and time behaviour; this is nine bells and
+    two slopes. It gets you the shape, which is most of the way.
 - **Chorus**, **Flanger** — modulated short delays (Rate/Depth/Mix, plus
   Feedback on the Flanger for its resonant edge).
 - **Phaser** — a 4-stage sweep (Rate/Depth/Mix).
@@ -2403,8 +2425,11 @@ tools, not part of the shared bar:
   playing (monophonic — works best on single notes).
 - **Boost/Overdrive — Drive/Level** — a simple gain-boost/overdrive
   stage.
-- **Graphic EQ — 5 bands (100Hz–8kHz)** — finer-grained tone shaping
-  than the 3-band EQ above.
+- **Graphic EQ — nine bands (50 Hz–8 kHz), plus Low cut and High cut** —
+  finer-grained tone shaping than the 3-band EQ above. The two cuts give
+  it real slopes (24 dB/oct low, 18 dB/oct high) that a bell filter can't,
+  and the **Guitar cab** button sets the lot to a speaker-cabinet curve —
+  the thing to reach for when you have no IR loaded. **Flat** resets it.
 - **Chorus/Phaser/Flanger/Tremolo — Rate/Depth/(Feedback)/Mix** —
   classic modulation effects, each independently configurable.
 - **Output — Level, meter, device dropdown** — the rig's final volume,

@@ -523,16 +523,61 @@ async function _buildPAGraph() {
 
   // Graphic EQ — 5-band peaking chain, distinct from the 3-band EQ card
   // further down. Bypass = zero all gains (same as that 3-band EQ).
-  PA.geqNodes = {};
-  const geqFreqs = [100, 300, 1000, 3000, 8000];
+  // GEQ-2: nine bands, chosen to land on the frequencies a guitar-cab curve
+  // is actually described in (see PA_GEQ_CAB_PRESET), rather than the five
+  // round numbers this started with — which had no band at all below 100Hz
+  // or between 3k and 8k, i.e. nothing at either of the two frequencies that
+  // matter most for a cab.
+  //
+  // Bells alone cannot make a speaker cabinet, though, and that is the whole
+  // point of the two extra filters here. A cab's defining feature is a CLIFF
+  // — real drivers fall off a hard edge somewhere around 4-5kHz and keep
+  // falling. A peaking filter is a bump: -12dB at 8kHz still lets 16kHz come
+  // straight back up to unity, so "cut everything above 8k" is not
+  // expressible with a graphic EQ no matter how many bands it has. The low
+  // cut and the (three-deep, 18dB/octave) high cut are what supply the
+  // slopes; the bands then voice what's left.
+  // Two-deep (24dB/octave), for the same reason the high cut is three-deep:
+  // a real cabinet doesn't taper away below its resonance, it falls off a
+  // cliff there too. One biquad measured only 11.8dB down at 50Hz relative
+  // to the 100Hz resonance, which still leaves audible sub-bass a speaker
+  // would never produce.
+  PA.geqLowCut = [];
   let geqPrev = null;
-  for (const freq of geqFreqs) {
+  for (let i = 0; i < 2; i++) {
+    const f = Audio.ctx.createBiquadFilter();
+    f.type = "highpass";
+    f.frequency.value = PA_GEQ_LOWCUT_OFF_HZ;
+    f.Q.value = 0.707;
+    if (geqPrev) geqPrev.connect(f);
+    geqPrev = f;
+    PA.geqLowCut.push(f);
+  }
+
+  PA.geqNodes = {};
+  for (const freq of PA_GEQ_FREQS) {
     const f = Audio.ctx.createBiquadFilter();
     f.type = "peaking"; f.frequency.value = freq; f.Q.value = 1.0;
     PA.geqNodes[freq] = f;
-    if (geqPrev) geqPrev.connect(f);
+    geqPrev.connect(f);
     geqPrev = f;
   }
+
+  // Three cascaded 2nd-order lowpasses = 18dB/octave, the same construction
+  // A-1 used for the analog amp's own cab rolloff, and for the same reason:
+  // one biquad's 12dB/octave sounds like a blanket over the speaker, three
+  // sounds like the speaker stopping.
+  PA.geqHighCut = [];
+  for (let i = 0; i < 3; i++) {
+    const f = Audio.ctx.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.value = PA_GEQ_HIGHCUT_OFF_HZ;
+    f.Q.value = 0.5;
+    geqPrev.connect(f);
+    geqPrev = f;
+    PA.geqHighCut.push(f);
+  }
+  PA.geqOut = geqPrev;
 
   // Chorus — short modulated delay (LFO -> depth gain -> delayTime).
   PA.chorusDelay = Audio.ctx.createDelay(0.05);
@@ -735,7 +780,7 @@ async function _buildPAGraph() {
     delay: { inputs: [PA.delayNode, PA.delayMerge], output: PA.delayMerge },
     reverb: { inputs: [PA.reverbConvolver, PA.reverbMerge], output: PA.reverbMerge },
     boost: { inputs: [PA.boostDryGain, PA.boostShaper], output: PA.boostMerge },
-    geq: { inputs: [PA.geqNodes[100]], output: PA.geqNodes[8000] },
+    geq: { inputs: [PA.geqLowCut[0]], output: PA.geqOut },
     chorus: { inputs: [PA.chorusDelay, PA.chorusMerge], output: PA.chorusMerge },
     flanger: { inputs: [PA.flangerDelay, PA.flangerMerge], output: PA.flangerMerge },
     phaser: { inputs: [PA.phaserStages[0], PA.phaserMerge], output: PA.phaserMerge },
@@ -794,6 +839,42 @@ function paSetInputTrimDb(db, ramp = true) {
     PA.inputTrim.gain.value = target;
   }
 }
+
+// GEQ-2: the graphic EQ's band centres. Nine bands rather than five, placed
+// where a guitar cabinet's response is actually described — a low-end
+// resonance around 100Hz, the "boxy" 400-800Hz region, the 2-3kHz bite, and
+// the 4-5kHz edge where a real driver dies. The old five (100/300/1k/3k/8k)
+// had nothing below 100Hz and nothing between 3k and 8k, which is to say
+// nothing at either of the two frequencies that decide whether something
+// sounds like a speaker.
+const PA_GEQ_FREQS = [50, 100, 200, 400, 800, 1600, 3000, 5000, 8000];
+
+// "Off" positions for the two cut filters. Parked outside the audible range
+// rather than disconnected, so switching them on and off is a frequency
+// change on a filter that is always in circuit — no graph surgery, and
+// therefore no click. The low cut's off position sits below IN-2's own 18Hz
+// input filter, so it genuinely does nothing there.
+const PA_GEQ_LOWCUT_OFF_HZ = 10;
+const PA_GEQ_HIGHCUT_OFF_HZ = 20000;
+
+// GEQ-2: one-click "sounds like a speaker cabinet", for when you have no IR
+// to hand. Built from the standard description of a guitar cab and then
+// MEASURED and adjusted — see scripts/geq_cab_measure.js, which renders the
+// real filter chain and prints the resulting curve.
+//
+// The two cut filters do the heavy lifting and the bands only voice what is
+// left, which is the opposite of how a graphic-EQ cab recipe is usually
+// written. That is deliberate: the 80Hz low cut is what removes the sub-bass
+// rumble (a bell at 50Hz cannot, it just dips and comes back), and the
+// 4.5kHz high cut is the cliff (a bell at 8kHz cannot, 16kHz returns to
+// unity right behind it). With those two in place the bands are free to do
+// the part they are good at — the cabinet resonance bump, taking the box out
+// of the low mids, and the presence peak.
+const PA_GEQ_CAB_PRESET = {
+  lowCut: 80,
+  highCut: 4500,
+  bands: { 50: 0, 100: 3, 200: 0, 400: -2, 800: -2, 1600: 0, 3000: 3, 5000: -3, 8000: -6 },
+};
 
 // IN-3: must equal LOOKAHEAD_MS in gate-processor.js. Kept here only so the
 // latency estimate can report the delay the gate adds; the worklet's own
@@ -3060,6 +3141,29 @@ function paRenderMwahPosition(hz, fromMidi) {
   });
 }
 
+// GEQ-2: one place that reads every graphic-EQ control and pushes it at the
+// nodes, rather than a handler per control each poking its own node. The two
+// cut filters and the nine bands all have to respond to the single Bypass
+// checkbox, and spreading that across eleven handlers is how a bypass ends
+// up covering some of a stage and not the rest.
+//
+// The cuts move to their parked "off" frequencies rather than being
+// disconnected, so bypassing is a parameter change on a filter that is
+// always in circuit — nothing is rewired while audio is flowing.
+function applyGeqToNodes() {
+  const bypassed = document.getElementById("pa-geq-bypass").checked;
+  for (const freq of PA_GEQ_FREQS) {
+    const el = document.getElementById("pa-geq-" + freq);
+    PA.geqNodes[freq].gain.value = bypassed ? 0 : parseFloat(el.value);
+  }
+  const lowSel = parseFloat(document.getElementById("pa-geq-lowcut").value) || 0;
+  const highSel = parseFloat(document.getElementById("pa-geq-highcut").value) || 0;
+  const low = (bypassed || !lowSel) ? PA_GEQ_LOWCUT_OFF_HZ : lowSel;
+  const high = (bypassed || !highSel) ? PA_GEQ_HIGHCUT_OFF_HZ : highSel;
+  for (const f of PA.geqLowCut) f.frequency.setTargetAtTime(low, Audio.ctx.currentTime, 0.01);
+  for (const f of PA.geqHighCut) f.frequency.setTargetAtTime(high, Audio.ctx.currentTime, 0.01);
+}
+
 // Tremolo has no Mix knob (pure in-place amplitude modulation) — bypass
 // disconnects the LFO from the gain param entirely rather than zeroing a
 // wet send, since there's no dry/wet split to begin with.
@@ -3287,18 +3391,38 @@ function wirePAControls() {
     document.getElementById("pa-boost-level-val").textContent = e.target.value + " dB";
   });
 
-  const geqFreqs = [100, 300, 1000, 3000, 8000];
-  document.getElementById("pa-geq-bypass").addEventListener("change", (e) => {
-    for (const freq of geqFreqs) {
-      PA.geqNodes[freq].gain.value = e.target.checked ? 0 : parseFloat(document.getElementById("pa-geq-" + freq).value);
-    }
-  });
-  for (const freq of geqFreqs) {
+  // GEQ-2: bypass now has to neutralise the two cut filters as well, not just
+  // flatten the bands — a bypassed EQ that still rolled off at 4.5kHz would
+  // be the least obvious bug in this file.
+  document.getElementById("pa-geq-bypass").addEventListener("change", applyGeqToNodes);
+  for (const freq of PA_GEQ_FREQS) {
     document.getElementById("pa-geq-" + freq).addEventListener("input", (e) => {
-      if (!document.getElementById("pa-geq-bypass").checked) PA.geqNodes[freq].gain.value = parseFloat(e.target.value);
       document.getElementById("pa-geq-" + freq + "-val").textContent = e.target.value + " dB";
+      applyGeqToNodes();
     });
   }
+  for (const id of ["pa-geq-lowcut", "pa-geq-highcut"]) {
+    // Both events: "change" is what a user's click fires, "input" is what
+    // paSetControlValue dispatches when a preset recalls the control.
+    document.getElementById(id).addEventListener("change", applyGeqToNodes);
+    document.getElementById(id).addEventListener("input", applyGeqToNodes);
+  }
+  document.getElementById("pa-geq-cab-btn").addEventListener("click", () => {
+    paSetControlValue("pa-geq-lowcut", String(PA_GEQ_CAB_PRESET.lowCut));
+    paSetControlValue("pa-geq-highcut", String(PA_GEQ_CAB_PRESET.highCut));
+    for (const freq of PA_GEQ_FREQS) {
+      paSetControlValue("pa-geq-" + freq, String(PA_GEQ_CAB_PRESET.bands[freq] ?? 0));
+    }
+    // A cab curve you can't hear isn't a cab curve.
+    paSetControlChecked("pa-geq-bypass", false);
+    applyGeqToNodes();
+  });
+  document.getElementById("pa-geq-flat-btn").addEventListener("click", () => {
+    paSetControlValue("pa-geq-lowcut", "0");
+    paSetControlValue("pa-geq-highcut", "0");
+    for (const freq of PA_GEQ_FREQS) paSetControlValue("pa-geq-" + freq, "0");
+    applyGeqToNodes();
+  });
 
   document.getElementById("pa-chorus-bypass").addEventListener("change", updateChorusWet);
   document.getElementById("pa-chorus-mix").addEventListener("input", (e) => {
@@ -3685,9 +3809,14 @@ function paCaptureRigState() {
     },
     // v3.1 §2.2: the eight new pedal cards.
     boost: { bypass: c("pa-boost-bypass"), drive: v("pa-boost-drive"), level: v("pa-boost-level") },
+    // GEQ-2: bands are stored keyed by their own centre frequency now, so a
+    // future band-set change is additive here instead of renaming fields.
+    // The old b100/b300/... shape is still READ on load (see below) so
+    // presets saved before this release still restore.
     geq: {
-      bypass: c("pa-geq-bypass"), b100: v("pa-geq-100"), b300: v("pa-geq-300"),
-      b1000: v("pa-geq-1000"), b3000: v("pa-geq-3000"), b8000: v("pa-geq-8000"),
+      bypass: c("pa-geq-bypass"),
+      lowCut: v("pa-geq-lowcut"), highCut: v("pa-geq-highcut"),
+      bands: Object.fromEntries(PA_GEQ_FREQS.map((f) => [f, v("pa-geq-" + f)])),
     },
     chorus: { bypass: c("pa-chorus-bypass"), rate: v("pa-chorus-rate"), depth: v("pa-chorus-depth"), mix: v("pa-chorus-mix") },
     flanger: {
@@ -3801,12 +3930,28 @@ async function paApplyRigState(state) {
     paSetControlChecked("pa-boost-bypass", state.boost.bypass);
   }
   if (state.geq) {
-    paSetControlValue("pa-geq-100", state.geq.b100);
-    paSetControlValue("pa-geq-300", state.geq.b300);
-    paSetControlValue("pa-geq-1000", state.geq.b1000);
-    paSetControlValue("pa-geq-3000", state.geq.b3000);
-    paSetControlValue("pa-geq-8000", state.geq.b8000);
+    // GEQ-2 reads both shapes. A preset saved before this release names five
+    // bands (100/300/1k/3k/8k), three of which no longer exist as controls;
+    // rather than drop them, 300 and 1k are folded onto their nearest
+    // surviving neighbours so the preset's intent — "scooped here, boosted
+    // there" — still lands roughly where it did. Everything not mentioned
+    // stays flat, and the cuts default to off, which is what an old preset
+    // effectively had.
+    if (state.geq.bands) {
+      for (const freq of PA_GEQ_FREQS) paSetControlValue("pa-geq-" + freq, state.geq.bands[freq]);
+      paSetControlValue("pa-geq-lowcut", state.geq.lowCut ?? "0");
+      paSetControlValue("pa-geq-highcut", state.geq.highCut ?? "0");
+    } else {
+      paSetControlValue("pa-geq-100", state.geq.b100);
+      paSetControlValue("pa-geq-400", state.geq.b300);   // 300 -> nearest band
+      paSetControlValue("pa-geq-800", state.geq.b1000);  // 1k  -> nearest band
+      paSetControlValue("pa-geq-3000", state.geq.b3000);
+      paSetControlValue("pa-geq-8000", state.geq.b8000);
+      paSetControlValue("pa-geq-lowcut", "0");
+      paSetControlValue("pa-geq-highcut", "0");
+    }
     paSetControlChecked("pa-geq-bypass", state.geq.bypass);
+    applyGeqToNodes();
   }
   if (state.chorus) {
     paSetControlValue("pa-chorus-rate", state.chorus.rate);
