@@ -1,9 +1,9 @@
-# Orpheus Guitar Studio — User Manual (v8)
+# Orpheus Guitar Studio — User Manual (V9)
 
 Everything in this manual exists and works today — nothing here is
 aspirational, and nothing below covers how the app used to work. An
-in-app **❓ Help** button (sidebar) covers the same essentials for anyone
-who won't read this file.
+in-app **?** (Help) button in the activity rail covers the same
+essentials for anyone who won't read this file.
 
 Orpheus Guitar Studio separates a song into stems (vocals/drums/bass/
 guitar/piano/other), lets you build a custom backing track by muting/
@@ -218,21 +218,21 @@ a browser — no server needed.
 - [ ] Import a song: drag an MP3/WAV onto the sidebar, or click the drop
   zone to pick a file (§3.1).
 - [ ] Select it, pick a model (default `bs_roformer_sw` is a good first
-  choice), click **Separate** (§3.4) — first run downloads model weights,
+  choice), click **Separate** (§3.5) — first run downloads model weights,
   so it's slower than every run after.
 - [ ] Once stems load, try muting/soloing a couple of lanes and dragging
-  a fader (§3.5).
+  a fader (§3.6).
 - [ ] Set an A/B loop on a section you want to practice, turn on **Loop**
-  (§3.6).
-- [ ] Turn on **Click** and confirm it's audible and in time (§3.5).
+  (§3.7).
+- [ ] Turn on **Click** and confirm it's audible and in time (§3.6).
 - [ ] Notice the **Quest Log** in the right-hand panel before you've loaded a
   track — it's a running checklist of the moves above, ticking off on its
   own as you actually do them (§3.10).
 - [ ] Export a mix (§3.9) and use **Reveal in Finder** to confirm the
   file is really there.
-- [ ] Open **🎛 Tone Lab**, enable your input device (§4.1), pick an amp
+- [ ] Open **Tone Lab**, enable your input device (§4.1), pick an amp
   mode, play a note and confirm you hear it processed.
-- [ ] Open **🎸 Play Along**, hit **● Record** for a few seconds, stop,
+- [ ] Open **Play Along**, hit **● Record** for a few seconds, stop,
   and confirm the take appears under **Takes** (§5.5).
 - [ ] If you plan to use Rip: complete §1.7's BlackHole setup once, then
   do a short test rip (§3.2).
@@ -824,34 +824,37 @@ the app name and current-screen label:
 
 ## 4. Tone Lab
 
-The rig lives across two screens, plus the mixer you started in and
-Help — four equally-reachable buttons in the top-left of the sidebar
-(**🎚 Mixer**, **🎛 Tone Lab**, **🎸 Play Along**, **❓ Help**). Both rig
-screens share the exact same audio engine as the mixer (not a second,
-separate audio session) — backing-track playback and your live guitar mix
-together naturally, with no added round-trip latency from the recording
-or mixing side. The split is by *task*, not by feature: **Tone Lab** is
-where you build/tweak the sound (input, amp, cab, all 12 pedal cards, rig
-presets); **Play Along** (§5) is where you practice and record with a rig
-you've already dialed in. Selecting a track in the Library always drops
-you back to the Mixer, closing whichever of the two rig screens was open.
+The rig lives across two screens, reached from the same activity rail
+(down the left edge) as every other screen — **T** for Tone Lab, **P**
+for Play Along, alongside **M** (Mixer), **A** (AI Lab), **G** (Tab View),
+and **?** (Help) underneath them. Both rig screens share the exact same
+audio engine as the mixer (not a second, separate audio session) —
+backing-track playback and your live guitar mix together naturally, with
+no added round-trip latency from the recording or mixing side. The split
+is by *task*, not by feature: **Tone Lab** is where you build/tweak the
+sound (input, amp, cab, every pedal, rig presets); **Play Along** (§5) is
+where you practice and record with a rig you've already dialed in.
+Selecting a track in the Library always drops you back to the Mixer,
+closing whichever of the two rig screens was open.
 
-Tone Lab's rig is a row of small icon chips — Gate, Amp, then every pedal,
-then Output — in left-to-right signal order, wrapping to a second row if
-your window's narrow. Click an icon to open its controls in the panel
-below; only one panel is open at a time, so you're never scrolling past
-fourteen other cards to find the one you want. An icon lights up (blue)
-when its stage is active and dims when bypassed — a glance at the row
-tells you what's actually in the signal path before you open anything.
-The icon row's own left-to-right order **is** the signal-chain order, so
-there's no separate diagram to keep in sync with it. Switching which
-icon's panel is open (or switching Amp mode between Pass Through/Analog/
-Neural) never moves your scroll position on its own — wherever you'd
-scrolled to stays exactly there. The one exception is unavoidable: if the
-newly-opened panel is shorter than the one you were looking at, and your
-scroll position no longer exists in the new, shorter page, the browser
-clamps it to the nearest valid spot — the same way any web page behaves
-when its content shrinks.
+Tone Lab's rig is a row of small icon chips — Input, Gate, then every
+pedal (Amp included — see §4.5 for the full default order), then Output —
+in left-to-right signal order, wrapping to a second row if your window's
+narrow. Click an icon to open its controls in the panel below; only one
+panel is open at a time, so you're never scrolling past every other card
+to find the one you want. An icon lights up in the current theme's accent
+color when its stage is active and dims when bypassed — a glance at the
+row tells you what's actually in the signal path before you open
+anything. The icon row's own left-to-right order **is** the signal-chain
+order, so there's no separate diagram to keep in sync with it — and it's
+directly editable: drag an icon to reorder the chain (§4.5). Switching
+which icon's panel is open (or switching Amp mode between Pass Through/
+Analog/Neural) never moves your scroll position on its own — wherever
+you'd scrolled to stays exactly there. The one exception is unavoidable:
+if the newly-opened panel is shorter than the one you were looking at,
+and your scroll position no longer exists in the new, shorter page, the
+browser clamps it to the nearest valid spot — the same way any web page
+behaves when its content shrinks.
 
 ![Tone Lab — Input strip, Rig Presets, and the pedalboard's first few cards.](docs/screenshots/tonelab-overview.jpg)
 
@@ -884,6 +887,27 @@ measuring that specific path, not the acoustic path through the room
 (speaker to mic), so don't run it expecting to measure open-air latency.
 If nothing comes back within a second, it says so plainly ("No loopback
 detected...") rather than reporting a meaningless number.
+
+**Input trim (IN-1)** is the first *adjustable* stage in the whole signal
+chain — ahead of the gate, the amp, and every pedal (only the fixed,
+no-controls DC blocker below sits in front of it) — and it lives on its
+own card in the pedalboard row (see below), not inside Setup. It's the
+"how hard am I hitting the front of the rig" control a real interface's
+own input knob would give you. High-output pickups or a fixed-gain USB
+guitar cable (a dongle with no gain pot of its own) can drive the amp
+model into permanent distortion no matter how you set the amp's own
+Drive — turn this down first, before touching anything else, if that's
+what you're hearing. Range is −30 dB to +12 dB, deliberately lopsided
+because the problem it exists for is almost always too *much* level;
+double-click the readout to snap back to 0. It's saved **per machine,
+not per rig preset or song** — it compensates for your particular guitar
+and interface, not for a tone, so it stays put when you switch preset or
+song. It's a software gain applied after the signal is already digitized,
+so it cannot undo clipping that happened in the interface itself — which
+is also why the input meter and clip light (above) deliberately read the
+signal *before* this trim, not after: a clipped signal has to keep
+looking clipped, or turning the trim down would hide the real problem
+instead of fixing it.
 
 **What's in front of everything (IN-2).** Before the Input trim there's a
 fixed DC-blocking filter — a 18 Hz high-pass, two octaves below a low E's
@@ -1063,7 +1087,7 @@ losing your slider positions.
 
 A standard post-amp chain — 3-band EQ, a compressor (threshold/ratio),
 delay (time/feedback/mix), and reverb (size/mix), each independently
-bypassable — plus eight further pedal cards, then a final output level
+bypassable — plus nine further pedal cards, then a final output level
 with a meter:
 
 - **Boost/Overdrive** — Drive + Level, a gain-staged waveshaper (the same
@@ -1586,7 +1610,7 @@ at the time.
 ## 6. AI Lab
 
 One of five screens alongside Mixer / Tone Lab / Play Along / Tab View,
-opened with the 🧠 **AI Lab** button in the sidebar. A tab bar along the
+opened with the **AI Lab** button in the activity rail. A tab bar along the
 top switches between its three functions: **Scales** (deterministic music theory, no
 network call), **Rate My Take** (note-by-note scoring against the
 original), and **AI Assistant** (an opt-in LLM tier — lick ideas,
@@ -1955,7 +1979,7 @@ to report.
 
 ## 7. Tab View
 
-A fifth screen, opened with the 🎼 **Tab View** button in the sidebar —
+A fifth screen, opened with the **Tab View** button in the activity rail —
 for reading a Guitar Pro tab (.gp3/.gp4/.gp5/.gpx) alongside whatever's
 playing, rather than mixing/practicing with it. Its own library replaces
 the sidebar's song Library while this screen is open (same reasoning as
@@ -2051,7 +2075,7 @@ current song has attached.
 | Tuner works but I can't hear anything | Expected — the tuner mutes the backing track and your amp tone while it's on (§5.1); turn the tuner off to hear audio again. |
 | Camera/mic permission denied | System Settings → Privacy & Security → Camera / Microphone → enable for your browser. |
 | Guitar Studio.app won't open | Right-click → Open once, to get past Gatekeeper (it's unsigned). If that's not it, run the server by hand (§1.6) to see the actual error. |
-| The app opens a browser tab after a long pause, and the page won't load ("This site can't be reached") | The launcher starts the server in the background, waits up to 45 seconds for it to answer, then opens the browser **whether or not it came up** — so this always means the server failed to start, and the launcher can't show you why. Read `/tmp/guitar-studio-server.log`. Two usual causes: no virtualenv (the launcher runs `venv/bin/python` specifically, and `venv/` is gitignored, so a fresh clone has none until you create it — §1.2), or the project living in a cloud-synced folder (next row). |
+| The app opens a browser tab after a long pause, and the page won't load ("This site can't be reached") | The launcher starts the server in the background, waits up to 45 seconds for it to answer, then opens the browser **whether or not it came up** — so this always means the server failed to start, and the launcher can't show you why. Read `/tmp/guitar-studio-server.log`. Two usual causes: no virtualenv (the launcher runs `venv/bin/python` specifically, and `venv/` is gitignored, so a fresh clone has none until you create it — §1.5), or the project living in a cloud-synced folder (next row). |
 | Git commands fail with `mmap failed: Operation timed out`, `read error while indexing <file>`, or `Updating an unborn branch with changes added to the index` — and/or the server won't start | **The project is in a cloud-synced folder** (OneDrive, iCloud Drive, Dropbox, Google Drive). Those store files as online-only placeholders and fetch them on demand; if the sync client isn't running or the network stalls, the read simply times out. This project trips over that three ways at once: git needs `mmap` over its object store, the virtualenv is thousands of small files Python must all read, and `separated/`/`output/` hold gigabytes that sync churns through endlessly. The "unborn branch" variant means an earlier git command timed out midway and left the index half-written — the repository isn't really damaged. **On macOS this catches people out because Desktop and Documents are synced by default** once OneDrive or iCloud Known Folder Move is on: `~/Desktop/Guitar-studio` is really `~/Library/CloudStorage/…/Desktop/Guitar-studio`. Check with `cd ~/Desktop/Guitar-studio && pwd -P`. **Fix:** move the project somewhere genuinely local (`~/Projects` is fine) and clone fresh rather than repair in place, since every git command keeps hitting the same timeouts — see the README's "If something goes wrong" for the exact commands. Your audio, tabs, projects and tone captures are all gitignored, so they're ordinary files you copy across; mark the old folder "Always Keep on This Device" in Finder and let it download **before** copying, or the copy stalls on the same placeholder reads. Rebuild `Guitar Studio.app` afterwards — it resolves the project directory relative to its own location, so an old copy keeps pointing at the cloud folder. |
 | A feature that should exist (or a fix that should already be in) seems to be missing, or a request errors with "Unknown route" | The app's launcher only starts a fresh server if none is already running (§1.6) — if one from before the update is still up, relaunching just reopens the browser to that same stale process. Close every tab/window to the app, wait a few seconds for it to auto-shut-down, then reopen it. |
 | Recording didn't finalize / "not remuxed" note | `ffmpeg` isn't installed, or the remux itself failed — the raw take is still saved either way, just not container-fixed. |
@@ -2060,6 +2084,8 @@ current song has attached.
 | A long unattended action (e.g. a several-minute Rip) seemed to freeze or crash the tab right when it finished | Fixed — naming a rip (or any rename dialog: tracks, playlists, stems, takes, markers) used to use the browser's native `prompt()`, which blocks the entire tab until dismissed and is easy to miss if the tab wasn't focused when it appeared. All of these now use an in-app dialog instead, so they can't freeze the tab even if it's in the background when they pop up. |
 | Browser tab (or the whole browser) becomes completely unresponsive during normal use — clicks/tab-switching stop working, only the OS window itself can still be moved | **Under active investigation — two real user reports, not yet root-caused** (a third, separate report in this same row turned out to have a real cause — see below). One report happened muting/unmuting stems then soloing the guitar stem on a ripped song; a second happened after using AI Lab's Song Structure mode, switching away, then back. A real, related performance bug *was* found and fixed in the second case (Song Structure used to fully re-decode every stem's audio from scratch on every visit, with no caching — now cached, near-instant on repeat visits), but that isn't confirmed as the actual freeze cause, just a genuine cost removed from the same code path. A thorough code review of the mute/solo path (listener leaks, audio-graph node leaks, blocking dialogs, runaway loops) didn't turn up a definitive cause either. **If this recurs, the most useful things to capture are:** Chrome's Task Manager (Shift+Esc) reading for the tab right before/as it locks up (climbing memory = a leak; pegged CPU with flat memory = a runaway loop); whether it happens on a normal (non-ripped) imported song too; and roughly how long you'd been interacting (many rapid mute/solo toggles vs. just a couple) before it hit. |
 | Browser tab became completely unresponsive (Chrome's Task Manager showing 7+GB of memory for the tab) during a long Play Along session with a video take or a Rate My Take dry take recording | **Fixed.** A real user report, root-caused: recording (both Play Along's video/audio takes and Rate My Take's dry takes) used to hold every MediaRecorder chunk for the WHOLE take in a browser-memory array, only ever turning it into one file and uploading it when Stop was pressed — a several-hour take (especially with the camera on, at ~5.2 Mbps) could genuinely balloon into multiple GB sitting in the tab, exactly matching the reported numbers. Each chunk now streams to the server and is written to disk as it arrives (still ~1s after it's captured), so the tab never holds more than one chunk at a time regardless of how long the take runs. |
+| Clicking around on the Speed slider stops the backing track dead, and nothing (play, seek, switching tracks) brings it back short of reloading the page | **Fixed.** A real report, most reproducible on songs with several separated stems (deleting them made it go away). Root cause: switching Speed/Tune is slow — it copies or re-decodes every stem's audio — and two overlapping switches could tear down each other's half-built state, ending with playback pointed at buffers that had already been freed. More stems meant a slower switch, which meant a wider window for a second click to land inside and trigger it. Switches are now serialized, and a burst of slider movement collapses to one switch, to wherever the slider finally stopped. If this recurs, it's genuinely useful to report which track and how many stems it had. |
+| Slowing a track down (Speed below 1.00×, especially with several stems audible at once) produces audible crackle | **Fixed**, if what you're hearing is new since an earlier session — see the Speed/Tune entry in §10 (Known limitations) for the full story: the phase vocoder's own per-stem CPU cost had crept back above what a browser audio thread can keep up with in real time at six stems, which is exactly what crackle at 0.85–0.9× sounds like. It's now roughly a third of what it was. Some inherent phase-vocoder softness on very transient-heavy material remains and isn't a bug — genuine, sharp crackle or dropouts still are. |
 
 ## 10. Known limitations (by design, not oversights)
 
@@ -2107,14 +2133,24 @@ current song has attached.
 - **Speed/Tune** run a phase vocoder per stem, in real time, in the
   browser. It uses identity phase locking (the standard technique for
   keeping each note's partials coherent) and is a large improvement on
-  what came before — two real reports of distortion and dropouts were
-  traced to specific, now-fixed faults — but it still isn't a
-  mastering-grade offline time-stretch like RubberBand or Elastique.
-  Expect it to hold up well across the ±100 cent / 0.5–2× ranges the app
-  actually exposes, with the usual phase-vocoder softness on very
-  transient-heavy material at the extremes. Anything that sounds
+  what came before — three real reports of distortion, dropouts, and
+  crackle were each traced to a specific, now-fixed fault (most recently:
+  the CPU cost of a six-stem song at 0.85–0.9× had crept back above what
+  a browser audio thread can actually keep up with in real time, cut
+  roughly 3× by removing per-sample overhead the fix never needed) — but
+  it still isn't a mastering-grade offline time-stretch like RubberBand
+  or Elastique. Expect it to hold up well across the ±100 cent / 0.5–2×
+  ranges the app actually exposes, with the usual phase-vocoder softness
+  on very transient-heavy material at the extremes. Anything that sounds
   genuinely broken (crackle, pumping, dropouts) is a bug worth
-  reporting, not the expected ceiling.
+  reporting, not the expected ceiling. Separately, and now fixed:
+  clicking around on the Speed slider used to be able to stop playback
+  dead (no play or seek could restart it short of reloading the page) —
+  it reproduced most easily on songs with several separated stems,
+  because the fix was about two overlapping slider changes racing each
+  other, and more stems gave the race a wider window to land in. If
+  playback ever goes silent and unrecoverable after adjusting Speed or
+  Tune, that's worth reporting as a recurrence, not a one-off.
 - Tab View's own playback (§7) is alphaTab's bundled soundfont synth, not
   your Tone Lab rig or a real audio recording of the song — useful for
   reading/hearing a part in isolation, not a substitute for the actual
@@ -2146,10 +2182,10 @@ above are. Format: **Control** — description.
 
 ### Global (visible on every screen)
 
-- **🎚 Mixer / 🎛 Tone Lab / 🎸 Play Along / 🧠 AI Lab / 🎼 Tab View** —
-  the five main screens. Mixer is the base view; the other four open as
-  full-screen overlays on top of it.
-- **❓ Help** — opens the onboarding/help modal (also shown automatically
+- **Activity rail (M / T / P / A / G)** — the five main screens: Mixer,
+  Tone Lab, Play Along, AI Lab, Tab View. Mixer is the base view; the
+  other four open as full-screen overlays on top of it.
+- **? (Help)** — opens the onboarding/help modal (also shown automatically
   on first launch).
 - **Rig silent / Rig live pill** (top right) — glances at whether the
   guitar input is enabled and receiving signal. Grey when silent, the

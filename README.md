@@ -135,12 +135,18 @@ you set up is saved automatically per song.
 
 **Build a tone (Tone Lab).** Plug in a guitar (or use your Mac's built-in
 mic) — the rig shares the mixer's audio engine, so there's no extra
-latency. The chain runs Gate → Amp (Clean/Analog/Neural amp-modeling) →
-Cab IR → EQ → Compressor → Delay/Reverb → Output, all reorderable, with a
-tuner and input meter always visible. Load your own NAM captures and cab
-IRs, or search and download them from TONE3000 without leaving the app.
-Save a whole rig as a named preset and recall it instantly, or attach one
-to a song so it loads automatically.
+latency. Input trim and a noise gate come first, then fifteen
+drag-to-reorder stages in the conventional pedalboard default — wah
+pedals, compressor, octaver, boost/drive, the **Amp**
+(Clean/Analog/Neural amp-modeling), **Cab IR**, a graphic EQ (defaults to
+a speaker-cabinet curve, so a fresh rig doesn't sound like a bare DI), a
+3-band EQ, chorus/phaser/flanger/tremolo, delay, and reverb — then a
+fixed Output stage, with a tuner and input meter always visible. Every
+bypass — and an expression pedal for the wah — can be bound to a MIDI
+footswitch. Load your own NAM captures and cab IRs, or search and
+download them from TONE3000 without leaving the app. Save a whole rig as
+a named preset and recall it instantly, or attach one to a song so it
+loads automatically.
 
 **Play Along.** Practise over what you built. A rolling ~20-second buffer
 is always capturing, so **Save that!** rescues a take you didn't plan to

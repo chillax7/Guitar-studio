@@ -308,9 +308,9 @@ const DATA = [
     title: "1. Launch & orientation",
     note: "Before touching any one feature, get your bearings.",
     items: [
-      "The app opens to a Library sidebar (empty, or showing tracks if you've imported before) and a version number reads in the top banner, centered screen name (Mixer/Tone Lab/Play Along/AI Lab) alongside it.",
-      "The <strong>🎚 Mixer</strong>, <strong>🎛 Tone Lab</strong>, <strong>🎸 Play Along</strong>, and <strong>🧠 AI Lab</strong> buttons are all visible together in the sidebar even with nothing imported yet, with <strong>❓ Help</strong> on its own row underneath them.",
-      "Clicking <strong>❓ Help</strong> opens an overlay explaining the app; on a genuinely first-ever launch, it should already have opened itself once automatically.",
+      "The app opens to a Library sidebar (empty, or showing tracks if you've imported before) and a version number reads in the top banner, with the centered screen name (Mixer/Tone Lab/Play Along/AI Lab/Tab View) alongside it.",
+      "The <strong>Mixer</strong>, <strong>Tone Lab</strong>, <strong>Play Along</strong>, <strong>AI Lab</strong>, and <strong>Tab View</strong> buttons (activity rail, left edge) are all visible together even with nothing imported yet, with <strong>?</strong> (Help) underneath them.",
+      "Clicking <strong>?</strong> (Help) opens an overlay explaining the app; on a genuinely first-ever launch, it should already have opened itself once automatically.",
       "Closing Help (<strong>Got it</strong>) and reopening it works, and it does not auto-open again on a page reload.",
       "Pressing <kbd>?</kbd> opens a keyboard-shortcuts legend that matches what actually works elsewhere in the app.",
     ]
@@ -404,7 +404,7 @@ const DATA = [
     title: "8. AI Lab — Scale/Mode Advisor",
     note: "A track with chord analysis needed for the Per chord lens; any analyzed track works for Whole song. Deterministic music theory only — no model call, no network, works offline.",
     items: [
-      "Opening <strong>🧠 AI Lab</strong> shows a row of chord chips (same chords as the Mixer's chord lane) and, below it, a stacked list of every scale/mode that fits whichever chord chip is selected — each with its own full 24-fret fretboard diagram, not one diagram you have to click through one at a time.",
+      "Opening <strong>AI Lab</strong> shows a row of chord chips (same chords as the Mixer's chord lane) and, below it, a stacked list of every scale/mode that fits whichever chord chip is selected — each with its own full 24-fret fretboard diagram, not one diagram you have to click through one at a time.",
       "On first opening AI Lab (or switching tracks while it's open), the chord chip under the current playhead position is selected automatically, not just the first chord in the song.",
       "Clicking a different chord chip re-picks that chord's scale stack and also seeks the playhead there, the same as clicking a chip in the Mixer's chord lane does.",
       "The <strong>Per chord / Whole song</strong> toggle switches between scales for the selected chord and scales for the song's overall detected key; Whole song's caption is honest that it's one key for the whole track today, not per-section.",
@@ -429,7 +429,7 @@ const DATA = [
     title: "10. Play Along — backing track & tuner",
     note: "Open Play Along and work through the top strip before touching the pedalboard below it.",
     items: [
-      "Opening <strong>🎸 Play Along</strong> shows the backing track transport, tuner, input meter, and pedalboard without needing to scroll to find them.",
+      "Opening <strong>Play Along</strong> shows the backing track transport, tuner, input meter, and pedalboard without needing to scroll to find them.",
       "Play/Stop/Loop/Count-in/Speed/Tune/Volume here mirror whatever you already set in the main mixer, and changes here reflect back if you return to the mixer.",
       "Turning the tuner on mutes both the backing track and your live guitar tone; turning it off restores both to their actual prior levels (not just full volume).",
       "Playing a single note shows a plausible note name, cents offset, and a needle that settles rather than jitters wildly, when checked against an actual tuner or piano.",
