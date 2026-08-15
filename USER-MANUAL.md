@@ -458,8 +458,8 @@ model badge and Separate button) holds the timeline tools: **Loop**,
 loop/Zoom out, Click, and Count-in all light up solid green while their
 state is actually active** (Zoom to loop swaps to a green "Zoom out"
 button for as long as the zoomed-to-loop view is showing); every other
-button in the toolbar is the app's normal solid blue. The **transport
-bar** below it has the playback essentials:
+button in the toolbar sits at its plain, unlit panel color until you use
+it. The **transport bar** below it has the playback essentials:
 
 - **Play / Pause / Stop** and the current position. Switching to a
   different song always resets the icon back to ▶, even if the previous
@@ -527,7 +527,7 @@ half-speed setting silently carrying over to a new song would be a trap,
 not a feature. **Volume does not reset** on track switch — it's your
 listening level, not something that belongs to any one song.
 
-![The toolbar with Loop active (solid green) next to Zoom to loop, the Zoom slider, Click with its volume slider, and Count-in.](docs/screenshots/toolbar-loop-active.png)
+![The transport bar and toolbar together, with Loop active (solid green) next to Count-in, BPM, Speed and Tune, and — on the row below — Zoom to loop, the Zoom slider, Click with its own volume slider, and Separate.](docs/screenshots/toolbar-loop-active.png)
 
 ### 3.6a Adding a custom stem
 
@@ -856,7 +856,7 @@ and your scroll position no longer exists in the new, shorter page, the
 browser clamps it to the nearest valid spot — the same way any web page
 behaves when its content shrinks.
 
-![Tone Lab — Input strip, Rig Presets, and the pedalboard's first few cards.](docs/screenshots/tonelab-overview.jpg)
+![Tone Lab's icon row — Input through Output in signal order, Gate and Graphic EQ lit to show they're active by default — with the Amp card open below it.](docs/screenshots/tonelab-overview.jpg)
 
 ### 4.1 Input
 
@@ -2032,6 +2032,28 @@ range instead of the whole tab, useful for drilling one tricky lick
 without waiting through the rest of the song each pass. A **Clear
 selection** button appears next to the hint text once a range is picked;
 loading a different tab clears any leftover selection automatically.
+
+**Through my rig.** Once a tab is loaded, this button next to the Tab
+Play Bar's Zoom control swaps its playback from alphaTab's built-in
+soundfont over to your Tone Lab rig (amp, cab IR, every pedal) for as
+long as it's toggled on — so a Guitar Pro file's notated guitar part can
+be previewed through the same tone you're actually practicing with,
+instead of a generic synth sound.
+
+**Generate tab from audio.** A song loaded in the Mixer can also become
+a tab of its own, with no Guitar Pro file needed — the panel above the
+import dropzone picks a **tuning**, **where to start** (playhead, the
+current loop selection, or the very start of the song), and **how much**
+to transcribe (15s/30s/1 minute/to the end), then **Generate tab from
+audio** sends that window of the song's separated `guitar` stem (or
+whichever stem you've marked as the guitar, for an imported stem pack)
+to the pitch tracker and writes a real `.gp` file straight into this
+screen's own library. A line above the button previews exactly what's
+about to be transcribed and roughly how long it'll take before you
+commit to waiting on it. **Version 1 is lead lines only** — the pitch
+tracker is monophonic, so a section that's mostly chords/rhythm comes
+back reporting no confident single-note line rather than a silently
+empty tab; pick a section with an actual solo or lead line in it.
 
 ---
 

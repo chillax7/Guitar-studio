@@ -285,7 +285,7 @@
         <rect x="64" y="64" width="896" height="896" rx="200" fill="var(--gold)"/>
         <path d="M336 612 L688 612 C700 612 706 622 700 634 L540 886 C528 906 496 906 484 886 L324 634 C318 622 324 612 336 612 Z" fill="var(--bg)"/>
       </svg>
-      Orpheus Guitar Studio &nbsp;·&nbsp; v4.6
+      Orpheus Guitar Studio &nbsp;·&nbsp; v4.7
     </div>
     <h1 class="display">First Session Checklist</h1>
     <p>Walk through the app exactly as someone opening it for the very first time would — import a song, split it into stems, mix, plug in a guitar, record a take, and save your work. Each box you tick stays ticked in this browser, so you can close the tab and pick back up later. This needs real audio in and out (a guitar, an interface or built-in mic, speakers or headphones) to mean anything — it's a hands-on pass, not a code review.</p>
@@ -414,8 +414,42 @@ const DATA = [
     ]
   },
   {
+    id: "ailab-ratemytake",
+    title: "9. AI Lab — Rate My Take",
+    note: "Needs a real guitar stem to score against, and a dry (guitar-only) take — not a regular Play Along recording.",
+    items: [
+      "Opening the <strong>Rate My Take</strong> tab shows its own small Backing Track card (Play/Stop/Loop/Count-in, kept in sync with the Mixer and Play Along) plus a takes list, separate from Play Along's own Takes tab.",
+      "<strong>Record dry take</strong> starts the backing track from wherever that card's playhead is sitting and captures only the guitar rig's output — never the backing track mixed in.",
+      "Scrubbing the Backing Track card to where a solo starts, then clicking <strong>↓ Use current position as Offset</strong>, fills the Offset field with that position instead of needing to type it by hand.",
+      "<strong>Score this take</strong> returns an overall percentage, a Pitch agreement / Timing agreement breakdown, and a heatmap scoped to just the take's own span (green = close, red = drift, gray = no confident read).",
+      "Picking a different take from the dropdown shows its last cached rating and remembered Offset instantly, with no re-scoring, until <strong>Score this take</strong> is clicked again.",
+      "A percentage badge appears on each row in the takes list once it has a rating; each row also has its own ▶ Play, ✎ Rename, and 🗑 Delete, and deleting a take also deletes its saved rating/heatmap.",
+      "A clearly wrong Offset produces an \"Invalid rating — check your offset?\" result rather than a plausible-looking but meaningless score.",
+      "Switching to a different song clears this card back to a blank result and Offset 0 — no leftover rating from the previous song.",
+      "The link on this card jumps to Play Along's Record tab (§17), and the Record card's own \"Go to Rate My Take →\" link jumps back here.",
+    ]
+  },
+  {
+    id: "ailab-assistant",
+    title: "10. AI Lab — AI Assistant",
+    note: "The only part of the app that makes a network call. Needs at least one provider API key saved (Claude, Gemini, or Groq — a free-tier key works) to test the five LLM-backed modes; Song Structure's detected map works with no key at all.",
+    items: [
+      "A mode-toggle row switches between Lick Ideas, Ask AI, Practice Tips, This Track, Song Structure, and This Artist, all sharing one saved provider/key.",
+      "The provider dropdown (Claude / Gemini / Groq) shows each provider's own key status independently — saving a key for one doesn't disturb whichever key is saved for another.",
+      "The <strong>This song (Artist/Title)</strong> card prefills a best-effort guess from the filename; editing both fields saves automatically with no explicit Save needed.",
+      "The This song and Choosing a provider cards collapse to a one-line summary the first time this tab is opened with a key already saved / Artist-Title already filled in, and expand again on click.",
+      "<strong>Lick Ideas</strong>: optionally type a style tag, then <strong>Get phrasing ideas</strong> returns lead-guitar suggestions grounded in this song's actual key/tempo/chords.",
+      "<strong>Ask AI</strong>: clicking one of the example prompts fills the question box; asking an off-topic (non-music) question gets politely declined rather than answered anyway.",
+      "<strong>Practice Tips</strong> stays disabled with an explanation until at least one dry take exists for this song; picking a take that already has a Rate My Take score shows a carried-over hint line before spending a request.",
+      "<strong>This Track</strong> and <strong>This Artist</strong> need the Artist/Title (and Artist, respectively) filled in first, and each carries a standing disclaimer that facts should be treated as a starting point to verify.",
+      "<strong>Song Structure</strong>'s part-by-part map (colour+letter, time range, chords with Roman numerals, what's playing) appears with no API key at all; ▶ Jump here / ⟳ Loop this part / 🎯 Practise this part all drop back to the Mixer having done what they promise.",
+      "<strong>✨ Name the parts with AI</strong> (inside Song Structure) adds real part names, technique notes, a difficulty chip, and a song-level form/tuning/learning-order summary — needs the song separated first.",
+      "Switching modes, songs, or leaving and reopening AI Lab shows exactly the right cached answer for the current song/mode — never a different song's leftover answer.",
+    ]
+  },
+  {
     id: "split",
-    title: "9. Guitar split (experimental)",
+    title: "11. Guitar split (experimental)",
     note: "Only relevant once a track has a combined guitar stem worth splitting into two takes.",
     items: [
       "The split panel appears once a <span class='mono'>guitar</span> stem exists for the selected track.",
@@ -425,8 +459,23 @@ const DATA = [
     ]
   },
   {
+    id: "tabview",
+    title: "12. Tab View",
+    note: "Its own screen (the G icon in the activity rail), with its own library replacing the song sidebar while it's open. A .gp3/.gp4/.gp5/.gpx file is handy for the import half; the generate half just needs a separated song.",
+    items: [
+      "Dropping a .gp3/.gp4/.gp5/.gpx file on the dropzone (or importing a whole folder via the link below it) adds it to Tab View's own library, with rename/delete/add-to-playlist controls matching the song Library's row layout.",
+      "Two separately-captioned transport bars are visible without scrolling: the <strong>Track Play Bar</strong> (mirrors the Mixer's own play/stop/loop/BPM/Speed/Tune/Volume) and the <strong>Tab Play Bar</strong> (the loaded file's own alphaTab soundfont playback) — starting one never starts the other.",
+      "During Tab Play Bar playback, the notation auto-scrolls to keep the current line near the top instead of drifting off the bottom of the screen.",
+      "Click-dragging across the notation highlights a range of bars in blue; turning on the Tab Play Bar's <strong>Loop</strong> and pressing play then repeats only that range, and a <strong>✕ Clear selection</strong> button appears next to the hint text.",
+      "Loading a different tab clears any leftover bar selection automatically.",
+      "<strong>Through my rig</strong> swaps the Tab Play Bar's output from the built-in soundfont to the Tone Lab rig (amp/cab/pedals) currently built, and back again when toggled off.",
+      "With a song loaded in the Mixer, the <strong>Generate tab from audio</strong> panel's preview line updates live as the tuning/start-point/length pickers change, showing exactly what's about to be transcribed before committing.",
+      "Clicking <strong>Generate tab from audio</strong> over a section with an actual lead line produces a real playable tab, added straight into this screen's library; running it over a mostly-chords section instead reports that the stem reads as polyphonic rather than silently producing an empty tab.",
+    ]
+  },
+  {
     id: "playalong-transport",
-    title: "10. Play Along — backing track & tuner",
+    title: "13. Play Along — backing track & tuner",
     note: "Open Play Along and work through the top strip before touching the pedalboard below it.",
     items: [
       "Opening <strong>Play Along</strong> shows the backing track transport, tuner, input meter, and pedalboard without needing to scroll to find them.",
@@ -437,7 +486,7 @@ const DATA = [
   },
   {
     id: "playalong-input",
-    title: "11. Play Along — input & riff capture",
+    title: "14. Play Along — input & riff capture",
     note: "Needs a real guitar plugged into an interface (or a mic picking up an amp).",
     items: [
       "The device dropdown lists your actual audio interface/input, and <strong>Enable input</strong> makes the meter respond to real playing.",
@@ -451,7 +500,7 @@ const DATA = [
   },
   {
     id: "playalong-rig",
-    title: "12. Play Along — amp & pedalboard",
+    title: "15. Play Along — amp & pedalboard",
     note: "The tone-shaping heart of Play Along — work through it front-to-back.",
     items: [
       "Tone Lab shows one small icon per stage (Gate, Amp, every pedal, Output) in a row, wrapping to a second line if the window's narrow; clicking an icon opens its controls below and only one panel is open at a time.",
@@ -473,7 +522,7 @@ const DATA = [
   },
   {
     id: "presets",
-    title: "13. Rig presets & this song's chain",
+    title: "16. Rig presets & this song's chain",
     note: "Save a tone once, recall it instantly next time — then string a few together per song.",
     items: [
       "<strong>Save current rig as…</strong> captures the full chain: amp mode, loaded capture + tweaker knobs, cab IR, EQ, Compressor, Delay/Reverb, Output level, and pedal order.",
@@ -487,7 +536,7 @@ const DATA = [
   },
   {
     id: "recording",
-    title: "14. Recording a take",
+    title: "17. Recording a take",
     note: "Switch to the Record tab inside Play Along.",
     items: [
       "The Record performance and Takes cards are always visible below the rig, with the camera/quality/sync setup section expanded by default.",
@@ -503,7 +552,7 @@ const DATA = [
   },
   {
     id: "takes",
-    title: "15. Reviewing takes",
+    title: "18. Reviewing takes",
     items: [
       "The Takes list shows every recording you've made, oldest/newest in a sensible order.",
       "Star, rename, reveal-in-folder, and delete each work on a take.",
@@ -516,7 +565,7 @@ const DATA = [
   },
   {
     id: "projects",
-    title: "16. Projects (saving your work)",
+    title: "19. Projects (saving your work)",
     note: "Confirms your mix, loop, markers, and rig choices actually survive.",
     items: [
       "After changing the mix, loop, or markers on a song, waiting a moment and reselecting a different track then coming back restores exactly what you left.",
@@ -526,7 +575,7 @@ const DATA = [
   },
   {
     id: "export",
-    title: "17. Export",
+    title: "20. Export",
     items: [
       "Exporting bounces exactly your mute/gain choices from the mixer — Solo, Pan, and per-stem EQ do <em>not</em> leak into the exported file (they're for monitoring while you play, not for the mix itself).",
       "Both the WAV and MP3 export formats produce a playable file.",
@@ -535,7 +584,7 @@ const DATA = [
   },
   {
     id: "cross-cutting",
-    title: "18. Cross-cutting checks",
+    title: "21. Cross-cutting checks",
     note: "Things that should just quietly work no matter what else you were doing.",
     items: [
       "Leaving the app idle in a background tab for a while and coming back doesn't require a page reload to hear audio again.",
@@ -551,10 +600,10 @@ const root = document.getElementById("sections");
 const toc = document.getElementById("toc");
 // v2: content reshuffled for the V4 checklist items (new Library section,
 // items inserted mid-list elsewhere) — bumped so a v1 run's checked state
-// can't silently misapply to different items at the same index. v4.6 added
-// a whole new section (its own section id, own item indices) rather than
-// reordering any existing one, so existing checked state stays valid
-// without another bump.
+// can't silently misapply to different items at the same index. v4.6 and
+// v4.7 each added whole new sections (their own section ids, own item
+// indices) rather than reordering any existing one, so existing checked
+// state stays valid without another bump.
 const STORAGE_KEY = "orpheus-first-session-checklist-v2";
 
 let state = {};
